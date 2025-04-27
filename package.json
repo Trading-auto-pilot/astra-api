@@ -1,0 +1,18 @@
+{
+  "name": "trading-system",
+  "version": "1.0.0",
+  "description": "trading-system/ ├── server/                      # Server REST centrale │   ├── controllers/            # Logica degli endpoint │   │   └── strategyController.js │   ├── routes/                 # Routing Express │   │   └── strategyRoutes.js │   ├── services/               # Controllo container, DB │   │   ├── dockerService.js │   │   ├── dbService.js │   │   └── logService.js │   ├── models/                 # ORM o SQL grezzi │   │   ├── StrategyRun.js │   │   └── StrategyLog.js │   ├── config/                 # Config connessioni DB, .env │   │   └── db.js │   ├── app.js                  # Setup express │   └── server.js               # Avvio server REST │ ├── strategies/                 # Ogni strategia in container isolato │   ├── sma/ │   │   ├── index.js │   │   ├── package.json │   │   └── Dockerfile │   ├── tsl2green/ │   │   ├── index.js │   │   └── Dockerfile │   └── shared/                 # Moduli condivisi (buy, sell, calcolo MA) │       ├── db.js │       ├── strategyUtils.js │       └── apiClient.js │ ├── db/                         # Script e migrazioni │   ├── schema.sql              # Definizione tabelle │   └── seed.sql                # Dati iniziali / esempi │ ├── logs/                       # (opzionale) log locali da containers │ ├── .env                        # Credenziali e config ├── docker-compose.yml          # Esecuzione coordinata └── README.md",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.8.4",
+    "dotenv": "^16.5.0",
+    "mysql2": "^3.14.0"
+  }
+}
