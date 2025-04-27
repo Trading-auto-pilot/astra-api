@@ -17,6 +17,7 @@ const capitale = parseFloat(process.env.CAPITALE);
 const period = parseInt(process.env.MA); // Media mobile
 const SL = parseFloat(process.env.SL);
 const TP = parseFloat(process.env.TP);
+const tf = process.env.TF;
 
 async function run() {
 
@@ -49,6 +50,7 @@ async function run() {
     startDate,
     endDate,
     capitaleIniziale: capitale,
+    tf,
     period,
     SL,
     TP

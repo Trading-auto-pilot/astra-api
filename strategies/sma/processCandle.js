@@ -10,7 +10,7 @@ async function processCandle(element, state, strategyParams, cacheManager) {
   }
 
   // Calcolo Media Mobile
-  const mediaMobile = await StrategyUtils.calcMediaMobileFromCache(strategyParams.symbol, new Date(element.t), strategyParams.period, cacheManager);
+  const mediaMobile = await StrategyUtils.calcMediaMobileFromCache(strategyParams.symbol, new Date(element.t), strategyParams.period, cacheManager, strategyParams.tf);
 
   if (!mediaMobile) {
     console.log('Media mobile non disponibile');
