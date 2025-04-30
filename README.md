@@ -1,116 +1,100 @@
+# 🧭 Progetto Microservizi – Trading Automation
 
-# Trading System - Backtesting Framework
+Questo repository contiene l'infrastruttura completa per un sistema di trading automatizzato basato su microservizi. Ogni servizio è containerizzato con Docker e orchestrato tramite `docker-compose`.
 
-Benvenuto nel progetto **Trading System**!  
-Questo progetto permette di **testare strategie di trading** su dati storici e di **simularne l'esecuzione** tramite un'architettura **modulare**, **dockerizzabile**, **scalabile**.
+## 🧱 Servizi Inclusi
 
----
+| Servizio            | Descrizione                                              | Porta |
+|---------------------|----------------------------------------------------------|-------|
+| [alertingService](./README_alertingService.md)       | Gestione degli alert e notifiche via email.             | 3000  |
+| [cacheManager](./README_cacheManager.md)             | Caching dei dati storici da provider esterni.           | 3001  |
+| [dbManager](./README_dbManager.md)                   | Gestione centralizzata delle configurazioni e dei log.  | 3002  |
+| [capitalManagement](./README_capitalManagement.md)   | Allocazione e monitoraggio del capitale per le strategie.| 3003  |
 
-## ✨ Funzionalità principali
+## 🚀 Avvio Rapido
 
-- **Backtesting** basato su dati storici recuperati da provider (es. Alpaca)
-- **Caching intelligente** dei dati storici per ridurre chiamate API
-- **Supporto a strategie modulari** (es: SMA, Double MA, TSL su 2 green candles)
-- **Salvataggio delle operazioni (BUY/SELL)** su database MySQL
-- **Calcolo metriche di performance** (profitto, efficienza, profitto annualizzato)
-- **Separazione tra ciclo di dati e logica strategica** (pronto per dati live)
-- **Pipeline CI/CD-ready** per deployment su cloud (GCP/Kubernetes)
+Assicurati di avere installato Docker e Docker Compose. Poi, esegui:
 
----
+```bash
+docker-compose up --build
+```
 
-## 🏛️ Architettura del Progetto
+Questo comando costruirà e avvierà tutti i servizi definiti nel file `docker-compose.yml`.
+
+## 🐳 docker-compose.yml
+
+Il file `docker-compose.yml` definisce i servizi, le loro dipendenze e le configurazioni necessarie per l'orchestrazione dell'intero sistema. Ecco una panoramica dei servizi definiti:
+
+```yaml
+version: '3.8'
+
+services:
+  alertingService:
+    build: ./alertingService
+    ports:
+      - "3000:3000"
+    depends_on:
+      - dbManager
+
+  cacheManager:
+    build: ./cacheManager
+    ports:
+      - "3001:3001"
+    depends_on:
+      - dbManager
+
+  dbManager:
+    build: ./dbManager
+    ports:
+      - "3002:3002"
+
+  capitalManagement:
+    build: ./capitalManagement
+    ports:
+      - "3003:3003"
+    depends_on:
+      - dbManager
+```
+
+Assicurati che ogni servizio abbia una directory corrispondente con un `Dockerfile` valido.
+
+## 📂 Struttura del Progetto
 
 ```
-trading-system/
-├── strategies/
-│   ├── sma/                    # Strategia SMA (Simple Moving Average)
-│   │   ├── index.js             # Esecuzione strategia
-│   │   └── processCandle.js     # Logica BUY/SELL della strategia
-│   └── (altre strategie)        
-├── shared/
-│   ├── cacheManager.js          # Gestione caching locale dei dati storici
-│   ├── runner.js                # Ciclo generico di backtest
-│   └── utils.js                 # Funzioni comuni (DB, calcoli, API)
-├── cache/                       # Dati storici salvati localmente
-├── .env                         # Variabili d'ambiente
-├── package.json                 
+.
+├── alertingService/
+│   ├── Dockerfile
+│   └── README_alertingService.md
+├── cacheManager/
+│   ├── Dockerfile
+│   └── README_cacheManager.md
+├── dbManager/
+│   ├── Dockerfile
+│   └── README_dbManager.md
+├── capitalManagement/
+│   ├── Dockerfile
+│   └── README_capitalManagement.md
+├── docker-compose.yml
 └── README.md
 ```
 
----
+## 📘 Documentazione dei Servizi
 
-## ⚙️ Modalità di Esecuzione
+Per dettagli specifici su ciascun servizio, consulta i rispettivi file README:
 
-1. **Clona il repository**
-   ```bash
-   git clone git@github.com:tuo-utente/trading-system.git
-   cd trading-system
-   ```
+- [alertingService](./README_alertingService.md)
+- [cacheManager](./README_cacheManager.md)
+- [dbManager](./README_dbManager.md)
+- [capitalManagement](./README_capitalManagement.md)
 
-2. **Installa le dipendenze**
-   ```bash
-   npm install
-   ```
+## 🧪 Test dei Servizi
 
-3. **Configura il file `.env`**
-   Esempio:
-   ```
-   SYMBOL=MSFT
-   START_DATE=2024-01-01
-   END_DATE=2025-03-31
-   CAPITALE=100
-   PERIOD=25
-   SL=0.04
-   TP=0.08
-   API_KEY=xxx
-   API_SECRET=xxx
-   ```
+Puoi testare i servizi utilizzando strumenti come `curl` o Postman. Ad esempio, per testare l'endpoint di health check di `alertingService`:
 
-4. **Avvia un backtest**
-   ```bash
-   node strategies/sma/index.js
-   ```
+```bash
+curl http://localhost:3000/health
+```
 
----
+## 📄 Licenza
 
-## 🛠️ Tecnologie utilizzate
-
-- **Node.js**
-- **MySQL** (o MariaDB)
-- **Axios** per chiamate API
-- **GitHub / GitHub Actions** (per CI/CD - facoltativo)
-- **Docker** (in sviluppo)
-
----
-
-## 🗃️ Database
-
-- `strategy_runs`: contiene il risultato complessivo di ogni run
-- `transazioni`: log dettagliato di ogni BUY e SELL
-
----
-
-## 🔥 Prossimi sviluppi
-
-- Integrazione dati **live** (streaming)
-- Implementazione REST Server di controllo (Start, Stop, Monitoring)
-- Interfaccia Web
-- Deploy completo su **GCP Kubernetes**
-- Strategie avanzate multi-timeframe e machine learning
-
----
-
-## 📜 Licenza
-
-Questo progetto è in fase di sviluppo privato.  
-Non è consentita la distribuzione senza autorizzazione.
-
----
-
-## 👨‍💻 Autore
-
-Vincenzo Esposito - [LinkedIn](https://linkedin.com)
-
----
-
-> 🚀 **Let's build a world-class trading architecture together!**
+Questo progetto è distribuito sotto la licenza MIT.

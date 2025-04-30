@@ -1,0 +1,113 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: example
+      MYSQL_DATABASE: Trading
+      MYSQL_USER: trading_user
+      MYSQL_PASSWORD: trading_pass
+    ports:
+      - "3316:3306"
+    networks:
+      - trading-net
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  dbmanager:
+    image: expovin/dbmanager:1.0
+    container_name: dbmanager
+    build:
+      context: ./dbmanager
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    networks:
+      - trading-net
+    environment:
+      - DB_HOST=mysql-db
+      - DB_USER=trading_user
+      - DB_PASSWORD=trading_pass
+      - DB_NAME=Trading
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  cachemanager:
+    image: expovin/cachemanager:1.0
+    container_name: cachemanager
+    build:
+      context: ./cachemanager
+    restart: unless-stopped
+    ports:
+      - "3006:3006"
+    networks:
+      - trading-net
+    volumes:
+      - cache_data:/app/cache
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+    depends_on:
+      - dbmanager
+
+  alertingservice:
+    image: expovin/alertingservice:1.0
+    container_name: alertingservice
+    build:
+      context: ./alertingService
+    restart: unless-stopped
+    ports:
+      - "3008:3008"
+    networks:
+      - trading-net
+    depends_on:
+      - dbmanager
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+
+  capitalmanager:
+    image: expovin/capitalmanager:1.0
+    container_name: capital-manager
+    build:
+      context: ./capitalManager
+    restart: unless-stopped
+    ports:
+      - "3009:3009"
+    networks:
+      - trading-net
+    depends_on:
+      - dbmanager
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+      - ENVIRONMENT=PAPER
+
+  strategy-utils:
+    image: expovin/strategy-utils:1.0
+    container_name: strategy-utils
+    build:
+      context: ./strategyUtils
+    restart: unless-stopped
+    ports:
+      - "3007:3007"
+    networks:
+      - trading-net
+    environment:
+      - CACHEMANAGER_URL=http://cachemanager:3006
+    depends_on:
+      - dbmanager
+
+volumes:
+  mysql_data:
+  cache_data:
+
+networks:
+  trading-net:
+    driver: bridge

@@ -1,0 +1,18 @@
+{
+    "name": "cachemanager",
+    "version": "1.0.0",
+    "description": "Microservizio per la gestione della cache e recupero candele da Alpaca",
+    "main": "server.js",
+    "type": "commonjs",
+    "scripts": {
+      "start": "node server.js"
+    },
+    "author": "Vincenzo",
+    "license": "MIT",
+    "dependencies": {
+      "axios": "^1.6.8",
+      "dotenv": "^16.3.1",
+      "express": "^4.18.3"
+    }
+  }
+  

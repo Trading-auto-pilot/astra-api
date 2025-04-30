@@ -1,0 +1,86 @@
+const express = require('express');
+const axios = require('axios');
+const CacheManager = require('./cacheManager');
+require('dotenv').config();
+
+const app = express();
+const port = process.env.PORT || 3006;
+
+let cacheManager = null;
+const dbManagerBaseUrl = process.env.DBMANAGER_URL || 'http://dbmanager:3002'; // URL del microservizio DBManager
+
+// Funzione per leggere i parametri di configurazione da DBManager
+async function loadSettings() {
+  const keys = [
+    'APCA-API-KEY-ID',
+    'APCA-API-SECRET-KEY',
+    'ALPACA-WSS-MARKET-STREAM-BASE',
+    'ALPACA-HISTORICAL-FEED',
+    'TF-DEFAULT',
+    'ALPACA-API-TIMEOUT'
+  ];
+
+  const settings = {};
+  for (const key of keys) {
+    try {
+      const res = await axios.get(`${dbManagerBaseUrl}/getSetting/${key}`);
+      settings[key] = res.data.value;
+    } catch (err) {
+        console.error(`[SETTINGS] Errore nel recupero della chiave '${key}': ${err.message}`);
+      throw err;
+    }
+  }
+  return settings;
+}
+
+// Endpoint REST per il test del servizio
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', service: 'cacheManager' , uptime: process.uptime()});
+});
+
+// Endpoint informazioni sul modulo
+app.get('/info', (req, res) => {
+    res.status(200).json(cacheManager.getInfo());
+});
+
+// Endpoint per ottenere candele dal simbolo e range
+app.get('/candles', async (req, res) => {
+  const { symbol, startDate, endDate } = req.query;
+
+  if (!symbol || !startDate || !endDate) {
+    return res.status(400).json({ error: 'Parametri richiesti: symbol, startDate, endDate' });
+  }
+
+  try {
+    const candles = await cacheManager.retrieveCandles(symbol, startDate, endDate);
+    res.json(candles);
+  } catch (err) {
+    console.error(`[CACHE] Errore nel recupero candele: ${err.message}`);
+    res.status(500).json({ error: 'Errore nel recupero delle candele' });
+  }
+});
+
+// Avvio server dopo aver caricato i parametri
+(async () => {
+  try {
+    const settings = await loadSettings();
+
+    cacheManager = new CacheManager({
+      cacheBasePath: './cache',
+      tf: settings['TF-DEFAULT'],
+      feed: settings['ALPACA-HISTORICAL-FEED'],
+      apiKey: settings['APCA-API-KEY-ID'],
+      apiSecret: settings['APCA-API-SECRET-KEY'],
+      restUrl: settings['ALPACA-MARKET-DATA-BASE'],
+      timeout: settings['ALPACA-API-TIMEOUT']
+    });
+
+    app.listen(port, () => {
+      console.log(`[cacheManager] Server avviato sulla porta ${port}`);
+    });
+  } catch (err) {
+    console.error('[STARTUP] Errore nell\'inizializzazione del servizio:', err.message);
+    console.log(err);
+    process.exit(1);
+  }
+})();

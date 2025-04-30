@@ -2,8 +2,8 @@
 
 const { runBacktest } = require('../../shared/runner');
 const StrategyUtils = require('../../shared/utils');
-const CacheManager = require('../../shared/cacheManager');
-const processCandle = require('./processCandle');
+const CacheManager = require('../../shared/cacheManager.js');
+const processCandle = require('./processCandle.js');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -18,6 +18,7 @@ const period = parseInt(process.env.MA); // Media mobile
 const SL = parseFloat(process.env.SL);
 const TP = parseFloat(process.env.TP);
 const tf = process.env.TF;
+
 
 async function run() {
 

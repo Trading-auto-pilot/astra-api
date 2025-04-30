@@ -37,13 +37,19 @@ async function runBacktest(dataset, initialState, strategyParams, processCandle,
     if (action) {
         if (action === 'BUY') {
           await StrategyUtils.writeBuy(id, dataset[index], newState, result);
-          minDay = result.minDay;
-          maxDay = result.maxDay;
+          const days = result.days;
+          minDay = Math.min(state.minDay, days);
+          maxDay = Math.max(state.maxDay, days);
+          //minDay = result.minDay;
+          //maxDay = result.maxDay;
         }
         if (action === 'SELL') {
           await StrategyUtils.writeSell(id, dataset[index], newState, result); 
-          minDay = result.minDay;
-          maxDay = result.maxDay;
+          const days = result.days;
+          minDay = Math.min(state.minDay, days);
+          maxDay = Math.max(state.maxDay, days);
+          //minDay = result.minDay;
+          //maxDay = result.maxDay;
         }
     }
     state = newState; // aggiorna lo stato

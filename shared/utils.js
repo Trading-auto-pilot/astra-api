@@ -76,50 +76,59 @@ class StrategyUtils {
     return monthlyAverageProfit * 12;
   }
 
-    // shared/calcMediaMobileFromCache.js
-  static async calcMediaMobileFromCache(symbol, currentDate, period, cacheManager) {
-    let sum = 0;
-    let count = 0;
+  static async calcMediaMobileFromCache(symbol, currentDate, periodDays, cacheManager, tf='15Min') {
+    let candles = [];
+    let monthToLoad = new Date(currentDate);
 
-    // Dati recenti
-    let currentData = await cacheManager.getData(symbol, currentDate);
-    if (!currentData) {
-      console.warn(`[CACHE] Nessun dato per mese di ${currentDate.toISOString()}`);
-      return null;
-    }
+    // 1 giorno = 6.5 ore di borsa USA (390 minuti)
+    const minutesPerDayTrading = 390;
 
-    // Trova l'indice corrente nel mese
-    const currentTimestamp = currentDate.getTime();
-    const currentIndex = currentData.findIndex(d => new Date(d.t).getTime() >= currentTimestamp);
+    // Estrai quanti minuti ha ogni candela dal TF dinamico
+    const minutesPerCandle = parseInt(tf.replace('Min', '').replace('H', '') || 15);
 
-    if (currentIndex < period) {
-      // Bisogna prendere dati anche dal mese precedente
-      const prevDate = new Date(currentDate);
-      prevDate.setMonth(prevDate.getMonth() - 1);
-      const prevData = await cacheManager.getData(symbol, prevDate);
-
-      const neededFromPrev = period - currentIndex;
-
-      const prevSlice = prevData.slice(-neededFromPrev);
-      const currentSlice = currentData.slice(0, currentIndex);
-
-      const allCandles = [...prevSlice, ...currentSlice];
-
-      if (allCandles.length < period) {
-        return null; // Non abbiamo abbastanza dati
-      }
-
-      sum = allCandles.reduce((acc, candle) => acc + candle.c, 0);
-      count = allCandles.length;
+    let candlesPerDay;
+    if (tf.includes('Min')) {
+        candlesPerDay = Math.floor(minutesPerDayTrading / minutesPerCandle);
+    } else if (tf.includes('H')) {
+        const hours = parseInt(tf.replace('H', ''));
+        candlesPerDay = Math.floor(6.5 / hours);
     } else {
-      // Abbiamo abbastanza dati solo in questo mese
-      const slice = currentData.slice(currentIndex - period, currentIndex);
-      sum = slice.reduce((acc, candle) => acc + candle.c, 0);
-      count = slice.length;
+        throw new Error(`[ERROR] Timeframe non gestito: ${tf}`);
     }
 
-    return sum / count;
-  }
+    const candlesNeeded = periodDays * candlesPerDay;
+    //console.log(`[CACHE] Servono circa ${candlesNeeded} candele (${periodDays} giorni, TF=${tf})`);
+
+    while (candles.length < candlesNeeded) {
+        const monthlyData = await cacheManager.getData(symbol, monthToLoad);
+
+        if (monthlyData && monthlyData.length > 0) {
+            const filtered = monthlyData.filter(c => new Date(c.t).getTime() < currentDate.getTime());
+            candles = [...filtered, ...candles];
+        } else {
+            console.warn(`[CACHE] Nessun dato disponibile per ${monthToLoad.toISOString()}`);
+        }
+
+        monthToLoad.setMonth(monthToLoad.getMonth() - 1);
+
+        if (monthToLoad.getFullYear() < 2000) {
+            console.error("[CACHE] Troppo indietro nel tempo, dati insufficienti");
+            return null;
+        }
+    }
+
+    const lastCandles = candles.slice(-candlesNeeded);
+
+    if (lastCandles.length < candlesNeeded) {
+        console.warn(`[CACHE] Ancora dati insufficienti (${lastCandles.length}/${candlesNeeded})`);
+        return null;
+    }
+
+    const sum = lastCandles.reduce((acc, c) => acc + c.c, 0);
+    return sum / lastCandles.length;
+}
+
+  
 
   static calcSMA(prices, period) {
     const result = [];
@@ -205,7 +214,7 @@ class StrategyUtils {
 
 
   static async initScenario(strategyParams, strategy) {
-    const params_json = {MA : strategyParams.period, SL : strategyParams.SL, TP:strategyParams.TP}
+    const params_json = {TF : strategyParams.tf, MA : strategyParams.period, SL : strategyParams.SL, TP:strategyParams.TP}
     console.log(params_json);
     const connection = await this.getDbConnection();
     await connection.query(`
@@ -250,13 +259,42 @@ class StrategyUtils {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
   }
 
-  static async writeBuy(scenarioId, element, state, result) {
+  static async writeBuy(scenarioId, element, state, result, operation='BUY') {
     const connection = await this.getDbConnection(); // apre qui!
     await connection.query(`INSERT INTO transazioni 
-      (ScenarioID, operationDate, operation, Price, capitale, days)
-      VALUES (?, ?, 'BUY', ?, ?, ?)`,
-      [scenarioId, this.formatDateForMySQL(element.t), result.prezzo, state.capitaleInvestito, result.days]);
+      (ScenarioID, operation, operationDate, Price, capitale, days, MA)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [scenarioId, operation, this.formatDateForMySQL(element.t), result.prezzo, state.capitaleInvestito, result.days, result.MA]);
       await connection.end();
+  }
+
+  static async getStrategy(symbol) {
+    const connection = await this.getDbConnection(); // usa la tua funzione esistente di connessione
+  
+    try {
+      const [rows] = await connection.query(`SELECT * FROM vstrategies WHERE status = 'active' AND symbol = ?`, [symbol]);
+      return rows;
+    } catch (error) {
+      console.error('[DB ERROR] Errore durante il recupero delle strategie:', error.message);
+      throw error;
+    } finally {
+      await connection.end(); // chiusura connessione in ogni caso
+    }
+  }
+
+  static async getSymbolsList() {
+    const connection = await this.getDbConnection(); // usa la tua funzione esistente di connessione
+  
+    try {
+      const [rows] = await connection.query('SELECT name FROM Symbols');
+      const symbols = rows.map(row => row.name);
+      return symbols;
+    } catch (error) {
+      console.error('[DB ERROR] Errore durante il recupero dei simboli:', error.message);
+      throw error;
+    } finally {
+      await connection.end(); // chiusura connessione in ogni caso
+    }
   }
 
   static async writeSell(scenarioId, element, state, result) {
@@ -267,6 +305,73 @@ class StrategyUtils {
       [scenarioId, this.formatDateForMySQL(element.t), result.prezzo, state.capitaleLibero, result.motivo, result.profitLoss, result.days]);
       await connection.end();
   }
+
+  static async insertOrder(orderData) {
+    const connection = await this.getDbConnection(); // Assumo che esista già getDbConnection()
+
+    const query = `
+      INSERT INTO orders (
+        id, client_order_id, created_at, updated_at, submitted_at, filled_at, expired_at, 
+        canceled_at, failed_at, replaced_at, replaced_by, replaces, asset_id, symbol, 
+        asset_class, notional, qty, filled_qty, filled_avg_price, order_class, 
+        order_type, type, side, position_intent, time_in_force, limit_price, 
+        stop_price, status, extended_hours, legs, trail_percent, trail_price, 
+        hwm, subtag, source, expires_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      )
+    `;
+
+    const values = [
+      orderData.id,
+      orderData.client_order_id,
+      orderData.created_at ? new Date(orderData.created_at) : null,
+      orderData.updated_at ? new Date(orderData.updated_at) : null,
+      orderData.submitted_at ? new Date(orderData.submitted_at) : null,
+      orderData.filled_at ? new Date(orderData.filled_at) : null,
+      orderData.expired_at ? new Date(orderData.expired_at) : null,
+      orderData.canceled_at ? new Date(orderData.canceled_at) : null,
+      orderData.failed_at ? new Date(orderData.failed_at) : null,
+      orderData.replaced_at ? new Date(orderData.replaced_at) : null,
+      orderData.replaced_by,
+      orderData.replaces,
+      orderData.asset_id,
+      orderData.symbol,
+      orderData.asset_class,
+      orderData.notional,
+      orderData.qty,
+      orderData.filled_qty,
+      orderData.filled_avg_price,
+      orderData.order_class,
+      orderData.order_type,
+      orderData.type,
+      orderData.side,
+      orderData.position_intent,
+      orderData.time_in_force,
+      orderData.limit_price,
+      orderData.stop_price,
+      orderData.status,
+      orderData.extended_hours ? 1 : 0, // booleano in MySQL
+      orderData.legs ? JSON.stringify(orderData.legs) : null,
+      orderData.trail_percent,
+      orderData.trail_price,
+      orderData.hwm,
+      orderData.subtag,
+      orderData.source,
+      orderData.expires_at ? new Date(orderData.expires_at) : null
+    ];
+
+    try {
+      await connection.query(query, values);
+    } catch (err) {
+      console.error(`[DB ERROR] Inserimento ordine fallito: ${err.message}`);
+      console.error(err);
+      throw err;
+    } finally {
+      await connection.end();
+    }
+  }
+
 }
 
 module.exports = StrategyUtils;
