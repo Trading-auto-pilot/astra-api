@@ -6,10 +6,10 @@ Questo repository contiene l'infrastruttura completa per un sistema di trading a
 
 | Servizio            | Descrizione                                              | Porta |
 |---------------------|----------------------------------------------------------|-------|
-| [alertingService](./README_alertingService.md)       | Gestione degli alert e notifiche via email.             | 3000  |
-| [cacheManager](./README_cacheManager.md)             | Caching dei dati storici da provider esterni.           | 3001  |
-| [dbManager](./README_dbManager.md)                   | Gestione centralizzata delle configurazioni e dei log.  | 3002  |
-| [capitalManagement](./README_capitalManagement.md)   | Allocazione e monitoraggio del capitale per le strategie.| 3003  |
+| [alertingService](./README.md)       | Gestione degli alert e notifiche via email.             | 3000  |
+| [cacheManager](./README.md)             | Caching dei dati storici da provider esterni.           | 3001  |
+| [dbManager](./README.md)                   | Gestione centralizzata delle configurazioni e dei log.  | 3002  |
+| [capitalManagement](./README.md)   | Allocazione e monitoraggio del capitale per le strategie.| 3003  |
 
 ## 🚀 Avvio Rapido
 
