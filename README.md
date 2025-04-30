@@ -6,10 +6,10 @@ Questo repository contiene l'infrastruttura completa per un sistema di trading a
 
 | Servizio            | Descrizione                                              | Porta |
 |---------------------|----------------------------------------------------------|-------|
-| [alertingService](./README.md)       | Gestione degli alert e notifiche via email.             | 3000  |
-| [cacheManager](./README.md)             | Caching dei dati storici da provider esterni.           | 3001  |
-| [dbManager](./README.md)                   | Gestione centralizzata delle configurazioni e dei log.  | 3002  |
-| [capitalManagement](./README.md)   | Allocazione e monitoraggio del capitale per le strategie.| 3003  |
+| [alertingService](./alertingService/README.md)       | Gestione degli alert e notifiche via email.             | 3000  |
+| [cacheManager](./cacheManager/README.md)             | Caching dei dati storici da provider esterni.           | 3001  |
+| [dbManager](./DBManager/README.md)                   | Gestione centralizzata delle configurazioni e dei log.  | 3002  |
+| [capitalManagement](./capitalManager/README.md)   | Allocazione e monitoraggio del capitale per le strategie.| 3003  |
 
 ## 🚀 Avvio Rapido
 
@@ -82,10 +82,10 @@ Assicurati che ogni servizio abbia una directory corrispondente con un `Dockerfi
 
 Per dettagli specifici su ciascun servizio, consulta i rispettivi file README:
 
-- [alertingService](./README.md)
-- [cacheManager](./README.md)
-- [dbManager](./README.md)
-- [capitalManagement](./README.md)
+- [alertingService](./alertingService/README.md)
+- [cacheManager](./cacheManager/README.md)
+- [dbManager](./DBManager/README.md)
+- [capitalManagement](./capitalManager/README.md)
 
 ## 🧪 Test dei Servizi
 
