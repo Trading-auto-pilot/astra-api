@@ -64,16 +64,16 @@ Assicurati che ogni servizio abbia una directory corrispondente con un `Dockerfi
 .
 ├── alertingService/
 │   ├── Dockerfile
-│   └── README_alertingService.md
+│   └── README.md
 ├── cacheManager/
 │   ├── Dockerfile
-│   └── README_cacheManager.md
+│   └── README.md
 ├── dbManager/
 │   ├── Dockerfile
-│   └── README_dbManager.md
+│   └── README.md
 ├── capitalManagement/
 │   ├── Dockerfile
-│   └── README_capitalManagement.md
+│   └── README.md
 ├── docker-compose.yml
 └── README.md
 ```
@@ -82,10 +82,10 @@ Assicurati che ogni servizio abbia una directory corrispondente con un `Dockerfi
 
 Per dettagli specifici su ciascun servizio, consulta i rispettivi file README:
 
-- [alertingService](./README_alertingService.md)
-- [cacheManager](./README_cacheManager.md)
-- [dbManager](./README_dbManager.md)
-- [capitalManagement](./README_capitalManagement.md)
+- [alertingService](./README.md)
+- [cacheManager](./README.md)
+- [dbManager](./README.md)
+- [capitalManagement](./README.md)
 
 ## 🧪 Test dei Servizi
 
