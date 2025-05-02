@@ -46,6 +46,18 @@ app.get('/strategies/:symbol', async (req, res) => {
   }
 });
 
+// Endpoint per recuperare tutte le strategie attive
+app.get('/strategies', async (req, res) => {
+  const symbol = req.params.symbol;
+  try {
+    const strategies = await dbManager.getActiveStrategies();
+    res.json(strategies);
+  } catch (error) {
+    console.error('[ERROR] /strategies:', error.message);
+    res.status(500).json({ error: 'Errore interno' });
+  }
+});
+
 // Recupera il valore di un'impostazione dato il nome chiave
 app.get('/getSetting/:key', async (req, res) => {
     const dbManager = new DBManager();

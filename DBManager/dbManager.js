@@ -204,6 +204,7 @@ class DBManager {
   }
 
 // Recupera tutte le strategie attive per un simbolo e parsifica i parametri JSON
+/*
 async getActiveStrategies(symbol) {
     const connection = await this.getDbConnection();
     try {
@@ -216,7 +217,7 @@ async getActiveStrategies(symbol) {
             row.params = JSON.parse(row.params);
           } catch (err) {
             console.error(`[${MODULE_NAME}][getActiveStrategies] Errore parsing JSON su params per id ${row.id}:`, err.message);
-            row.params = {}; // fallback
+            row.params = {}; 
           }
         }
         return row;
@@ -231,6 +232,40 @@ async getActiveStrategies(symbol) {
       await connection.end();
     }
   }
+    */
+// Recupera tutte le strategie attive, eventualmente filtrando per simbolo
+async getActiveStrategies(symbol = null) {
+  const connection = await this.getDbConnection();
+
+  try {
+    const [rows] = await connection.query(`SELECT * FROM vstrategies WHERE status = 'active'`);
+
+    // Parsing del campo params + filtro se symbol è specificato
+    const strategies = rows
+      .map(row => {
+        if (row.params) {
+          try {
+            row.params = JSON.parse(row.params);
+          } catch (err) {
+            console.error(`[${MODULE_NAME}][getActiveStrategies] Errore parsing JSON su params per id ${row.id}:`, err.message);
+            row.params = {}; // fallback
+          }
+        }
+        return row;
+      })
+      .filter(row => !symbol || row.symbol === symbol); // Applica il filtro solo se symbol è definito
+
+    return strategies;
+
+  } catch (err) {
+    console.error(`[${MODULE_NAME}][getActiveStrategies] Errore select:`, err.message);
+    throw err;
+  } finally {
+    await connection.end();
+  }
+}
+
+
   
 
   // Recupera la lista dei simboli
