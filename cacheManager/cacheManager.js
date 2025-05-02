@@ -65,15 +65,19 @@ class CacheManager {
   }
 
   async retrieveCandles(symbol, startDate, endDate) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    let start = new Date(startDate);
+    let end = new Date(endDate);
+
+
     let allBars = [];
     let missing = [];
 
-    let current = new Date(end);
-    current.setDate(1);
+    //let current = new Date(end);
+    //current.setDate(1);
+    let current = new Date(start.getFullYear(), start.getMonth(), 1);
+    const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
 
-    while (current >= start) {
+    while (current <= endMonth) {
       const year = current.getFullYear();
       const month = current.getMonth() + 1;
       const cached = await this._read(symbol, year, month);
@@ -82,7 +86,7 @@ class CacheManager {
       } else {
         missing.unshift({ year, month });
       }
-      current.setMonth(current.getMonth() - 1);
+      current.setMonth(current.getMonth() + 1);
     }
 
     for (const { year, month } of missing) {
@@ -93,7 +97,6 @@ class CacheManager {
 
       do {
         const url = `${this.restUrl}/v2/stocks/bars?symbols=${symbol}&timeframe=${this.tf}&start=${rangeStart}&end=${lastDay}&limit=5000&adjustment=raw&feed=${this.feed}&currency=USD&sort=asc${page_token ? `&page_token=${page_token}` : ''}`;
-
         let res;
         try {
           res = await axios.get(url, {
@@ -118,7 +121,14 @@ class CacheManager {
     }
 
     allBars.sort((a, b) => new Date(a.t) - new Date(b.t));
-    return allBars.filter(bar => new Date(bar.t) >= start && new Date(bar.t) <= end);
+
+    
+    
+    const filtered = allBars.filter(bar => {
+      const time = new Date(bar.t).getTime();
+      return time >= start.getTime() && time <= end.getTime();
+    });
+    return filtered;
   }
 }
 

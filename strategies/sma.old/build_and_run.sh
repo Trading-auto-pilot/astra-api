@@ -8,15 +8,15 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}[INFO] Estrazione modulo e versione...${NC}"
 
-# Estrai MODULE_NAME e MODULE_VERSION da SMA.js
-MODULE_NAME_RAW=$(grep "const MODULE_NAME" SMA.js | awk -F"'" '{print $2}')
-MODULE_VERSION=$(grep "const MODULE_VERSION" SMA.js | awk -F"'" '{print $2}')
+# Estrai MODULE_NAME e MODULE_VERSION da processCandle.js
+MODULE_NAME_RAW=$(grep "const MODULE_NAME" processCandle.js | awk -F"'" '{print $2}')
+MODULE_VERSION=$(grep "const MODULE_VERSION" processCandle.js | awk -F"'" '{print $2}')
 
 # Converto il nome in minuscolo
 MODULE_NAME=$(echo "$MODULE_NAME_RAW" | tr '[:upper:]' '[:lower:]')
 
 if [ -z "$MODULE_NAME" ] || [ -z "$MODULE_VERSION" ]; then
-  echo -e "${RED}[ERROR] Impossibile leggere MODULE_NAME o MODULE_VERSION dal file SMA.js${NC}"
+  echo -e "${RED}[ERROR] Impossibile leggere MODULE_NAME o MODULE_VERSION dal file processCandle.js${NC}"
   exit 1
 fi
 
@@ -38,8 +38,8 @@ if [ "$(docker ps -aq -f name=^/${CONTAINER_NAME}$)" ]; then
 fi
 
 # Avvia nuovo container
-echo -e "${GREEN}[INFO] Avvio nuovo container: $CONTAINER_NAME${NC}"
-docker run -d --name "$CONTAINER_NAME" -p 3002:3002 --env-file ../.env "$IMAGE_NAME"
+#echo -e "${GREEN}[INFO] Avvio nuovo container: $CONTAINER_NAME${NC}"
+#docker run -d --name "$CONTAINER_NAME" -p 3002:3002 --env-file ../.env "$IMAGE_NAME"
 
 echo -e "${GREEN}[SUCCESS] Container $CONTAINER_NAME avviato con successo!${NC}"
 

@@ -103,6 +103,24 @@ services:
       - CACHEMANAGER_URL=http://cachemanager:3006
     depends_on:
       - dbmanager
+      - cachemanager
+
+  sma:
+    image: expovin/sma:1.0
+    container_name: sma
+    build:
+      context: ./strategies/sma
+    restart: unless-stopped
+    ports:
+      - "3010:3010"
+    networks:
+      - trading-net
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+      - STRATEGYUTIL_URL=http://strategy-utils:3007
+    depends_on:
+      - dbmanager
+      - strategy-utils
 
 volumes:
   mysql_data:

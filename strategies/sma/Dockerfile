@@ -1,23 +1,18 @@
-# Usa Node ufficiale come base
+# Base image
 FROM node:20
 
-# Working dir nel container
+# Set working directory
 WORKDIR /app
 
-# Copia i package.json per installare
-COPY package*.json ./
-
-# Installa
+# Copy package and install dependencies
+COPY package.json ./
 RUN npm install
 
-# Copia tutta la cartella corrente della strategia
+# Copy all remaining source files
 COPY . .
 
-# COPIA ANCHE shared/ nella root del container
-COPY ../../shared ./shared
+# Expose application port
+EXPOSE 3010
 
-# Espone la porta
-EXPOSE 3001
-
-# Avvia server
-CMD ["node", "strategies/sma/server.js"]
+# Start the app
+CMD ["npm", "start"]

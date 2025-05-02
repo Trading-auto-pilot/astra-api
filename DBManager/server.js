@@ -186,17 +186,48 @@ app.get('/getActiveStrategies/:symbol', async (req, res) => {
     }
   });
 
-  // GET /getStrategyCapitalAndOrders/:id
-app.get('/getStrategyCapitalAndOrders/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const result = await dbManager.getStrategyCapitalAndOrders(id);
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: 'Errore nel recupero dei dati', message: err.message });
-  }
-});
+    // GET /getStrategyCapitalAndOrders/:id
+  app.get('/getStrategyCapitalAndOrders/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const result = await dbManager.getStrategyCapitalAndOrders(id);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: 'Errore nel recupero dei dati', message: err.message });
+    }
+  });
 
+  // GET /lastTransaction/:scenarioId
+  app.get('/lastTransaction/:scenarioId', async (req, res) => {
+    const scenarioId = req.params.scenarioId;
+
+    if (!scenarioId) {
+      return res.status(400).json({ error: 'scenarioId mancante' });
+    }
+
+    try {
+      const result = await dbManager.getLastTransactionByScenario(scenarioId);
+      res.json(result || {});
+    } catch (err) {
+      res.status(500).json({ error: 'Errore nel recupero transazione', message: err.message });
+    }
+  });
+
+  // POST /bot/insertOrUpdate
+  app.post('/bot/registra', async (req, res) => {
+    const { name, ver } = req.body;
+
+    if (!name || !ver ) {
+      return res.status(400).json({ error: 'Parametri richiesti: name, ver' });
+    }
+
+    try {
+      const botId = await dbManager.insertOrUpdateBotByNameVer(name, ver);
+      res.json({ success: true, botId });
+    } catch (err) {
+      res.status(500).json({ error: 'Errore gestione bot', message: err.message });
+    }
+  });
 
   app.post('/updateStrategyCapitalAndOrders', async (req, res) => {
     const { id, capitaleInvestito, openOrders} = req.body;

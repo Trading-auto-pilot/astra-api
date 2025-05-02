@@ -123,6 +123,69 @@ class DBManager {
     }
   }
 
+  // Restituisce l'ultima transazione per uno ScenarioID
+  async getLastTransactionByScenario(scenarioId) {
+    const connection = await this.getDbConnection();
+    try {
+      const [rows] = await connection.query(`
+        SELECT * FROM transazioni 
+        WHERE ScenarioID = ? 
+        ORDER BY id DESC 
+        LIMIT 1
+      `, [scenarioId]);
+
+      return rows.length > 0 ? rows[0] : null;
+    } catch (err) {
+      console.error(`[${MODULE_NAME}][getLastTransactionByScenario] Errore select:`, err.message);
+      throw err;
+    } finally {
+      await connection.end();
+    }
+  }
+
+  // Inserisce o aggiorna un bot sulla base dei campi name + ver
+  async insertOrUpdateBotByNameVer(name, ver) {
+    const connection = await this.getDbConnection();
+
+    try {
+      // Verifica se esiste già un bot con stesso name e ver
+      const [rows] = await connection.query(
+        `SELECT id FROM Bots WHERE name = ? AND ver = ?`,
+        [name, ver]
+      );
+
+      if (rows.length > 0) {
+        const existingId = rows[0].id;
+
+        // Aggiorna solo date_release
+        await connection.query(
+          `UPDATE Bots SET date_release = NOW() WHERE id = ?`,
+          [existingId]
+        );
+
+        console.log(`[${MODULE_NAME}][insertOrUpdateBotByNameVer] Bot esistente aggiornato (id=${existingId})`);
+        return existingId;
+      }
+
+      // Altrimenti crea un nuovo bot
+      const [result] = await connection.query(
+        `INSERT INTO Bots (name, ver, status, date_release, totalProfitLoss)
+        VALUES (?, ?, 'inactive', NOW(), 0)`,
+        [name, ver]
+      );
+
+      console.log(`[${MODULE_NAME}][insertOrUpdateBotByNameVer] Bot creato con id ${result.insertId}`);
+      return result.insertId;
+
+    } catch (err) {
+      console.error(`[${MODULE_NAME}][insertOrUpdateBotByNameVer] Errore:`, err.message);
+      throw err;
+    } finally {
+      await connection.end();
+    }
+  }
+
+
   // Inserisce una transazione SELL
   async insertSellTransaction(scenarioId, element, state, result) {
     const connection = await this.getDbConnection();
@@ -302,13 +365,26 @@ async updateStrategyCapitalAndOrders(id, capitaleInvestito, openOrders) {
   }
 }
 
+ parseParamsInRows(rows) {
+  return rows.map(row => {
+    if (row.params) {
+      try {
+        row.params = JSON.parse(row.params);
+      } catch (err) {
+        console.warn(`[WARNING] Errore nel parsing JSON per ID ${row.id}: ${err.message}`);
+      }
+    }
+    return row;
+  });
+}
+
 // Recupera capitaleInvestito e OpenOrders per una strategia specifica
 async getStrategyCapitalAndOrders(id) {
   const connection = await this.getDbConnection();
 
   try {
     const [rows] = await connection.query(
-      `SELECT capitaleInvestito, OpenOrders, share FROM strategies WHERE id = ?`,
+      `SELECT *  FROM vstrategies WHERE id = ?`,
       [id]
     );
 
@@ -316,7 +392,7 @@ async getStrategyCapitalAndOrders(id) {
       throw new Error(`Nessuna strategia trovata con id: ${id}`);
     }
 
-    return rows[0];
+    return this.parseParamsInRows(rows);
   } catch (err) {
     console.error(`[${MODULE_NAME}][getStrategyCapitalAndOrders] Errore SELECT:`, err.message);
     throw err;

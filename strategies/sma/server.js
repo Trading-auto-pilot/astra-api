@@ -1,54 +1,42 @@
-// strategies/sma/server.js
-
 const express = require('express');
-const processCandle = require('./processCandle');
-const CacheManager = require('../../shared/cacheManager');
-require('dotenv').config({ path: '../../.env' });
+const SMA = require('./SMA');
+require('dotenv').config();
 
 const app = express();
-const port = process.env.SMA_PORT || 3001;
+const port = process.env.PORT || 3010;
+
+const strategy = new SMA();
 
 app.use(express.json());
 
-// Stato locale della strategia
-const state = {
-  capitaleLibero: parseFloat(process.env.CAPITALE) || 10000,
-  capitaleInvestito: 0,
-  comprato: 0,
-  lastOp: null,
-  daysFree: 0,
-  daysInvested: 0,
-  minDay: 9999999,
-  maxDay: 0,
-  numOp: 0
-};
-
-const cacheManager = new CacheManager('../../cache');
-
-// Endpoint di HealthCheck
+// 🔁 Healthcheck
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok', strategy: 'SMA', uptime: process.uptime() });
+  res.json({ status: 'OK', service: 'SMA', uptime: process.uptime() });
 });
 
-// Endpoint per ricevere le candele
+// ℹ️ Info del modulo
+app.get('/info', (req, res) => {
+  res.json({ module: 'SMA', version: '1.0' });
+});
+
+// ⚙️ Endpoint per ricevere segnali di trading
 app.post('/processCandle', async (req, res) => {
+  const { candle, scenarioId } = req.body;
+
+  if (!candle || !scenarioId ) {
+    return res.status(400).json({ error: 'Parametri richiesti: candle, scenarioId' });
+  }
+
   try {
-    const { candle, strategyParams } = req.body;
 
-    if (!candle || !strategyParams) {
-      return res.status(400).json({ error: 'Missing candle or strategyParams' });
-    }
-
-    const result = await processCandle(candle, state, strategyParams, cacheManager);
+    const result = await strategy.processCandle(candle, scenarioId);
     res.json(result);
-
-  } catch (error) {
-    console.error('[SMA Server] Errore nel processing:', error);
-    res.status(500).json({ error: error.message });
+  } catch (err) {
+    console.error('[SMA][processCandle][REST Server] Errore:', err.message);
+    res.status(500).json({ error: 'Errore interno' });
   }
 });
 
-// Avvio server
 app.listen(port, () => {
-  console.log(`[SMA Server] In ascolto sulla porta ${port}`);
+  console.log(`[SMA] Server avviato sulla porta ${port}`);
 });

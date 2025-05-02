@@ -58,13 +58,13 @@ class StrategyUtils {
       const candles = response.data;
   
       if (!Array.isArray(candles) || candles.length === 0) {
-        return res.status(404).json({ error: 'Nessuna candela trovata per il periodo richiesto' });
+        return response.status(404).json({ error: 'Nessuna candela trovata per il periodo richiesto' });
       }
   
       const filteredCandles = candles.filter(c => new Date(c.t).getTime() < new Date(currentDate).getTime());
   
       if (filteredCandles.length === 0) {
-        return res.status(400).json({ error: 'Nessuna candela precedente a currentDate disponibile' });
+        return response.status(400).json({ error: 'Nessuna candela precedente a currentDate disponibile' });
       }
   
       const sum = filteredCandles.reduce((acc, c) => acc + c.c, 0);
