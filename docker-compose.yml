@@ -26,7 +26,8 @@ services:
     image: expovin/dbmanager:1.0
     container_name: dbmanager
     build:
-      context: ./dbmanager
+      context: .
+      dockerfile: DBManager/Dockerfile
     restart: unless-stopped
     ports:
       - "3002:3002"
@@ -37,15 +38,22 @@ services:
       - DB_USER=trading_user
       - DB_PASSWORD=trading_pass
       - DB_NAME=Trading
+      - LOG_LEVEL=trace
     depends_on:
       mysql:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   cachemanager:
     image: expovin/cachemanager:1.0
     container_name: cachemanager
     build:
-      context: ./cachemanager
+      context: .
+      dockerfile: cacheManager/Dockerfile
     restart: unless-stopped
     ports:
       - "3006:3006"
@@ -55,45 +63,71 @@ services:
       - cache_data:/app/cache
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
+      - LOG_LEVEL=trace
     depends_on:
-      - dbmanager
+      dbmanager:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3006/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   alertingservice:
     image: expovin/alertingservice:1.0
     container_name: alertingservice
     build:
-      context: ./alertingService
+      context: .
+      dockerfile: alertingService/Dockerfile
     restart: unless-stopped
     ports:
       - "3008:3008"
     networks:
       - trading-net
     depends_on:
-      - dbmanager
+      dbmanager:
+        condition: service_healthy
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
+      - LOG_LEVEL=trace
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3008/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
 
   capitalmanager:
     image: expovin/capitalmanager:1.0
     container_name: capital-manager
     build:
-      context: ./capitalManager
+      context: .
+      dockerfile: capitalManager/Dockerfile
     restart: unless-stopped
     ports:
       - "3009:3009"
     networks:
       - trading-net
     depends_on:
-      - dbmanager
+      dbmanager:
+        condition: service_healthy
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
       - ENVIRONMENT=PAPER
+      - LOG_LEVEL=trace
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3009/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   strategy-utils:
     image: expovin/strategy-utils:1.0
     container_name: strategy-utils
     build:
-      context: ./strategyUtils
+      context: .
+      dockerfile: strategyUtils/Dockerfile
     restart: unless-stopped
     ports:
       - "3007:3007"
@@ -101,15 +135,58 @@ services:
       - trading-net
     environment:
       - CACHEMANAGER_URL=http://cachemanager:3006
+      - LOG_LEVEL=trace
     depends_on:
-      - dbmanager
-      - cachemanager
+      cachemanager:
+        condition: service_healthy
+      dbmanager:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3007/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  livemarketlistener:
+    image: expovin/livemarketlistener:1.0
+    container_name: livemarketlistener
+    build:
+      context: .
+      dockerfile: LiveMarketListener/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3011:3011"
+    networks:
+      - trading-net
+    depends_on:
+      cachemanager:
+        condition: service_healthy
+      dbmanager:
+        condition: service_healthy
+      sma:
+        condition: service_healthy
+      capitalmanager:
+        condition: service_healthy
+      alertingservice:
+        condition: service_healthy
+      strategy-utils:
+        condition: service_healthy
+    environment:
+      - LOG_LEVEL=trace
+      - DBMANAGER_URL=http://dbmanager:3002
+      - ENVIRONMENT=PAPER
+      - MARKET=SANDBOX
+      - SMA_URL=http://sma:3010
+      - CAPITAL_MANAGER_URL=http://capitalmanager:3009
+      - ALERTINGMANAGER_URL=http://alertingservice:3008
+
 
   sma:
     image: expovin/sma:1.0
     container_name: sma
     build:
-      context: ./strategies/sma
+      context: .
+      dockerfile: strategies/sma/Dockerfile
     restart: unless-stopped
     ports:
       - "3010:3010"
@@ -117,10 +194,15 @@ services:
       - trading-net
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
-      - STRATEGYUTIL_URL=http://strategy-utils:3007
+      - LOG_LEVEL=trace
     depends_on:
-      - dbmanager
-      - strategy-utils
+      dbmanager:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3010/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
 
 volumes:
   mysql_data:

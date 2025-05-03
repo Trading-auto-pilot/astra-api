@@ -1,10 +1,10 @@
 // strategy-utils/StrategyUtils.js
 const axios = require('axios');
-const createLogger = require('../shared/logger');
+const createLogger = require('./logger');
 
 const MODULE_NAME = 'StrategyUtils';
 const MODULE_VERSION = '1.0';
-const logger = createLogger(MODULE_NAME);
+const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL);
 
 class StrategyUtils {
   constructor() {
@@ -79,7 +79,7 @@ class StrategyUtils {
       const sum = filteredCandles.reduce((acc, c) => acc + c.c, 0);
       const average = sum / filteredCandles.length;
 
-      legger.info(`[calcMediaMobile] average : ${average}`);
+      logger.info(`[calcMediaMobile] average : ${average}`);
       return(average);
   
     } catch (err) {
@@ -92,7 +92,8 @@ class StrategyUtils {
     return {
       module: MODULE_NAME,
       version: MODULE_VERSION,
-      status: 'OK'
+      status: 'OK',
+      logLevel:process.env.LOG_LEVEL || 'info'
     };
   }
 }

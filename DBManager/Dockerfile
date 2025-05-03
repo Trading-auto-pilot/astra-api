@@ -4,14 +4,18 @@ FROM node:20
 # Imposta la working directory
 WORKDIR /app
 
-# Copia package.json e package-lock.json (se esiste)
-COPY package*.json ./
+RUN apt-get update && apt-get install -y curl
 
-# Installa solo le dipendenze necessarie
+# Copia la cartella DBManager e share dal context (la root del progetto)
+COPY DBManager/ ./DBManager/
+COPY shared/ ./shared/
+
+# Vai nella cartella della tua app
+WORKDIR /app/DBManager
+
+# Installa le dipendenze
+COPY DBManager/package.json .
 RUN npm install
-
-# Copia tutto il progetto nella working directory
-COPY . .
 
 # Imposta la porta esposta dal container
 EXPOSE 3000

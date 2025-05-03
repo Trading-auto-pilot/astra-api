@@ -2,7 +2,7 @@ const axios = require('axios');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
-async function placeOrder(symbol, notional, side, type = 'limit', time_in_force = 'gtc', limit_price = null, stop_price = null) {
+async function placeOrder(url, apiKey, apiSecret, symbol, notional, side, type = 'limit', time_in_force = 'gtc', limit_price = null, stop_price = null) {
 
     //console.log('Place Orders APCA_API_KEY_ID'+APCA_API_KEY_ID);
     try {
@@ -22,12 +22,12 @@ async function placeOrder(symbol, notional, side, type = 'limit', time_in_force 
         }
 
         const response = await axios.post(
-        'https://paper-api.alpaca.markets/v2/orders', // if using PAPER account
+        url,
         body,
         {
             headers: {
-            'APCA-API-KEY-ID': 'PKNS94MR3ZI0U7AFMEBS', //process.env.APCA_API_KEY_ID,
-            'APCA-API-SECRET-KEY': 'Sm2wcfjDQZo0aNGoofSWFSDESWgdVhPD6QczFx0R',// process.env.APCA_API_SECRET_KEY,
+            'APCA-API-KEY-ID': apiKey, 
+            'APCA-API-SECRET-KEY': apiSecret,
             'Content-Type': 'application/json'
             }
         }

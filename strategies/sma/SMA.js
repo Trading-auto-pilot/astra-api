@@ -1,18 +1,32 @@
 const axios = require('axios');
+const createLogger = require('../../shared/logger');
+const StrategyUtils = require('../../shared/strategyUtils');
 
 const MODULE_NAME = 'SMA';
 const MODULE_VERSION = '1.0';
+const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL);
+const utils = new StrategyUtils();
 
 class SMA {
   constructor() {
     this.lastOp = null;
     this.comprato = null;
     this.capitaleInvestito = 0;
-    this.strategyUtilsURL = process.env.STRATEGYUTIL_URL || 'http://strategy-utils:3007';
+    //this.strategyUtilsURL = process.env.STRATEGYUTIL_URL || 'http://strategy-utils:3007';
     this.dbManagerURL = process.env.DBMANAGER_URL || 'http://dbmanager:3002';
 
     this.registerBot();
   }
+
+getSMAInfo() {
+  return {
+      module: MODULE_NAME,
+      version: MODULE_VERSION,
+      status: 'OK',
+      logLevel: process.env.LOG_LEVEL || 'info',
+      strategyUtil : utils.getInfo()
+  };
+}
 
   // 🔁 Registra il bot nel DB se non esiste, altrimenti aggiorna la data
 async registerBot() {
@@ -21,33 +35,28 @@ async registerBot() {
         name: MODULE_NAME,
         ver: MODULE_VERSION
       });
-      console.log(`[${MODULE_NAME}] Bot registrato`);
+      logger.info(`[registerBot] Bot registrato`);
     } catch (err) {
-      console.error(`[${MODULE_NAME}][registerBot] Errore: ${err.message}`);
+        logger.error(`[registerBot][registerBot] Errore: ${err.message}`);
     }
   }
 
 async getMediaMobile(symbol, periodDays, currentDate, tf) {
+    logger.log(`[getMediaMobile] Richiamata con parametri : ${symbol} ${periodDays} ${currentDate} ${tf}`);
     try {
-      const url = `${this.strategyUtilsURL}/calcMediaMobile`;
-      //console.log(`[SMA][getMediaMobile] Chiamata a ${url} con`, {symbol, periodDays,currentDate, tf});
 
-      const response = await axios.post(url, {
-        symbol,
-        periodDays,
-        currentDate,
-        tf
-      });
+        const mediaMobile = await utils.calcMediaMobile({
+          symbol,
+          periodDays,
+          currentDate,
+          tf
+        });
+      
 
-      console.log('[SMA][getMediaMobile] Media Mobile ricevuta : '+response.data.movingAverage);
-      if (response.data && response.data.movingAverage != null) {
-        return response.data.movingAverage;
-      } else {
-        console.warn('[SMA][getMediaMobile] Nessun valore di media mobile ricevuto');
-        return null;
-      }
+      logger.info('[getMediaMobile] Media Mobile ricevuta : '+mediaMobile);
+
     } catch (err) {
-      console.error('[SMA][getMediaMobile] Errore durante la richiesta:', err.message);
+        logger.error('[SMA][getMediaMobile] Errore durante la richiesta:', err.message);
       return null;
     }
 }
@@ -56,41 +65,47 @@ async getMediaMobile(symbol, periodDays, currentDate, tf) {
   // 📥 Recupera ultima transazione dal DB per inizializzare lo stato interno
 async loadLastPosition(scenarioId) {
     try {
-      const response = await axios.get(`${this.dbManagerURL}/lastTransaction/${scenarioId}`);
-      
-      const last = response.data;
+        logger.log(`[loadLastPosition] Richiamo ${this.dbManagerURL}/lastTransaction/${scenarioId}`);
+        const response = await axios.get(`${this.dbManagerURL}/lastTransaction/${scenarioId}`);
+        
 
-      if (last) {
-        this.lastOp = new Date(last.operationDate);
-        if (last.operation === 'BUY') {
-          this.comprato = parseFloat(last.Price);
-          this.capitaleInvestito = parseFloat(last.capitale);
-        } else {
-          this.comprato = null;
-          this.capitaleInvestito = 0;
+        const last = response.data;
+        logger.log(`[loadLastPosition]Recuperata posizione ${JSON.stringify(last)}`);
+
+        if (last) {
+          this.lastOp = new Date(last.operationDate);
+          if (last.operation === 'BUY') {
+            this.comprato = parseFloat(last.Price);
+            this.capitaleInvestito = parseFloat(last.capitale);
+          } else {
+            this.comprato = null;
+            this.capitaleInvestito = 0;
+          }
         }
+      } catch (err) {
+        logger.error(`[loadLastPosition] Errore: ${err.message}`);
       }
-    } catch (err) {
-      console.error(`[${MODULE_NAME}][loadLastPosition] Errore: ${err.message}`);
-    }
   }
 
-    async getSymbol(strategyId) {
+  /*
+  async getSymbol(strategyId) {
+    logger.log(`[getSymbol] Richiamo ${this.dbManagerURL}/getStrategyCapitalAndOrders/${strategyId}`);
       try {
         const res = await axios.get(`${this.dbManagerURL}/getStrategyCapitalAndOrders/${strategyId}`);
+        logger.log(`[getSymbol] Recuperato ${res.data[0]}`);
         return (res.data[0]);
       } catch (err) {
-        console.error(`[${MODULE_NAME}][getAllocatedCapital] Errore DBManager:`, err.message);
+          logger.error(`[getSymbol] Errore DBManager:`, err.message);
         throw err;
       }
-    }
-
+  }
+*/
 
   // ⚙️ Elabora una candela e genera un segnale BUY / SELL / HOLD
-  async processCandle(candle, scenarioId) {
+  async processCandle(candle, scenarioId, symbol, params) {
 
-    let params, symbol;
-    let SL, TP, MA, TF;
+    logger.log(`[processCandle] Funzione richiamata con parametri : ${JSON.stringify(candle)} ${scenarioId} ${symbol}`);
+    const {SL, TP, MA, TF} = params;
     let mediaMobile , prezzo;
     
 
@@ -99,17 +114,7 @@ async loadLastPosition(scenarioId) {
         await this.loadLastPosition(scenarioId);
     } 
     catch (err) {
-        console.error(`[${MODULE_NAME}][processCandle] Errore nel recupero loadLastPosition:`, err.message);
-        throw err;
-    }
-
-
-    try {
-        ({symbol,params} = await this.getSymbol(scenarioId));
-        ({ SL, TP, MA, TF } = params);
-    } 
-    catch (err) {
-        console.error(`[${MODULE_NAME}][processCandle] Errore nel recupero parametri:`, err.message);
+        logger.error(`[processCandle] Errore nel recupero loadLastPosition:`, err.message);
         throw err;
     }
 
@@ -117,7 +122,7 @@ async loadLastPosition(scenarioId) {
         mediaMobile = await this.getMediaMobile(symbol, MA, candle.t, TF);
     }
     catch (err) {
-        console.error(`[${MODULE_NAME}][processCandle] Errore nel recupero della Media Mobile:`, err.message);
+        logger.error(`[processCandle] Errore nel recupero della Media Mobile:`, err.message);
         throw err;
     }
 

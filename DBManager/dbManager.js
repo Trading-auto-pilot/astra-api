@@ -1,9 +1,11 @@
 // shared/dbManager.js
 const mysql = require('mysql2/promise');
+const createLogger = require('../shared/logger');
 
 // Costanti globali di modulo
 const MODULE_NAME = 'DBManager';
 const MODULE_VERSION = '1.0';
+const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
 
 class DBManager {
 
@@ -12,6 +14,15 @@ class DBManager {
     this.user = process.env.DB_USER || 'root';
     this.password = process.env.DB_PASSWORD || '';
     this.database = process.env.DB_NAME || 'Trading';
+
+    // Log delle variabili definite nell'istanza
+    for (const key of Object.keys(this)) {
+        // Esclude i metodi (funzioni)
+        if (typeof this[key] !== 'function') {
+        logger.trace(`[init] Variabile ${key} =`, this[key]);  
+      }
+    }
+
   }
 
   // Apre una connessione al database
@@ -24,7 +35,7 @@ class DBManager {
         database: this.database
       });
     } catch (err) {
-      console.error(`[${MODULE_NAME}][getDbConnection] Errore apertura DB:`, err.message);
+      logger.error(`[getDbConnection] Errore apertura DB:`, err.message);
       throw err;
     }
   }
@@ -34,13 +45,14 @@ class DBManager {
     return {
       module: MODULE_NAME,
       version: MODULE_VERSION,
+      logLevel: process.env.LOG_LEVEL,
       status: 'OK'
     };
   }
 
     // Recupera il valore di un'impostazione attiva dalla tabella settings
     async getSettingValue(key) {
-        console.log(`[${MODULE_NAME}][getSettingValue] Recupero setting attivo per chiave: ${key}`);
+        logger.log(`[getSettingValue] Recupero setting attivo per chiave: ${key}`);
     
         const connection = await this.getDbConnection();
     
@@ -51,13 +63,13 @@ class DBManager {
         );
     
         if (rows.length === 0) {
-            console.warn(`[${MODULE_NAME}][getSettingValue] Nessun valore attivo trovato per chiave: ${key}`);
+            logger.warning(`[getSettingValue] Nessun valore attivo trovato per chiave: ${key}`);
             return null;
         }
     
         return rows[0].param_value;
         } catch (err) {
-            console.error(`[${MODULE_NAME}][getSettingValue] Errore select:`, err.message);
+            logger.error(`[getSettingValue] Errore select:`, err.message);
         throw err;
         } finally {
             await connection.end();
@@ -80,7 +92,7 @@ class DBManager {
         strategyParams.capitaleIniziale, JSON.stringify(params_json)
       ]);
     } catch (err) {
-      console.error(`[${MODULE_NAME}][insertScenario] Errore insert:`, err.message);
+      logger.error(`[insertScenario] Errore insert:`, err.message);
       throw err;
     } finally {
       await connection.end();
@@ -99,7 +111,7 @@ class DBManager {
         WHERE id = ?
       `, [profitto, efficienza, profittoAnnuo, minDay, maxDay, strategyParams.id]);
     } catch (err) {
-      console.error(`[${MODULE_NAME}][updateScenarioResult] Errore update:`, err.message);
+        logger.error(`[updateScenarioResult] Errore update:`, err.message);
       throw err;
     } finally {
       await connection.end();
@@ -116,7 +128,7 @@ class DBManager {
         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [scenarioId, operation, this.formatDateForMySQL(element.t), result.prezzo, state.capitaleInvestito, result.days, result.MA]);
     } catch (err) {
-      console.error(`[${MODULE_NAME}][insertBuyTransaction] Errore insert:`, err.message);
+      logger.error(`[insertBuyTransaction] Errore insert:`, err.message);
       throw err;
     } finally {
       await connection.end();
@@ -136,7 +148,7 @@ class DBManager {
 
       return rows.length > 0 ? rows[0] : null;
     } catch (err) {
-      console.error(`[${MODULE_NAME}][getLastTransactionByScenario] Errore select:`, err.message);
+      logger.error(`[getLastTransactionByScenario] Errore select:`, err.message);
       throw err;
     } finally {
       await connection.end();
@@ -163,7 +175,7 @@ class DBManager {
           [existingId]
         );
 
-        console.log(`[${MODULE_NAME}][insertOrUpdateBotByNameVer] Bot esistente aggiornato (id=${existingId})`);
+        logger.log(`[insertOrUpdateBotByNameVer] Bot esistente aggiornato (id=${existingId})`);
         return existingId;
       }
 
@@ -174,11 +186,11 @@ class DBManager {
         [name, ver]
       );
 
-      console.log(`[${MODULE_NAME}][insertOrUpdateBotByNameVer] Bot creato con id ${result.insertId}`);
+      logger.log(`[insertOrUpdateBotByNameVer] Bot creato con id ${result.insertId}`);
       return result.insertId;
 
     } catch (err) {
-      console.error(`[${MODULE_NAME}][insertOrUpdateBotByNameVer] Errore:`, err.message);
+      logger.error(`[insertOrUpdateBotByNameVer] Errore:`, err.message);
       throw err;
     } finally {
       await connection.end();
@@ -196,43 +208,14 @@ class DBManager {
         VALUES (?, ?, 'SELL', ?, ?, ?, ?, ?)`,
         [scenarioId, this.formatDateForMySQL(element.t), result.prezzo, state.capitaleLibero, result.motivo, result.profitLoss, result.days]);
     } catch (err) {
-      console.error(`[${MODULE_NAME}][insertSellTransaction] Errore insert:`, err.message);
+      logger.error(`[insertSellTransaction] Errore insert:`, err.message);
       throw err;
     } finally {
       await connection.end();
     }
   }
 
-// Recupera tutte le strategie attive per un simbolo e parsifica i parametri JSON
-/*
-async getActiveStrategies(symbol) {
-    const connection = await this.getDbConnection();
-    try {
-      const [rows] = await connection.query(`SELECT * FROM vstrategies WHERE status = 'active' AND symbol = ?`, [symbol]);
-  
-      // Parsing del campo params
-      const strategies = rows.map(row => {
-        if (row.params) {
-          try {
-            row.params = JSON.parse(row.params);
-          } catch (err) {
-            console.error(`[${MODULE_NAME}][getActiveStrategies] Errore parsing JSON su params per id ${row.id}:`, err.message);
-            row.params = {}; 
-          }
-        }
-        return row;
-      });
-  
-      return strategies;
-  
-    } catch (err) {
-      console.error(`[${MODULE_NAME}][getActiveStrategies] Errore select:`, err.message);
-      throw err;
-    } finally {
-      await connection.end();
-    }
-  }
-    */
+
 // Recupera tutte le strategie attive, eventualmente filtrando per simbolo
 async getActiveStrategies(symbol = null) {
   const connection = await this.getDbConnection();
@@ -247,7 +230,7 @@ async getActiveStrategies(symbol = null) {
           try {
             row.params = JSON.parse(row.params);
           } catch (err) {
-            console.error(`[${MODULE_NAME}][getActiveStrategies] Errore parsing JSON su params per id ${row.id}:`, err.message);
+            logger.error(`[getActiveStrategies] Errore parsing JSON su params per id ${row.id}:`, err.message);
             row.params = {}; // fallback
           }
         }
@@ -258,7 +241,7 @@ async getActiveStrategies(symbol = null) {
     return strategies;
 
   } catch (err) {
-    console.error(`[${MODULE_NAME}][getActiveStrategies] Errore select:`, err.message);
+    logger.error(`[getActiveStrategies] Errore select:`, err.message);
     throw err;
   } finally {
     await connection.end();
@@ -275,7 +258,7 @@ async getActiveStrategies(symbol = null) {
       const [rows] = await connection.query('SELECT name FROM Symbols');
       return rows.map(row => row.name);
     } catch (err) {
-      console.error(`[${MODULE_NAME}][getSymbolsList] Errore select:`, err.message);
+      logger.error(`[getSymbolsList] Errore select:`, err.message);
       throw err;
     } finally {
       await connection.end();
@@ -331,7 +314,7 @@ async getActiveStrategies(symbol = null) {
       ];
       await connection.query(query, values);
     } catch (err) {
-      console.error(`[${MODULE_NAME}][insertOrder] Errore insert ordine:`, err.message);
+      logger.error(`[insertOrder] Errore insert ordine:`, err.message);
       throw err;
     } finally {
       await connection.end();
@@ -351,7 +334,7 @@ async getTotalActiveCapital() {
 
     return rows[0].totalCapital || 0;
   } catch (err) {
-    console.error(`[${MODULE_NAME}][getTotalActiveCapital] Errore SELECT:`, err.message);
+    logger.error(`[getTotalActiveCapital] Errore SELECT:`, err.message);
     throw err;
   } finally {
     await connection.end();
@@ -393,7 +376,7 @@ async updateStrategyCapitalAndOrders(id, capitaleInvestito, openOrders) {
 
     await connection.query(query, values);
   } catch (err) {
-    console.error(`[${MODULE_NAME}][updateStrategyCapitalAndOrders] Errore UPDATE:`, err.message);
+    logger.error(`[updateStrategyCapitalAndOrders] Errore UPDATE:`, err.message);
     throw err;
   } finally {
     await connection.end();
@@ -406,7 +389,7 @@ async updateStrategyCapitalAndOrders(id, capitaleInvestito, openOrders) {
       try {
         row.params = JSON.parse(row.params);
       } catch (err) {
-        console.warn(`[WARNING] Errore nel parsing JSON per ID ${row.id}: ${err.message}`);
+        logger.warning(`[parseParamsInRows] Errore nel parsing JSON per ID ${row.id}: ${err.message}`);
       }
     }
     return row;
@@ -424,12 +407,13 @@ async getStrategyCapitalAndOrders(id) {
     );
 
     if (rows.length === 0) {
+      logger.warning(`[parseParamsInRows] Nessuna strategia trovata con id: ${id}`);
       throw new Error(`Nessuna strategia trovata con id: ${id}`);
     }
 
     return this.parseParamsInRows(rows);
   } catch (err) {
-    console.error(`[${MODULE_NAME}][getStrategyCapitalAndOrders] Errore SELECT:`, err.message);
+    logger.error(`[getStrategyCapitalAndOrders] Errore SELECT:`, err.message);
     throw err;
   } finally {
     await connection.end();

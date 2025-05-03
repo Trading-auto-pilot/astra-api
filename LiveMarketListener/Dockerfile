@@ -1,23 +1,23 @@
 FROM node:18
 
-# Set working directory
+# Crea cartella di lavoro
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y curl
 
 # Copia la cartella LiveMarketListener e share dal context (la root del progetto)
-COPY strategyUtils/ ./strategyUtils/
+COPY LiveMarketListener/ ./LiveMarketListener/
 COPY shared/ ./shared/
 
 # Vai nella cartella della tua app
-WORKDIR /app/strategyUtils
+WORKDIR /app/LiveMarketListener
 
 # Installa le dipendenze
-COPY strategyUtils/package.json .
+COPY LiveMarketListener/package.json .
 RUN npm install
 
-# Expose the port (update if different)
-EXPOSE 3007
+# Imposta la porta esposta dal container
+EXPOSE 3011
 
-# Start the server
+# Avvia il server
 CMD ["node", "server.js"]

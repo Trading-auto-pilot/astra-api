@@ -1,9 +1,10 @@
 // capitalManager/CapitalManager.js
 const axios = require('axios');
+const createLogger = require('../shared/logger');
 
 const MODULE_NAME = 'capitalManager';
 const MODULE_VERSION = '1.0';
-
+const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
 
 class CapitalManager {
   constructor(config) {
@@ -11,6 +12,14 @@ class CapitalManager {
     this.secret=config.secret,
     this.env=config.env
     this.dbManagerUrl =process.env.DBMANAGER_URL || 'http://localhost:3002'
+
+    // Log delle variabili definite nell'istanza
+    for (const key of Object.keys(this)) {
+        // Esclude i metodi (funzioni)
+        if (typeof this[key] !== 'function') {
+        logger.trace(`[init] Variabile ${key} =`, this[key]);  
+      }
+    }
   }
 
 
@@ -18,11 +27,13 @@ class CapitalManager {
     return {
       module: MODULE_NAME,
       version: MODULE_VERSION,
+      logLevel: process.env.LOG_LEVEL,
       status: 'OK'
     };
   }
 
   async getAvailableCapital() {
+    logger.log(`[getAvailableCapital] Recupero capitale disponibile da Alpaca : ${this.env}v2/account`);
     try {
       const res = await axios.get(this.env+'v2/account', {
         headers: {
@@ -30,29 +41,34 @@ class CapitalManager {
           'APCA-API-SECRET-KEY': this.secret
         }
       });
+      logger.log(`[getAvailableCapital] Recuperato capitale ${res.data.cash}`);
       return(parseFloat(res.data.cash));
     } catch (err) {
-      console.error(`[${MODULE_NAME}][getAvailableCapital] Errore Alpaca:`, err.message);
+      logger.error(`[getAvailableCapital] Errore Alpaca:`, err.message);
       throw err;
     }
   }
 
   async getStrategyDetaisl(strategyId) {
+    logger.log(`[getStrategyDetaisl] Recupero dettagli della strategia : ${this.dbManagerUrl}/getStrategyCapitalAndOrders/${strategyId}`);
     try {
       const res = await axios.get(`${this.dbManagerUrl}/getStrategyCapitalAndOrders/${strategyId}`);
+      logger.log(`[getStrategyDetaisl] Recuperato  : ${JSON.stringify(res.data)}`);
       return (res.data);
     } catch (err) {
-      console.error(`[${MODULE_NAME}][getAllocatedCapital] Errore DBManager:`, err.message);
+      logger.error(`[getAllocatedCapital] Errore DBManager:`, err.message);
       throw err;
     }
   }
 
   async getTotalAllocatedCapital() {
+    logger.log(`[getTotalAllocatedCapital] Recupero capitale allocato totale : ${this.dbManagerUrl}/getTotalActiveCapital`);
     try {
       const res = await axios.get(`${this.dbManagerUrl}/getTotalActiveCapital`);
+      logger.log(`[getTotalAllocatedCapital] Recuperato : ${res.data.allocated || 0}`);
       return parseFloat(res.data.allocated || 0);
     } catch (err) {
-      console.error(`[${MODULE_NAME}][getAllocatedCapital] Errore DBManager:`, err.message);
+      logger.error(`[getAllocatedCapital] Errore DBManager:`, err.message);
       throw err;
     }
   }
@@ -71,6 +87,9 @@ class CapitalManager {
     const openOrders = parseFloat(strategyDetails.OpenOrders);
 
     const remaining = capitaleDisponibilePerStrategia - capitaleInvestito - openOrders;
+    logger.log(`[evaluateAllocation] available ${available} totalAllocated ${totalAllocated} strategyDetails ${strategyDetails}
+                capitaleTotale ${capitaleTotale} share ${share} capitaleDisponibilePerStrategia ${capitaleDisponibilePerStrategia}
+                capitaleInvestito ${capitaleInvestito} openOrders ${openOrders} remaining ${remaining}`)
 
     if (remaining <= 0) {
       return {

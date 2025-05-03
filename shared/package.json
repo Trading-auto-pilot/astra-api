@@ -1,0 +1,10 @@
+{
+    "name": "shared-utils",
+    "version": "1.0.0",
+    "description": "Utility condivise tra i microservizi",
+    "main": "strategyUtils.js",
+    "type": "commonjs",
+    "dependencies": {
+      "axios": "^1.6.7"
+    }
+  }

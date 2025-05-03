@@ -16,20 +16,20 @@ app.get('/health', (req, res) => {
 
 // ℹ️ Info del modulo
 app.get('/info', (req, res) => {
-  res.json({ module: 'SMA', version: '1.0' });
+  res.json(strategy.getSMAInfo());
 });
 
 // ⚙️ Endpoint per ricevere segnali di trading
 app.post('/processCandle', async (req, res) => {
-  const { candle, scenarioId } = req.body;
+  const { candle, strategyParams } = req.body;
 
-  if (!candle || !scenarioId ) {
+  if (!candle || !strategyParams) {
     return res.status(400).json({ error: 'Parametri richiesti: candle, scenarioId' });
   }
 
   try {
 
-    const result = await strategy.processCandle(candle, scenarioId);
+    const result = await strategy.processCandle(candle, strategyParams.id, strategyParams.symbol, strategyParams.params);
     res.json(result);
   } catch (err) {
     console.error('[SMA][processCandle][REST Server] Errore:', err.message);

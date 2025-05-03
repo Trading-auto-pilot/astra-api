@@ -1,10 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const createLogger = require('../shared/logger');
 
 // Costanti globali di modulo
 const MODULE_NAME = 'CacheManager';
 const MODULE_VERSION = '1.0';
+const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
 
 class CacheManager {
   constructor(options) {
@@ -15,6 +17,14 @@ class CacheManager {
     this.apiSecret = options.apiSecret;
     this.restUrl = options.restUrl || 'https://data.alpaca.markets';
     this.timeout = parseInt(options.timeout) || 10000;
+
+    // Log delle variabili definite nell'istanza
+    for (const key of Object.keys(this)) {
+        // Esclude i metodi (funzioni)
+        if (typeof this[key] !== 'function') {
+        logger.trace(`[init] Variabile ${key} =`, this[key]);
+        }
+    }
   }
 
   // Ritorna le informazioni del modulo
@@ -22,6 +32,7 @@ class CacheManager {
     return {
       module: MODULE_NAME,
       version: MODULE_VERSION,
+      logLevel: process.env.LOG_LEVEL,
       status: 'OK'
     };
   }
@@ -34,10 +45,10 @@ class CacheManager {
     const filePath = this._getCacheFilePath(symbol, year, month);
     if (fs.existsSync(filePath)) {
       const content = await fs.promises.readFile(filePath, 'utf8');
-      console.log(`[CACHE][READ] ${filePath}`);
+      logger.log(`[CACHE][READ] ${filePath}`);
       return JSON.parse(content);
     } else {
-      console.warn(`[CACHE][MISS] ${filePath}`);
+      logger.warning(`[CACHE][MISS] ${filePath}`);
       return null;
     }
   }
@@ -60,7 +71,7 @@ class CacheManager {
       const dir = path.dirname(filePath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       await fs.promises.writeFile(filePath, JSON.stringify(grouped[key]));
-      console.log(`[CACHE][WRITE] ${filePath}`);
+      logger.log(`[CACHE][WRITE] ${filePath}`);
     }
   }
 
@@ -72,8 +83,6 @@ class CacheManager {
     let allBars = [];
     let missing = [];
 
-    //let current = new Date(end);
-    //current.setDate(1);
     let current = new Date(start.getFullYear(), start.getMonth(), 1);
     const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
 
@@ -98,6 +107,7 @@ class CacheManager {
       do {
         const url = `${this.restUrl}/v2/stocks/bars?symbols=${symbol}&timeframe=${this.tf}&start=${rangeStart}&end=${lastDay}&limit=5000&adjustment=raw&feed=${this.feed}&currency=USD&sort=asc${page_token ? `&page_token=${page_token}` : ''}`;
         let res;
+        logger.trace(`Recupero dati mancanti da Alpaca : ${url}`);
         try {
           res = await axios.get(url, {
             headers: {
@@ -107,7 +117,7 @@ class CacheManager {
             timeout: this.timeout
           });
         } catch (error) {
-          console.error(`[API][${year}-${month}] ${error.message}`);
+          logger.error(`[API][${year}-${month}] ${error.message}`);
           throw new Error(`[API ERROR] Fallita richiesta per ${symbol} - ${year}-${month}`);
         }
 
