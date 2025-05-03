@@ -4,14 +4,19 @@ FROM node:18
 # Set working directory
 WORKDIR /app
 
-# Copy package files first (for caching dependencies)
-COPY package*.json ./
+RUN apt-get update && apt-get install -y curl
 
-# Install dependencies
+# Copia la cartella LiveMarketListener e share dal context (la root del progetto)
+COPY alertingService/ ./alertingService/
+COPY shared/ ./shared/
+
+# Vai nella cartella della tua app
+WORKDIR /app/alertingService
+
+# Installa le dipendenze
+COPY alertingService/package.json .
 RUN npm install
 
-# Copy the rest of the app
-COPY . .
 
 # Expose application port
 EXPOSE 3007
