@@ -2,7 +2,7 @@ const axios = require('axios');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
-async function placeOrder(url, apiKey, apiSecret, symbol, qty, side, type = 'limit', time_in_force = 'gtc', limit_price = null, stop_price = null) {
+async function placeOrder(url, apiKey, apiSecret, symbol, qty, side, type = 'limit', time_in_force = 'gtc', limit_price = null, stop_price = null,trail_price = null, extended_hours = false) {
 
     //console.log('Place Orders APCA_API_KEY_ID'+APCA_API_KEY_ID);
     try {
@@ -46,17 +46,17 @@ async function placeOrder(url, apiKey, apiSecret, symbol, qty, side, type = 'lim
         trail_price,
             // (default) false. If true, order will be eligible to execute in premarket/afterhours. 
             // Only works with type limit and time_in_force day.
-        extended_hours,
+        extended_hours
             // A unique identifier for the order. Automatically generated if not sent.
-        client_order_id,
+        //client_order_id,
             // The order classes supported by Alpaca vary based on the order's security type.  Check on Alpaca
-        order_class,
+        //order_class,
             // Array or object to send other orders linked to the main one
-        legs,
+        //legs,
             // Additional parameters for take-profit leg of advanced orders
-        take_profit,
+        //take_profit,
             // Additional parameters for stop-loss leg of advanced orders
-        stop_loss
+        //stop_loss
         };
 
         if (limit_price) {

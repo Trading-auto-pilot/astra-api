@@ -1,6 +1,7 @@
 // LiveMarketListener.js
 const WebSocket = require('ws');
 const axios = require('axios');
+const { v4: uuidv4 } = require('uuid');
 const { placeOrder } = require('./placeOrders');
 const createLogger = require('../shared/logger');
 const MODULE_NAME = 'LiveMarketListener';
@@ -200,17 +201,21 @@ class LiveMarketListener {
 
     try {
         logger.trace(`[handleTradeSignal] Apro ordine`);
-        orderRes = await placeOrder(      this.alpacaAPIServer,
+        orderRes = await placeOrder(            this.alpacaAPIServer,
                                                 this.settings['APCA-API-KEY-ID'],
                                                 this.settings['APCA-API-SECRET-KEY'],
                                                 strategy.symbol, 
                                                 Math.floor(evalResult.grantedAmount / bar.c), 
                                                 signal.action.toLowerCase(), 
-                                                'limit',          // type
-                                                'gtc',            // time_in_force
-                                                null,             // limit_price
-                                                null);            //stop_price
-
+                                                strategy.params.buy.type,         
+                                                strategy.params.buy.time_in_force,            
+                                                strategy.params.buy.limit_price,             
+                                                strategy.params.buy.stop_price,
+                                                strategy.params.buy.trail_price,
+                                                strategy.params.buy.extended_hours,
+                                                /// order id
+                                                strategy.id+'-'+uuidv4()
+                                              );            
         }
         catch (error) {
           logger.error(`[handleTradeSignal] Errore durante richiesta apertura ordine ad Alpaca ${error.message} ${this.alpacaAPIServer}`);
