@@ -33,6 +33,10 @@ class AlertingService {
         }
     }
 
+    for (const [key, value] of Object.entries(process.env)) {
+      logger.trace(`Environment variable ${key}=${value}`);
+    }
+
     this.smtpFrom = settings.SMTP_FROM;
 
     this.transporter = nodemailer.createTransport({
@@ -42,26 +46,29 @@ class AlertingService {
       auth: {
         user: settings.SMTP_USER,
         pass: settings.SMTP_PASSWORD
-      }
+      },
+      connectionTimeout: 10000, // 10 secondi
+      greetingTimeout: 5000,
+      socketTimeout: 10000
     });
 
     logger.info(`[loadSetting] Configurazione SMTP caricata.`);
   }
 
   // Invio email
-  async sendEmail({ to, subject, body }) {
-      logger.log(`[sendEmail] richiamata con parametri ${to} ${subject} ${body}`);
+  async sendEmail(params) {
+      logger.log(`[sendEmail] richiamata con parametri ${params.to} ${params.subject} ${params.body}`);
       try {
         const info = await this.transporter.sendMail({
           from: this.smtpFrom,
-          to:to,
-          subject:subject,
-          text: body
+          to:params.to,
+          subject:params.subject,
+          text: params.body
         });
-        logger.log(`[${MODULE_NAME}][sendEmail] Email inviata a ${to}: ${info.messageId}`);
-        return info;
+        logger.log(`[${MODULE_NAME}][sendEmail] Email inviata a ${to}: ${JSON.stringify(info)}`);
+        return;
       } catch (err) {
-        logger.error(`[${MODULE_NAME}][sendEmail] Errore invio email: ${err.message}`);
+        logger.error(`[${MODULE_NAME}][sendEmail] Errore invio email: ${err.message} ${to}`);
         throw err;
       }
   }

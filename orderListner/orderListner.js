@@ -5,15 +5,13 @@ const createLogger = require('../shared/logger');
 
 const MODULE_NAME = 'OrderListener';
 const MODULE_VERSION = '1.0';
-const logger = createLogger(MODULE_NAME);
+const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL);
 
 class OrderListener {
   constructor() {
     this.ws = null;
     this.settings = {};
     this.dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
-    this.env = process.env.ENVIRONMENT;
-    this.isPaper = this.env === 'PAPER' ? true : this.env === 'LIVE' ? false : null;
     this.timeout = 10000;
   }
 
@@ -21,7 +19,7 @@ class OrderListener {
     logger.info(`[init] Inizializzazione...`);
 
     if (this.isPaper === null) {
-        logger.warning(`[init] ENVIRONMENT non valido o mancante: "${this.env}". Valori accettati: PAPER, LIVE`);
+        logger.warninging(`[init] ENVIRONMENT non valido o mancante: "${this.env}". Valori accettati: PAPER, LIVE`);
     }
 
     // Log delle variabili definite nell'istanza
@@ -41,8 +39,9 @@ class OrderListener {
     const keys = [
       'APCA-API-KEY-ID',
       'APCA-API-SECRET-KEY',
-      'ALPACA-WSS-PAPER-STREAM-BASE',
-      'ALPACA-WSS-STREAM-BASE',
+      'ALPACA-PAPER-TRADING',
+      'ALPACA-LIVE-TRADING',
+      'ALPACA-LOCAL-TRADING',
       'ALPACA-API-TIMEOUT'
     ];
 
@@ -57,11 +56,15 @@ class OrderListener {
       }
     }
 
+    for (const [key, value] of Object.entries(process.env)) {
+      logger.trace(`Environment variable ${key}=${value}`);
+    }
+
     this.timeout = parseInt(this.settings['ALPACA-API-TIMEOUT']) || 10000;
   }
 
   connect() {
-    const wsUrl = this.isPaper ? this.settings['ALPACA-WSS-PAPER-STREAM-BASE'] : this.settings['ALPACA-WSS-STREAM-BASE'];
+    const wsUrl = this.settings['ALPACA-'+process.env.ENV_TRADING+'-TRADING'];
     logger.info(`[${MODULE_NAME}][connect] Connessione al WebSocket: ${wsUrl}`);
 
     this.ws = new WebSocket(wsUrl);
@@ -83,7 +86,7 @@ class OrderListener {
       try {
         msg = JSON.parse(raw);
       } catch (err) {
-        logger.warn(`[message] JSON malformato: ${raw}`);
+        logger.warning(`[message] JSON malformato: ${raw}`);
         return;
       }
 
@@ -111,7 +114,7 @@ class OrderListener {
     });
 
     this.ws.on('close', () => {
-      logger.warn(`[connect] WebSocket chiuso.`);
+      logger.warning(`[connect] WebSocket chiuso.`);
     });
   }
 
@@ -126,7 +129,7 @@ class OrderListener {
 
   // da richiamare da server.js
   pause() {
-    logger.warn(`[${MODULE_NAME}][pause] Ricevuta richiesta di pausa, disconnessione in corso...`);
+    logger.warning(`[pause] Ricevuta richiesta di pausa, disconnessione in corso...`);
     if (this.ws) this.ws.close();
   }
 }

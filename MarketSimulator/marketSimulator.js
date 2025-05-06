@@ -31,6 +31,10 @@ class MarketSimulator {
       this.settings[key] = res.data.value;
       logger.trace(`[loadSettings] ${key} = ${res.data.value}`);
     }
+
+    for (const [key, value] of Object.entries(process.env)) {
+      logger.trace(`Environment variable ${key}=${value}`);
+    }
   }
 
   attachWebSocketServer(server) {
@@ -134,10 +138,20 @@ class MarketSimulator {
             }, delay);
         }
     }
-
-
   }
 
+  broadcastMessage(payload) {
+    const message = JSON.stringify(payload);
+  
+    this.wsClients.forEach(client => {
+      if (client.readyState === 1) { // 1 = WebSocket.OPEN
+        client.send(message);
+      }
+    });
+  
+    logger.log(`[broadcastMessage] Messaggio inviato a ${this.wsClients.length} client: ${message}`);
+  }
+  
   stopSimulation() {
     if (this.interval) {
       clearInterval(this.interval);

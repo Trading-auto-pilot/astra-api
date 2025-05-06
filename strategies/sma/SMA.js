@@ -54,7 +54,7 @@ async getMediaMobile(symbol, periodDays, currentDate, tf) {
       
 
       logger.info('[getMediaMobile] Media Mobile ricevuta : '+mediaMobile);
-
+      return mediaMobile;
     } catch (err) {
         logger.error('[SMA][getMediaMobile] Errore durante la richiesta:', err.message);
       return null;
@@ -126,6 +126,7 @@ async loadLastPosition(scenarioId) {
         throw err;
     }
 
+    logger.log(`[processCandle] mediaMobile : ${mediaMobile}  prezzo : ${prezzo}`);
     // BUY se prezzo > media mobile e non ho già acquistato
     if (mediaMobile != null && prezzo > mediaMobile) {
       return {

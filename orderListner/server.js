@@ -8,7 +8,7 @@ require('dotenv').config();
 const MODULE_NAME = 'LiveMarketListener RESTServer';
 const MODULE_VERSION = '1.0';
 const app = express();
-const port = process.env.PORT || 3002;
+const port = process.env.PORT || 3006;
 const logger = createLogger(MODULE_NAME);
 
 let settings = {};

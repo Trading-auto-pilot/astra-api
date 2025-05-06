@@ -28,7 +28,7 @@ app.post('/email/send', async (req, res) => {
   }
 
   try {
-    const result = await alerting.sendEmail({ to, subject, body });
+    const result = await alerting.sendEmail(req.body);
     res.json({ status: 'inviato', id: result.messageId });
   } catch (err) {
     res.status(500).json({ error: 'Errore invio email', message: err.message });

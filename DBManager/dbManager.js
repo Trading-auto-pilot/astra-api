@@ -23,6 +23,9 @@ class DBManager {
       }
     }
 
+    for (const [key, value] of Object.entries(process.env)) {
+      logger.trace(`Environment variable ${key}=${value}`);
+    }
   }
 
   // Apre una connessione al database
@@ -119,16 +122,33 @@ class DBManager {
   }
 
   // Inserisce una transazione BUY
-  async insertBuyTransaction(scenarioId, element, state, result, operation = 'BUY') {
+  async insertBuyTransaction(scenarioId, element, capitaleInvestito, prezzo, operation = 'BUY', MA, orderId, NumAzioni) {
     const connection = await this.getDbConnection();
     try {
       await connection.query(`
         INSERT INTO transazioni 
-        (ScenarioID, operation, operationDate, Price, capitale, days, MA)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [scenarioId, operation, this.formatDateForMySQL(element.t), result.prezzo, state.capitaleInvestito, result.days, result.MA]);
+        (ScenarioID, operation, operationDate, Price, capitale, MA, orderId, NumAzioni)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [scenarioId, operation, this.formatDateForMySQL(element.t), prezzo, capitaleInvestito, MA, orderId, NumAzioni]);
     } catch (err) {
       logger.error(`[insertBuyTransaction] Errore insert:`, err.message);
+      throw err;
+    } finally {
+      await connection.end();
+    }
+  }
+
+  // Inserisce una transazione SELL
+  async insertSellTransaction(scenarioId, element, state, result) {
+    const connection = await this.getDbConnection();
+    try {
+      await connection.query(`
+        INSERT INTO transazioni 
+        (ScenarioID, operationDate, operation, Price, capitale, exit_reason, profitLoss, days)
+        VALUES (?, ?, 'SELL', ?, ?, ?, ?, ?)`,
+        [scenarioId, this.formatDateForMySQL(element.t), result.prezzo, state.capitaleLibero, result.motivo, result.profitLoss, result.days]);
+    } catch (err) {
+      logger.error(`[insertSellTransaction] Errore insert:`, err.message);
       throw err;
     } finally {
       await connection.end();
@@ -198,23 +218,6 @@ class DBManager {
   }
 
 
-  // Inserisce una transazione SELL
-  async insertSellTransaction(scenarioId, element, state, result) {
-    const connection = await this.getDbConnection();
-    try {
-      await connection.query(`
-        INSERT INTO transazioni 
-        (ScenarioID, operationDate, operation, Price, capitale, exit_reason, profitLoss, days)
-        VALUES (?, ?, 'SELL', ?, ?, ?, ?, ?)`,
-        [scenarioId, this.formatDateForMySQL(element.t), result.prezzo, state.capitaleLibero, result.motivo, result.profitLoss, result.days]);
-    } catch (err) {
-      logger.error(`[insertSellTransaction] Errore insert:`, err.message);
-      throw err;
-    } finally {
-      await connection.end();
-    }
-  }
-
 
 // Recupera tutte le strategie attive, eventualmente filtrando per simbolo
 async getActiveStrategies(symbol = null) {
@@ -267,6 +270,8 @@ async getActiveStrategies(symbol = null) {
 
   // Inserisce un ordine nella tabella orders
   async insertOrder(orderData) {
+
+    const order=orderData.order;
     const connection = await this.getDbConnection();
     try {
       const query = `INSERT INTO orders (id, client_order_id, created_at, updated_at, submitted_at, filled_at, expired_at, 
@@ -275,44 +280,46 @@ async getActiveStrategies(symbol = null) {
           limit_price, stop_price, status, extended_hours, legs, trail_percent, trail_price, hwm, subtag, source, expires_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
       const values = [
-        orderData.id,
-        orderData.client_order_id,
-        orderData.created_at ? new Date(orderData.created_at) : null,
-        orderData.updated_at ? new Date(orderData.updated_at) : null,
-        orderData.submitted_at ? new Date(orderData.submitted_at) : null,
-        orderData.filled_at ? new Date(orderData.filled_at) : null,
-        orderData.expired_at ? new Date(orderData.expired_at) : null,
-        orderData.canceled_at ? new Date(orderData.canceled_at) : null,
-        orderData.failed_at ? new Date(orderData.failed_at) : null,
-        orderData.replaced_at ? new Date(orderData.replaced_at) : null,
-        orderData.replaced_by,
-        orderData.replaces,
-        orderData.asset_id,
-        orderData.symbol,
-        orderData.asset_class,
-        orderData.notional,
-        orderData.qty,
-        orderData.filled_qty,
-        orderData.filled_avg_price,
-        orderData.order_class,
-        orderData.order_type,
-        orderData.type,
-        orderData.side,
-        orderData.position_intent,
-        orderData.time_in_force,
-        orderData.limit_price,
-        orderData.stop_price,
-        orderData.status,
-        orderData.extended_hours ? 1 : 0,
-        orderData.legs ? JSON.stringify(orderData.legs) : null,
-        orderData.trail_percent,
-        orderData.trail_price,
-        orderData.hwm,
-        orderData.subtag,
-        orderData.source,
-        orderData.expires_at ? new Date(orderData.expires_at) : null
+        orderData.execution_id,
+        order.client_order_id,
+        order.created_at ? new Date(order.created_at) : null,
+        order.updated_at ? new Date(order.updated_at) : null,
+        order.submitted_at ? new Date(order.submitted_at) : null,
+        order.filled_at ? new Date(order.filled_at) : null,
+        order.expired_at ? new Date(order.expired_at) : null,
+        order.canceled_at ? new Date(order.canceled_at) : null,
+        order.failed_at ? new Date(order.failed_at) : null,
+        order.replaced_at ? new Date(order.replaced_at) : null,
+        this.safe(order.replaced_by),
+        this.safe(order.replaces),
+        this.safe(order.asset_id),
+        this.safe(order.symbol),
+        this.safe(order.asset_class),
+        this.safe(order.notional),
+        this.safe(order.qty),
+        this.safe(order.filled_qty),
+        this.safe(order.filled_avg_price),
+        this.safe(order.order_class),
+        this.safe(order.order_type),
+        this.safe(order.type),
+        this.safe(order.side),
+        this.safe(order.position_intent),
+        this.safe(order.time_in_force),
+        this.safe(order.limit_price),
+        this.safe(order.stop_price),
+        this.safe(order.status),
+        this.safe(order.extended_hours ? 1 : 0),
+        order.legs ? JSON.stringify(order.legs) : null,
+        this.safe(order.trail_percent),
+        this.safe(order.trail_price),
+        this.safe(order.hwm),
+        this.safe(order.subtag),
+        this.safe(order.source),
+        order.expires_at ? new Date(order.expires_at) : null
       ];
       await connection.query(query, values);
+      logger.info(`[insertOrder] Ordine ${orderData.execution_id} inserito con successo`);
+      return (orderData.execution_id);
     } catch (err) {
       logger.error(`[insertOrder] Errore insert ordine:`, err.message);
       throw err;
@@ -354,12 +361,12 @@ async updateStrategyCapitalAndOrders(id, capitaleInvestito, openOrders) {
     const values = [];
 
     if (capitaleInvestito !== undefined && capitaleInvestito !== null) {
-      updates.push('capitaleInvestito = ?');
+      updates.push('capitaleInvestito = CapitaleInvestito + ?');
       values.push(capitaleInvestito);
     }
 
     if (openOrders !== undefined && openOrders !== null) {
-      updates.push('OpenOrders = ?');
+      updates.push('OpenOrders = OpenOrders + ?');
       values.push(openOrders);
     }
 
@@ -402,16 +409,30 @@ async getStrategyCapitalAndOrders(id) {
 
   try {
     const [rows] = await connection.query(
-      `SELECT *  FROM vstrategies WHERE id = ?`,
-      [id]
+      `SELECT *  FROM vstrategies WHERE status = "active"`,
     );
 
-    if (rows.length === 0) {
+    const totalCommitted = rows.reduce((acc, row) => {
+      const capitale = Number(row.CapitaleInvestito) || 0;
+      const ordini = Number(row.OpenOrders) || 0;
+      return acc + capitale + ordini;
+    }, 0);
+
+    const risultati = rows
+    .filter(row => (Number(row.id) === Number(id)))
+    .map(row => {
+      return {
+        ...row,
+        TotalCommitted: totalCommitted
+      };
+    });
+
+    if (risultati === 0) {
       logger.warning(`[parseParamsInRows] Nessuna strategia trovata con id: ${id}`);
       throw new Error(`Nessuna strategia trovata con id: ${id}`);
     }
 
-    return this.parseParamsInRows(rows);
+    return this.parseParamsInRows(risultati);
   } catch (err) {
     logger.error(`[getStrategyCapitalAndOrders] Errore SELECT:`, err.message);
     throw err;
@@ -419,6 +440,82 @@ async getStrategyCapitalAndOrders(id) {
     await connection.end();
   }
 }
+
+
+
+async insertSimulatedOrder(envelop) {
+    const order = envelop.order;
+
+    logger.log(`[insertSimulatedOrder] Ordine ricevuto da inserire nel DB : ${JSON.stringify(order)}`);
+    const connection = await this.getDbConnection();
+
+    try {
+      const query = `
+        INSERT INTO OrdersSimulated (
+          id, client_order_id, created_at, updated_at, submitted_at, filled_at, expired_at, canceled_at,
+          failed_at, replaced_at, replaced_by, replaces, asset_id, symbol, asset_class, notional, qty,
+          filled_qty, filled_avg_price, order_class, order_type, type, side, time_in_force,
+          limit_price, stop_price, status, extended_hours, legs, trail_percent, trail_price,
+          hwm, subtag, source
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
+      `;
+      
+
+      const values = [
+        this.safe(order.id),
+        this.safe(order.client_order_id),
+        this.safe(this.formatDateForMySQL(order.created_at)),
+        this.safe(this.formatDateForMySQL(order.updated_at)),
+        this.safe(this.formatDateForMySQL(order.submitted_at)),
+        this.safe(this.formatDateForMySQL(order.filled_at)),
+        this.safe(this.formatDateForMySQL(order.expired_at)),
+        this.safe(this.formatDateForMySQL(order.canceled_at)),
+        this.safe(this.formatDateForMySQL(order.failed_at)),
+        this.safe(this.formatDateForMySQL(order.replaced_at)),
+        this.safe(order.replaced_by),
+        this.safe(order.replaces),
+        this.safe(order.asset_id),
+        this.safe(order.symbol),
+        this.safe(order.asset_class),
+        this.safe(order.notional),
+        this.safe(order.qty),
+        this.safe(order.filled_qty),
+        this.safe(order.filled_avg_price),
+        this.safe(order.order_class),
+        this.safe(order.order_type),
+        this.safe(order.type),
+        this.safe(order.side),
+        this.safe(order.time_in_force),
+        this.safe(order.limit_price),
+        this.safe(order.stop_price),
+        this.safe(order.status),
+        order.extended_hours ? 1 : 0,
+        order.legs ? JSON.stringify(order.legs) : null,
+        this.safe(order.trail_percent),
+        this.safe(order.trail_price),
+        this.safe(order.hwm),
+        this.safe(order.subtag),
+        this.safe(order.source)
+      ];
+
+      await connection.execute(query, values);
+      logger.info(`[insertSimulatedOrder] Ordine ${order.id} inserito con successo`);
+      return (order.id);
+    } catch (err) {
+      logger.error(`[insertSimulatedOrder] Errore inserimento ordine: ${err.message}`);
+      throw err;
+    } finally {
+      await connection.end();
+    }
+
+}
+
+
+  safe(val) {
+    return val === undefined ? null : val;
+  }
 
 
 

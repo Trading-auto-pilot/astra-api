@@ -1,10 +1,14 @@
 const express = require('express');
 const axios = require('axios');
 const CacheManager = require('./cacheManager');
+const createLogger = require('../shared/logger');
 require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 3006;
+const MODULE_NAME = 'CacheManager RESTServer';
+const MODULE_VERSION = '1.0';
+const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
 
 let cacheManager = null;
 const dbManagerBaseUrl = process.env.DBMANAGER_URL || 'http://dbmanager:3002'; // URL del microservizio DBManager
@@ -14,7 +18,7 @@ async function loadSettings() {
   const keys = [
     'APCA-API-KEY-ID',
     'APCA-API-SECRET-KEY',
-    'ALPACA-WSS-MARKET-STREAM-BASE',
+    'ALPACA-LIVE-MARKET',
     'ALPACA-HISTORICAL-FEED',
     'TF-DEFAULT',
     'ALPACA-API-TIMEOUT'
@@ -25,10 +29,15 @@ async function loadSettings() {
     try {
       const res = await axios.get(`${dbManagerBaseUrl}/getSetting/${key}`);
       settings[key] = res.data.value;
+      logger.trace(`[loadSetting] Setting variavile ${key} : ${settings[key]}`);
     } catch (err) {
         console.error(`[SETTINGS] Errore nel recupero della chiave '${key}': ${err.message}`);
       throw err;
     }
+  }
+
+  for (const [key, value] of Object.entries(process.env)) {
+    logger.trace(`Environment variable ${key}=${value}`);
   }
   return settings;
 }
@@ -71,7 +80,7 @@ app.get('/candles', async (req, res) => {
       feed: settings['ALPACA-HISTORICAL-FEED'],
       apiKey: settings['APCA-API-KEY-ID'],
       apiSecret: settings['APCA-API-SECRET-KEY'],
-      restUrl: settings['ALPACA-MARKET-DATA-BASE'],
+      restUrl: settings['ALPACA-LIVE-BASE'],
       timeout: settings['ALPACA-API-TIMEOUT']
     });
 

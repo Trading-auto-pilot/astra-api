@@ -1,23 +1,26 @@
 const express = require('express');
 const axios = require('axios');
 const CapitalManager = require('./capitalManager');
+const createLogger = require('../shared/logger');
 require('dotenv').config();
+
+const MODULE_NAME = 'capitalManager RESTServer';
+const MODULE_VERSION = '1.0';
+const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
 
 const app = express();
 const port = process.env.PORT || 3009;
 app.use(express.json());
 
-const MODULE_NAME='CapitalServer_RESTServer';
 const dbManagerBaseUrl = process.env.DBMANAGER_URL || 'http://dbmanager:3002';
-const environment = process.env.ENVIRONMENT || 'PAPER';
-console.log('Environment :'+environment);
+
 
 // Funzione per leggere i parametri di configurazione da DBManager
 async function loadSettings() {
   const keys = [
     'APCA-API-KEY-ID',
     'APCA-API-SECRET-KEY',
-    'ALPACA-API-'+environment+'-BASE'
+    'ALPACA-'+process.env.ENV_ORDERS+'-BASE'
   ];
 
   const settings = {};
@@ -25,10 +28,15 @@ async function loadSettings() {
     try {
       const res = await axios.get(`${dbManagerBaseUrl}/getSetting/${key}`);
       settings[key] = res.data.value;
+      logger.trace(`[loadSetting] Setting variavile ${key} : ${settings[key]}`);
     } catch (err) {
         console.error(`[SETTINGS] Errore nel recupero della chiave '${key}': ${err.message}`);
       throw err;
     }
+  }
+
+  for (const [key, value] of Object.entries(process.env)) {
+    logger.trace(`Environment variable ${key}=${value}`);
   }
   return settings;
 }
@@ -90,7 +98,7 @@ app.get('/evaluate/:strategyId', async (req, res) => {
         capitalManager = new CapitalManager ({
             key:settings['APCA-API-KEY-ID'],
             secret:settings['APCA-API-SECRET-KEY'],
-            env:settings['ALPACA-API-'+environment+'-BASE']
+            env:settings['ALPACA-'+process.env.ENV_ORDERS+'-BASE']
         })
       app.listen(port, () => {
         console.log(`[capital-manager] Server avviato sulla porta ${port}`);

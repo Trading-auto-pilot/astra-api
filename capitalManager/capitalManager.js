@@ -33,9 +33,9 @@ class CapitalManager {
   }
 
   async getAvailableCapital() {
-    logger.log(`[getAvailableCapital] Recupero capitale disponibile da Alpaca : ${this.env}v2/account`);
+    logger.log(`[getAvailableCapital] Recupero capitale disponibile da Alpaca : ${this.env}/v2/account`);
     try {
-      const res = await axios.get(this.env+'v2/account', {
+      const res = await axios.get(this.env+'/v2/account', {
         headers: {
           'APCA-API-KEY-ID': this.key,
           'APCA-API-SECRET-KEY': this.secret
@@ -54,7 +54,7 @@ class CapitalManager {
     try {
       const res = await axios.get(`${this.dbManagerUrl}/getStrategyCapitalAndOrders/${strategyId}`);
       logger.log(`[getStrategyDetaisl] Recuperato  : ${JSON.stringify(res.data)}`);
-      return (res.data);
+      return (res.data[0]);
     } catch (err) {
       logger.error(`[getAllocatedCapital] Errore DBManager:`, err.message);
       throw err;
@@ -77,24 +77,40 @@ class CapitalManager {
 
   async evaluateAllocation(strategyId) {
     const available = await this.getAvailableCapital();
-    const totalAllocated = await this.getTotalAllocatedCapital(strategyId);
     const strategyDetails = await this.getStrategyDetaisl(strategyId);
+    const totalAllocated =   strategyDetails.TotalCommitted; //await this.getTotalAllocatedCapital(strategyId);
+    
 
+    const cash = parseFloat(available) - parseFloat(totalAllocated);
     const capitaleTotale = parseFloat(available) + parseFloat(totalAllocated);
     const share = parseFloat(strategyDetails.share);
     const capitaleDisponibilePerStrategia = capitaleTotale * share;
-    const capitaleInvestito = parseFloat(strategyDetails.capitaleInvestito);
+    const capitaleInvestito = parseFloat(strategyDetails.CapitaleInvestito);
     const openOrders = parseFloat(strategyDetails.OpenOrders);
 
     const remaining = capitaleDisponibilePerStrategia - capitaleInvestito - openOrders;
-    logger.log(`[evaluateAllocation] available ${available} totalAllocated ${totalAllocated} strategyDetails ${strategyDetails}
-                capitaleTotale ${capitaleTotale} share ${share} capitaleDisponibilePerStrategia ${capitaleDisponibilePerStrategia}
-                capitaleInvestito ${capitaleInvestito} openOrders ${openOrders} remaining ${remaining}`)
+    logger.log(`[evaluateAllocation] available ${available} cash ${cash} totalAllocated ${totalAllocated} strategyDetails ${JSON.stringify(strategyDetails)} capitaleTotale ${capitaleTotale} share ${share} capitaleDisponibilePerStrategia ${capitaleDisponibilePerStrategia} capitaleInvestito ${capitaleInvestito} openOrders ${openOrders} remaining ${remaining}`)
 
     if (remaining <= 0) {
       return {
         approved: false,
         reason: 'Insufficient allocation margin'
+      };
+    }
+
+    if( !Number.isFinite(remaining)) {
+      return {
+        approved: false,
+        reason: 'Capitale rimanente non correttamente calcolato'
+      };
+    }
+
+    const toInvest = Math.min(remaining, cash);
+    if(remaining > toInvest) {
+      logger.info(`[evaluateAllocation] Approvato ${remaining} ma capitale rimanente ${toInvest} utilizzo il capitale a disposizione`);
+      return {
+        approved: true,
+        grantedAmount: Math.round(toInvest * 100) / 100
       };
     }
 

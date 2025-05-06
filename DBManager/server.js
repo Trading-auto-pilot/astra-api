@@ -132,20 +132,20 @@ app.post('/updateScenarioResult', async (req, res) => {
   // Inserisce una transazione BUY
 app.post('/insertBuyTransaction', async (req, res) => {
     const dbManager = new DBManager();
-    const { scenarioId, element, state, result, operation } = req.body;
+    const { scenarioId, element, capitaleInvestito, prezzo, operation, MA, orderId, NumAzioni } = req.body;
   
     // Validazione base
-    if (!scenarioId || !element || !state || !result) {
-      return res.status(400).json({ error: 'Parametri scenarioId, element, state e result obbligatori' });
+    if (!scenarioId || !capitaleInvestito || !prezzo || !orderId) {
+      return res.status(400).json({ error: 'Parametri scenarioId, capitaleInvestito, prezzo obbligatori' });
     }
   
     try {
-      await dbManager.insertBuyTransaction(scenarioId, element, state, result, operation || 'BUY');
-      console.log(`[${MODULE_NAME}][insertBuyTransaction] Transazione BUY inserita correttamente per ScenarioID: ${scenarioId}`);
-      res.status(200).json({ message: 'Transazione BUY inserita con successo' });
+      await dbManager.insertBuyTransaction(scenarioId, element, capitaleInvestito, prezzo, operation || 'BUY', MA, orderId, NumAzioni);
+      console.log(`[${MODULE_NAME}][insertBuyTransaction] Transazione BUY inserita correttamente per ScenarioID: ${scenarioId} orderId ${orderId}`);
+      res.status(200).json({ message: 'Transazione BUY inserita con successo scenarioId '+ scenarioId});
     } catch (error) {
       console.error(`[${MODULE_NAME}][insertBuyTransaction] Errore nella richiesta POST:`, error.message);
-      res.status(500).json({ error: 'Errore interno durante l\'inserimento della transazione BUY' });
+      res.status(500).json({ error: 'Errore interno durante l\'inserimento della transazione BUY '+error.message});
     }
   });
   
@@ -255,6 +255,29 @@ app.get('/getActiveStrategies/:symbol', async (req, res) => {
       res.status(500).json({ error: 'Errore durante aggiornamento strategia', message: err.message });
     }
   });
+
+    // Inserimento ordine simulato (verrà salvato in DB in futuro)
+    app.post('/insertOrder', async (req, res) => {
+      try {
+        const result = await dbManager.insertOrder(req.body);
+        res.status(200).json(result);
+      } catch (err) {
+        console.error(`[insertOrder] ${err.message}`);
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+  // Inserimento ordine simulato (verrà salvato in DB in futuro)
+  app.post('/insertSimulatedOrder', async (req, res) => {
+    try {
+      const result = await dbManager.insertSimulatedOrder(req.body);
+      res.status(200).json(result);
+    } catch (err) {
+      console.error(`[insertSimulatedOrder] ${err.message}`);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   
 
 app.listen(port, () => {

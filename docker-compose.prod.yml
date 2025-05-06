@@ -171,15 +171,11 @@ services:
         condition: service_healthy
       strategy-utils:
         condition: service_healthy
-      marketsimulator:
-        condition: service_healthy
-      ordersimulator:
-        condition: service_healthy
     environment:
       - LOG_LEVEL=trace
       - DBMANAGER_URL=http://dbmanager:3002
-      - ENV_MARKET=LOCAL
-      - ENV_ORDERS=LOCAL
+      - ENV_MARKET=LIVE
+      - ENV_ORDERS=PAPER
       - FEED=iex
       - SMA_URL=http://sma:3010
       - CAPITAL_MANAGER_URL=http://capitalmanager:3009
@@ -203,14 +199,10 @@ services:
         condition: service_healthy
       alertingservice:
         condition: service_healthy
-      marketsimulator:
-        condition: service_healthy
-      ordersimulator:
-        condition: service_healthy
     environment:
       - LOG_LEVEL=trace
       - DBMANAGER_URL=http://dbmanager:3002
-      - ENV_TRADING=LOCAL
+      - ENV_TRADING=PAPER
       - ALERTINGMANAGER_URL=http://alertingservice:3008
 
 
@@ -238,55 +230,6 @@ services:
       timeout: 10s
       retries: 5
 
-
-
-  # Sezione docker per la simulazione
-  ordersimulator:
-    image: expovin/ordersimulator:1.0
-    container_name: ordersimulator
-    build:
-      context: .
-      dockerfile: orderSimulator/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "3004:3004"
-    networks:
-      - trading-net
-    environment:
-      - LOG_LEVEL=trace
-      - DBMANAGER_URL=http://dbmanager:3002
-    depends_on:
-      dbmanager:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-
-
-  marketsimulator:
-    image: expovin/marketsimulator:1.0
-    container_name: marketsimulator
-    build:
-      context: .
-      dockerfile: marketsimulator/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "3003:3003"
-    networks:
-      - trading-net
-    environment:
-      - LOG_LEVEL=trace
-      - DBMANAGER_URL=http://dbmanager:3002
-    depends_on:
-      dbmanager:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
 
 volumes:
   mysql_data:

@@ -1,7 +1,7 @@
 const express = require('express');
 const http = require('http');
 const dotenv = require('dotenv');
-const MarketSimulator = require('./MarketSimulator');
+const MarketSimulator = require('./marketSimulator');
 const createLogger = require('../shared/logger');
 
 dotenv.config();
@@ -40,6 +40,18 @@ app.post('/stop', (req, res) => {
   simulator.stopSimulation();
   res.json({ status: 'Simulazione fermata' });
 });
+
+app.post('/send', (req, res) => {
+  const payload = req.body;
+
+  if (!payload) {
+    return res.status(400).json({ error: 'Payload mancante' });
+  }
+
+  simulator.broadcastMessage(payload);
+  res.status(200).json({ status: 'inviato', payload });
+});
+
 
 // Endpoint: Info modulo
 app.get('/info', (req, res) => {
