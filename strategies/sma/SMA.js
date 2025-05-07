@@ -87,19 +87,6 @@ async loadLastPosition(scenarioId) {
       }
   }
 
-  /*
-  async getSymbol(strategyId) {
-    logger.log(`[getSymbol] Richiamo ${this.dbManagerURL}/getStrategyCapitalAndOrders/${strategyId}`);
-      try {
-        const res = await axios.get(`${this.dbManagerURL}/getStrategyCapitalAndOrders/${strategyId}`);
-        logger.log(`[getSymbol] Recuperato ${res.data[0]}`);
-        return (res.data[0]);
-      } catch (err) {
-          logger.error(`[getSymbol] Errore DBManager:`, err.message);
-        throw err;
-      }
-  }
-*/
 
   // ⚙️ Elabora una candela e genera un segnale BUY / SELL / HOLD
   async processCandle(candle, scenarioId, symbol, params) {
