@@ -48,7 +48,7 @@ jobs:
             continue
           fi
 
-          version=$(grep MODULE_VERSION "$version_file" | head -n1 | sed -E 's/.*=[[:space:]]*["'"'"']([^"'"'"']+)["'"'"'].*/\1/'*
+          version=$(grep MODULE_VERSION "$version_file" | head -n1 | sed -E 's/.*=[[:space:]]*["'"'"']([^"'"'"']+)["'"'"'].*/\1/'
           echo "🔧 Building $name from $version_file with version $version..."
 
           docker build -t $DOCKERHUB_USERNAME/$name:latest -t $DOCKERHUB_USERNAME/$name:$version ./$service
