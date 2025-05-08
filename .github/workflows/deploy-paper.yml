@@ -84,8 +84,18 @@ jobs:
 
           docker compose down
           docker compose pull
-          docker compose up -d --remove-orphans
+          docker compose up -d --remove-orphans mysqldb
+
+          echo "⏳ Attendo che mysql-db sia healthy..."
+          until docker compose ps --filter "status=running" | grep mysql-db | grep healthy; do
+            echo "⌛ mysql-db non ancora pronto, riprovo tra 2s..."
+            sleep 2
+          done
+          echo "✅ mysql-db è healthy" 
 
           echo "🛠️  Applico modifiche al DB..."
           docker compose exec -T mysql-db mysql -utrading_user -ptrading_pass Trading < db_update.sql
+
+          docker compose up -d --remove-orphans
+          
         EOF
