@@ -65,6 +65,22 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
+    - name: Creazione release su github
+      run: |
+        TAG=$(jq -r .version release.json)
+        TITLE=$(jq -r .note release.json)
+
+        # Genera le note
+        bash scripts/generate-release-notes.sh
+
+        # Crea la release (gh CLI deve essere installata)
+        gh release create "$TAG" \
+          --title "$TITLE" \
+          --notes-file release-notes.md \
+          --target PAPER \
+          --repo $GITHUB_REPOSITORY \
+          --verify-tag
+
     - name: Deploy updated containers to GCP VM
       run: |
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "GH_TOKEN=${GH_TOKEN} bash -s" <<'EOF'
