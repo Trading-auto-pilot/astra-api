@@ -32,7 +32,7 @@ jobs:
 
     - name: Build and push all Docker images
       run: |
-        for service in DBManager cacheManager capitalManager alertingService strategyUtils LiveMarketListener orderListner orderSimulator marketsimulator strategies/sma; do
+        for service in DBManager cacheManager capitalManager alertingService strategyUtils LiveMarketListener orderListner orderSimulator MarketSimulator strategies/sma; do
           name=$(basename "$service" | tr '[:upper:]' '[:lower:]')
 
           # Trova il file .js con lo stesso nome della cartella (confronto in lowercase)
@@ -67,8 +67,22 @@ jobs:
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << 'EOF'
           mkdir -p ~/deploy
           cd ~/deploy
+          echo "📥 Scarico docker-compose.yml..."
           curl -s -H "Authorization: token $GH_TOKEN" -o docker-compose.yml https://raw.githubusercontent.com/expovin/trading-system/refs/heads/PAPER/docker-compose.yml
+
+          echo "📥 Scarico db_update.sql..."
+          curl -H "Authorization: token $GH_TOKEN" -s -o db_update.sql https://raw.githubusercontent.com/expovin/trading-system/refs/heads/PAPER/db/db_update.sql
+
+          if ! grep -q "services:" docker-compose.yml; then
+            echo "❌ docker-compose.yml non valido o non trovato!"
+            cat docker-compose.yml
+            exit 1
+          fi
+
           docker compose down
           docker compose pull
           docker compose up -d --remove-orphans
-        EO
+
+          echo "🛠️  Applico modifiche al DB..."
+          docker compose exec -T mysql-db mysql -utrading_user -ptrading_pass Trading < db_update.sql
+        EOF
