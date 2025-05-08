@@ -48,7 +48,7 @@ jobs:
             continue
           fi
 
-          version=$(grep MODULE_VERSION "$version_file" | head -n1 | cut -d'=' -f2 | tr -d ' "')
+          version=$(grep MODULE_VERSION "$version_file" | sed -E 's/.*MODULE_VERSION *= *"([^"]*)".*/\\1/' | tr -d '\r')
 
           echo "🔧 Building $name from $version_file with version $version..."
 
