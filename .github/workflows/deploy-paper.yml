@@ -78,8 +78,7 @@ jobs:
           --title "$TITLE" \
           --notes-file release-notes.md \
           --target PAPER \
-          --repo $GITHUB_REPOSITORY \
-          --verify-tag
+          --repo $GITHUB_REPOSITORY
 
     - name: Deploy updated containers to GCP VM
       run: |
