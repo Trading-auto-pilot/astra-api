@@ -66,7 +66,7 @@ jobs:
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << 'EOF'
           mkdir -p ~/deploy
           cd ~/deploy
-          curl -s -o docker-compose.yml https://raw.githubusercontent.com/expovin/trading-system/PAPER/docker-compose.yml
+          curl -s -o docker-compose.yml https://raw.githubusercontent.com/expovin/trading-system/refs/heads/PAPER/docker-compose.yml
           docker compose down
           docker compose pull
           docker compose up -d --remove-orphans
