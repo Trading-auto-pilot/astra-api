@@ -1,5 +1,5 @@
 #!/bin/bash
-
+#
 echo "🧪 Test estrazione versione da file .js"
 
 for service in DBManager cacheManager capitalManager alertingService strategyUtils LiveMarketListener orderListner orderSimulator marketsimulator strategies/sma; do
@@ -20,7 +20,8 @@ for service in DBManager cacheManager capitalManager alertingService strategyUti
   fi
 
   # Estrai la versione da MODULE_VERSION (gestisce '1.0' o "1.0"; e spazi)
-  version=$(grep MODULE_VERSION "$version_file" | sed -E "s/.*MODULE_VERSION *= *['\"]([^'\";]+)['\"].*/\1/" | tr -d '')
+  version=$(grep MODULE_VERSION "$version_file" | sed -E "s/.*MODULE_VERSION *= *['\"]([^'\";]+)['\"].*/\1/" | tr -d '
+')
 
   echo "📦 $name → $version (da $version_file)"
 done
