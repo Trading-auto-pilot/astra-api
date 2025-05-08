@@ -123,8 +123,8 @@ services:
       start_period: 15s
 
   strategyutils:
-    image: expovin/strategy-utils:1.0
-    container_name: strategy-utils
+    image: expovin/strategyutils:1.0
+    container_name: strategyutils
     build:
       context: .
       dockerfile: strategyUtils/Dockerfile
@@ -169,7 +169,7 @@ services:
         condition: service_healthy
       alertingservice:
         condition: service_healthy
-      strategy-utils:
+      strategyutils:
         condition: service_healthy
       marketsimulator:
         condition: service_healthy
