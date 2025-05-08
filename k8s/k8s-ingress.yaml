@@ -1,0 +1,87 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: trading-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /mysql(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: mysql
+            port:
+              number: 3306
+      - path: /dbmanager(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: dbmanager
+            port:
+              number: 3002
+      - path: /cachemanager(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: cachemanager
+            port:
+              number: 3006
+      - path: /alertingservice(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: alertingservice
+            port:
+              number: 3008
+      - path: /capitalmanager(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: capitalmanager
+            port:
+              number: 3009
+      - path: /strategy-utils(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: strategy-utils
+            port:
+              number: 3007
+      - path: /livemarketlistener(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: livemarketlistener
+            port:
+              number: 3012
+      - path: /sma(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: sma
+            port:
+              number: 3010
+      - path: /orderlistner(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: orderlistner
+            port:
+              number: 3011
+      - path: /ordersimulator(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: ordersimulator
+            port:
+              number: 3004
+      - path: /marketsimulator(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: marketsimulator
+            port:
+              number: 3003

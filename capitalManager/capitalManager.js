@@ -76,38 +76,48 @@ class CapitalManager {
 
 
   async evaluateAllocation(strategyId) {
-    const available = await this.getAvailableCapital();
-    const strategyDetails = await this.getStrategyDetaisl(strategyId);
-    const totalAllocated =   strategyDetails.TotalCommitted; //await this.getTotalAllocatedCapital(strategyId);
+
+    const cache = await this.getAvailableCapital();        
     
+    const strategyDetails = await this.getStrategyDetaisl(strategyId);
 
-    const cash = parseFloat(available) - parseFloat(totalAllocated);
-    const capitaleTotale = parseFloat(available) + parseFloat(totalAllocated);
     const share = parseFloat(strategyDetails.share);
-    const capitaleDisponibilePerStrategia = capitaleTotale * share;
-    const capitaleInvestito = parseFloat(strategyDetails.CapitaleInvestito);
-    const openOrders = parseFloat(strategyDetails.OpenOrders);
+    const CapOrdiniInvestito = parseFloat(strategyDetails.TotalCommitted);
+    const UsatoPerStrategia = parseFloat(strategyDetails.CapitaleInvestito) + parseFloat(strategyDetails.OpenOrders);
 
-    const remaining = capitaleDisponibilePerStrategia - capitaleInvestito - openOrders;
-    logger.log(`[evaluateAllocation] available ${available} cash ${cash} totalAllocated ${totalAllocated} strategyDetails ${JSON.stringify(strategyDetails)} capitaleTotale ${capitaleTotale} share ${share} capitaleDisponibilePerStrategia ${capitaleDisponibilePerStrategia} capitaleInvestito ${capitaleInvestito} openOrders ${openOrders} remaining ${remaining}`)
+      // Il cash rimanente piu tutto cio che ho impagnato e' ilmmio capitale originale
+    const CapitaleOriginale = cache + CapOrdiniInvestito;        
+      // Questo e' il capitale assegnato a questa strategia
+    const AssegnatoStrategia = CapitaleOriginale * share;
+      // Questo e' il capitale che rimane da investire per questa strategia
+    const rimanenteStrategia = AssegnatoStrategia - UsatoPerStrategia
 
-    if (remaining <= 0) {
+    logger.trace(`[evaluateAllocation] Cash rimanente da ALPACA ${cache}`);
+    logger.trace(`[evaluateAllocation] Share di questa strategia ${share}`);
+    logger.trace(`[evaluateAllocation] Totale capitale impegnato Tutto investito + Tutto ordini attivi ${CapOrdiniInvestito}`);
+    logger.trace(`[evaluateAllocation] Capitale originale ${CapitaleOriginale}`);
+    logger.trace(`[evaluateAllocation] Assegnato per questa strategia ${AssegnatoStrategia}`);
+    logger.trace(`[evaluateAllocation] Rimanente per Questa strategia ${rimanenteStrategia}`);
+
+    if (rimanenteStrategia <= 0) {
       return {
         approved: false,
         reason: 'Insufficient allocation margin'
       };
     }
 
-    if( !Number.isFinite(remaining)) {
+    if( !Number.isFinite(rimanenteStrategia)) {
       return {
         approved: false,
         reason: 'Capitale rimanente non correttamente calcolato'
       };
     }
 
-    const toInvest = Math.min(remaining, cash);
-    if(remaining > toInvest) {
-      logger.info(`[evaluateAllocation] Approvato ${remaining} ma capitale rimanente ${toInvest} utilizzo il capitale a disposizione`);
+      // Prendo la cifra minima tra il rimanente per questa strategia e il cache rimanente
+    const toInvest = Math.min(rimanenteStrategia, cache);
+
+    if(rimanenteStrategia > toInvest) {
+      logger.info(`[evaluateAllocation] Approvato ${rimanenteStrategia} ma capitale rimanente ${toInvest} utilizzo il capitale a disposizione`);
       return {
         approved: true,
         grantedAmount: Math.round(toInvest * 100) / 100
@@ -116,9 +126,11 @@ class CapitalManager {
 
     return {
       approved: true,
-      grantedAmount: Math.round(remaining * 100) / 100
+      grantedAmount: Math.round(rimanenteStrategia * 100) / 100
     };
+        
   }
+
 }
 
 module.exports = CapitalManager;

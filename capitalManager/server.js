@@ -68,8 +68,8 @@ app.get('/getAvailableCapital', async (req, res) => {
             timestamp: new Date().toISOString()
         });
         } catch (err) {
-        console.error(`[${MODULE_NAME}][getAvailableCapital] Errore:`, err.message);
-        res.status(500).json({ error: 'Errore nel recupero del capitale disponibile', message: err.message });
+          console.error(`[${MODULE_NAME}][getAvailableCapital] Errore:`, err.message);
+          res.status(500).json({ error: 'Errore nel recupero del capitale disponibile', message: err.message });
         }
 });
 

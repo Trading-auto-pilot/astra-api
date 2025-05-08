@@ -85,6 +85,7 @@ async function placeOrder(url, apiKey, apiSecret, symbol, qty, side, type = 'lim
         console.error('[ORDER] Failed to place order:', error.response ? error.response.data : error.message);
         throw error;
     }
+
 }
 
 module.exports = { placeOrder };

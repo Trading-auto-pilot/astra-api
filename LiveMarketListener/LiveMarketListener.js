@@ -175,38 +175,97 @@ class LiveMarketListener {
     }
   }
 
-  async handleTradeSignal(signal, strategy, bar) {
-    logger.trace(`[handleTradeSignal] Ricevuto segnale ${signal.action} su strategia ${JSON.stringify(strategy)} con bar ${JSON.stringify(bar)}`);
-    let evalResult, orderRes;
-    try {
-        logger.trace(`[handleTradeSignal] Richiedo capitale disponibile a url ${this.capialManagerUrl}/evaluate/${strategy.id}`);
+  async richiestaCapitale(bar,strategy){
+      let evalResult;
+
+      try {
+        logger.trace(`[richiestaCapitale] Richiedo capitale disponibile a url ${this.capialManagerUrl}/evaluate/${strategy.id}`);
         const evalRes = await axios.get(`${this.capialManagerUrl}/evaluate/${strategy.id}`);
         evalResult = evalRes.data;
-        logger.trace(`[handleTradeSignal] Risposta ${JSON.stringify(evalResult)}`);
-    }
-    catch (error) {
-      logger.error(`[handleTradeSignal] Errore durante richiesta capitale disponibile ${strategy.id}: ${err.message}`);
-      throw new error(`[handleTradeSignal] Errore durante richiesta capitale disponibile ${strategy.id}: ${err.message}`);
-    }
+        logger.trace(`[richiestaCapitale] Risposta ${JSON.stringify(evalResult)}`);
+        
+      }
+      catch (error) {
+        logger.error(`[richiestaCapitale] Errore durante richiesta capitale disponibile ${strategy.id}: ${err.message}`);
+        return;
+      }
 
-    if (!evalResult.approved) {
-      logger.info(`[handleTradeSignal] Allocazione rifiutata per ${strategy.symbol} (${strategy.id})`);
-      return;
-    }
+      if (!evalResult.approved) {
+        logger.info(`[richiestaCapitale] Allocazione rifiutata per ${strategy.symbol} (${strategy.id})`);
+        return;
+      }
+  
+      if(evalResult.grantedAmount < bar.c){
+        logger.info(`[richiestaCapitale] Non ci sono fondi sufficienti per ${strategy.symbol} (${strategy.id}). Capitale rimasto ${evalResult.grantedAmount} costo azione ${bar.c}`);
+        return;
+      }
 
-    if(evalResult.grantedAmount < bar.c){
-      logger.info(`[handleTradeSignal] Non ci sono fondi sufficienti per ${strategy.symbol} (${strategy.id}). Capitale rimasto ${evalResult.grantedAmount} costo azione ${bar.c}`);
-      return;
-    }
+      return evalResult;
+
+  }
+
+  async addOrdertoOrderTable(orderRes){
 
     try {
-        logger.trace(`[handleTradeSignal] Apro ordine`);
+      // Inserisco l'ordine nella tabella ordini fatti 
+      logger.trace(`[addOrdertoOrderTable] Ricevuta risposta ${JSON.stringify(orderRes.data)} inserisco nel DB richiamando ${this.dbManagerUrl}/insertOrder`);
+      await axios.post(`${this.dbManagerUrl}/insertOrder`, orderRes.data);
+    }
+    catch (error) {
+      logger.error(`[addOrdertoOrderTable] Errore durante Inserimento ordine  ${error.message} ${JSON.stringify(orderRes.data)}`);
+      return;
+    }
+  }
+
+  async aggiungiTransazione(strategy, evalResult,bar,orderRes){
+    try{
+      //Aggiungo la transazione nella tabella transazioni
+      logger.trace(`[aggiungiTransazione] Aggiungo record a tabella transazioni ${this.dbManagerUrl}/insertBuyTransaction ${strategy.id} ${JSON.stringify(bar)} ${Math.floor(evalResult.grantedAmount / bar.c) * bar.c} ${bar.c} 'BUY ORDER'}`);
+      await axios.post(`${this.dbManagerUrl}/insertBuyTransaction`,{scenarioId:strategy.id, element:bar, capitaleInvestito:Math.floor(evalResult.grantedAmount / bar.c) * bar.c, prezzo:bar.c, operation:'BUY ORDER', MA:strategy.params.MA, orderId:orderRes.data.order.id, NumAzioni:Math.floor(evalResult.grantedAmount / bar.c) });
+    }
+    catch(error) {
+      logger.error(`[aggiungiTransazione] Errore durante inserimento nella tabella transazioni ${error.message}`);
+      return;
+    }
+  }
+
+  async aggiornaCapitaliImpegnati(evalResult,bar, strategy){
+    try {
+      //Aggiorno con il capitale impegnato per questo ordine
+      logger.trace(`[aggiornaCapitaliImpegnati] Aggiorno la tabella Strategies con i capitali utilizzati ${this.dbManagerUrl}/updateStrategyCapitalAndOrders`);
+      await axios.post(`${this.dbManagerUrl}/updateStrategyCapitalAndOrders`, {id :strategy.id, openOrders: Math.floor(evalResult.grantedAmount / bar.c) * bar.c});
+    }
+    catch (error) {
+        logger.error(`[aggiornaCapitaliImpegnati] Errore durante update capitale nella tabella strategies ${error.message}`);
+        return;
+    }
+  }
+
+  async invioComunicazione(signal, strategy, orderRes, bar, evalResult){
+    try{
+      // Invio cominicazione via email
+      logger.trace(`[invioComunicazione] Invio email richiamando ${this.alertingManagerUrl}/email/send Eseguito ${signal.action} su ${strategy.symbol} a ${bar.c} dettaglio ${JSON.stringify(orderRes.data)}`);
+      await axios.post(`${this.alertingManagerUrl}/email/send`, {
+          to: 'expovin@gmail.com',
+          subject: `Ordine ${signal.action} ${strategy.symbol}`,
+          body: `Eseguito ${signal.action} su ${strategy.symbol} a ${bar.c} executionId ${orderRes.data.execution_id} orderId ${orderRes.data.order.id} capitale ${Math.floor(evalResult.grantedAmount / bar.c)}`
+      });
+    } catch (err) {
+      logger.error(`[invioComunicazione] Errore durante invio email `, err.message);
+      return;
+    }
+  }
+
+  async BUY(strategy, evalResult, bar){
+    let orderRes;
+    try {
+        logger.trace(`[BUY] Apro ordine`);
         orderRes = await placeOrder(            this.alpacaAPIServer,
                                                 this.settings['APCA-API-KEY-ID'],
                                                 this.settings['APCA-API-SECRET-KEY'],
                                                 strategy.symbol, 
                                                 Math.floor(evalResult.grantedAmount / bar.c), 
-                                                signal.action.toLowerCase(), 
+                                                'buy', 
                                                 strategy.params.buy.type,         
                                                 strategy.params.buy.time_in_force,            
                                                 strategy.params.buy.limit_price,             
@@ -216,54 +275,36 @@ class LiveMarketListener {
                                                 /// order id
                                                 strategy.id+'-'+uuidv4()
                                               );            
-        }
-        catch (error) {
-          logger.error(`[handleTradeSignal] Errore durante richiesta apertura ordine ad Alpaca ${error.message} ${this.alpacaAPIServer}`);
-          throw new error(`[handleTradeSignal] Errore durante Inserimento ordine ${error.message} ${this.alpacaAPIServer}`);
-        }
+    }
+    catch (error) {
+        logger.error(`[BUY] Errore durante richiesta apertura ordine ad Alpaca ${error.message} ${this.alpacaAPIServer}`);
+        return;
+    }
 
-      try {
-          // Inserisco l'ordine nella tabella ordini fatti 
-          logger.trace(`[handleTradeSignal] Ricevuta risposta ${JSON.stringify(orderRes.data)} inserisco nel DB richiamando ${this.dbManagerUrl}/insertOrder`);
-          await axios.post(`${this.dbManagerUrl}/insertOrder`, orderRes.data);
-        }
-        catch (error) {
-          logger.error(`[handleTradeSignal] Errore durante Inserimento ordine  ${error.message} ${JSON.stringify(orderRes.data)}`);
-          throw new error(`[handleTradeSignal] Errore durante Inserimento ordine  ${error.message} ${JSON.stringify(orderRes.data)}`);
-        }
+    return orderRes;
+  }
 
-      try {
-        //Aggiorno con il capitale impegnato per questo ordine
-        logger.trace(`[handleTradeSignal] Aggiorno la tabella Strategies con i capitali utilizzati ${this.dbManagerUrl}/updateStrategyCapitalAndOrders`);
-        await axios.post(`${this.dbManagerUrl}/updateStrategyCapitalAndOrders`, {id :strategy.id, openOrders: Math.floor(evalResult.grantedAmount / bar.c) * bar.c});
-      }
-      catch (error) {
-          logger.error(`[handleTradeSignal] Errore durante update capitale nella tabella strategies ${error.message}`);
-          throw new error(`[handleTradeSignal] Errore durante update capitale nella tabella strategies ${error.message}`);
-      }
+  async handleTradeSignal(signal, strategy, bar) {
+    logger.trace(`[handleTradeSignal] Ricevuto segnale ${signal.action} su strategia ${JSON.stringify(strategy)} con bar ${JSON.stringify(bar)}`);
+    let orderRes;
 
-      try{
-        //Aggiungo la transazione nella tabella transazioni
-        logger.trace(`[handleTradeSignal] Aggiungo record a tabella transazioni ${this.dbManagerUrl}/insertBuyTransaction ${strategy.id} ${JSON.stringify(bar)} ${Math.floor(evalResult.grantedAmount / bar.c) * bar.c} ${bar.c} 'BUY ORDER'}`);
-        await axios.post(`${this.dbManagerUrl}/insertBuyTransaction`,{scenarioId:strategy.id, element:bar, capitaleInvestito:Math.floor(evalResult.grantedAmount / bar.c) * bar.c, prezzo:bar.c, operation:'BUY ORDER', MA:strategy.params.MA, orderId:orderRes.data.order.id, NumAzioni:Math.floor(evalResult.grantedAmount / bar.c) });
-      }
-      catch(error) {
-        logger.error(`[handleTradeSignal] Errore durante inserimento nella tabella transazioni ${error.message}`);
-        throw new error(`[handleTradeSignal] Errore durante inserimento nella tabella transazioni ${error.message}`);
-      }
+      const evalResult = await this.richiestaCapitale(bar, strategy);
+      if(!evalResult)
+        return;
 
-      try{
-        // Invio cominicazione via email
-        logger.trace(`[handleTradeSignal] Invio email richiamando ${this.alertingManagerUrl}/email/send Eseguito ${signal.action} su ${strategy.symbol} a ${bar.c} dettaglio ${JSON.stringify(orderRes.data)}`);
-        await axios.post(`${this.alertingManagerUrl}/email/send`, {
-            to: 'expovin@gmail.com',
-            subject: `Ordine ${signal.action} ${strategy.symbol}`,
-            body: `Eseguito ${signal.action} su ${strategy.symbol} a ${bar.c} executionId ${orderRes.data.execution_id} orderId ${orderRes.data.order.id} capitale ${Math.floor(evalResult.grantedAmount / bar.c)}`
-        });
-      } catch (err) {
-        logger.error(`[handleTradeSignal] Errore durante invio email `, err.message);
-        throw new error(`[handleTradeSignal] Errore durante invio email ${err.message}`);
-      }
+      if(signal.action === 'BUY')
+        orderRes = await this.BUY(strategy, evalResult, bar);
+
+      await this.addOrdertoOrderTable(orderRes);
+
+      await this.aggiungiTransazione(strategy, evalResult,bar,orderRes);
+
+      await this.aggiornaCapitaliImpegnati(evalResult,bar, strategy);
+
+      await this.invioComunicazione(signal, strategy, orderRes,bar, evalResult);
+
+
+
   }
 
   pause() {
