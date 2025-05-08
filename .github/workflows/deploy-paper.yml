@@ -71,7 +71,7 @@ jobs:
         TITLE=$(jq -r .note release.json)
 
         # Genera le note
-        bash scripts/generate-release-notes.sh
+        bash ./generate-release-notes.sh
 
         # Crea la release (gh CLI deve essere installata)
         gh release create "$TAG" \
