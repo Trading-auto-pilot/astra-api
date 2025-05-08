@@ -1,5 +1,5 @@
 #!/bin/bash
-#
+
 echo "🧪 Test estrazione versione da file .js"
 
 for service in DBManager cacheManager capitalManager alertingService strategyUtils LiveMarketListener orderListner orderSimulator marketsimulator strategies/sma; do
