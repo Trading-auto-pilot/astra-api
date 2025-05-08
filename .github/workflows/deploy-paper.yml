@@ -11,6 +11,7 @@ env:
   GCP_HOST: ${{ secrets.GCP_HOST }}
   GCP_USER: ${{ secrets.GCP_USER }}
   GH_TOKEN: ${{ secrets.GH_TOKEN }}
+  SKIP_PUSH: true
 
 jobs:
   build-and-deploy:
@@ -52,9 +53,11 @@ jobs:
           version=$(grep MODULE_VERSION "$version_file" | head -n1 | sed -E "s/.*=[[:space:]]*['\"']([^'\"']+)['\"'].*/\1/" | tr -d '\r')
           echo "🔧 Building $name from $version_file with version $version..."
 
-          docker build -t $DOCKERHUB_USERNAME/$name:latest -t $DOCKERHUB_USERNAME/$name:$version -f $service/Dockerfile .
-          docker push $DOCKERHUB_USERNAME/$name:latest
-          docker push $DOCKERHUB_USERNAME/$name:$version
+          if [ "$SKIP_PUSH" != "true" ]; then
+            docker build -t $DOCKERHUB_USERNAME/$name:latest -t $DOCKERHUB_USERNAME/$name:$version -f $service/Dockerfile .
+            docker push $DOCKERHUB_USERNAME/$name:latest
+            docker push $DOCKERHUB_USERNAME/$name:$version
+          fi
         done
 
     - name: Setup SSH key
@@ -64,7 +67,7 @@ jobs:
 
     - name: Deploy updated containers to GCP VM
       run: |
-        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << 'EOF'
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "GH_TOKEN=${GH_TOKEN} bash -s" <<'EOF'
           mkdir -p ~/deploy
           cd ~/deploy
           echo "📥 Scarico docker-compose.yml..."
