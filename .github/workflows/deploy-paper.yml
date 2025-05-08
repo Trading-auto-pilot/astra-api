@@ -64,8 +64,10 @@ jobs:
     - name: Deploy updated containers to GCP VM
       run: |
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << 'EOF'
-          cd ~/project
+          mkdir -p ~/deploy
+          cd ~/deploy
+          curl -s -o docker-compose.yml https://raw.githubusercontent.com/expovin/trading-system/PAPER/docker-compose.yml
           docker compose down
           docker compose pull
           docker compose up -d --remove-orphans
-        EOF
+        EO
