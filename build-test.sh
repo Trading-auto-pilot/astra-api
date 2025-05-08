@@ -1,36 +1,4 @@
-name: CI/CD for PAPER Branch
-
-on:
-  push:
-    branches:
-      - PAPER
-
-env:
-  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-  DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-  GCP_HOST: ${{ secrets.GCP_HOST }}
-  GCP_USER: ${{ secrets.GCP_USER }}
-
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    environment: trading-system-gcp
-
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    - name: Login to DockerHub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ env.DOCKERHUB_USERNAME }}
-        password: ${{ env.DOCKERHUB_TOKEN }}
-
-    - name: Build and push all Docker images
-      run: |
+#!/bin/bash
         for service in DBManager cacheManager capitalManager alertingService strategyUtils LiveMarketListener orderListner orderSimulator marketsimulator strategies/sma; do
           name=$(basename "$service" | tr '[:upper:]' '[:lower:]')
 
@@ -55,17 +23,3 @@ jobs:
           docker push $DOCKERHUB_USERNAME/$name:latest
           docker push $DOCKERHUB_USERNAME/$name:$version
         done
-
-    - name: Setup SSH key
-      uses: webfactory/ssh-agent@v0.8.0
-      with:
-        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-    - name: Deploy updated containers to GCP VM
-      run: |
-        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << 'EOF'
-          cd ~/project
-          docker compose down
-          docker compose pull
-          docker compose up -d --remove-orphans
-        EOF
