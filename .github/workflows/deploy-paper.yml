@@ -10,6 +10,7 @@ env:
   DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
   GCP_HOST: ${{ secrets.GCP_HOST }}
   GCP_USER: ${{ secrets.GCP_USER }}
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
 jobs:
   build-and-deploy:
@@ -66,7 +67,7 @@ jobs:
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << 'EOF'
           mkdir -p ~/deploy
           cd ~/deploy
-          curl -s -o docker-compose.yml https://raw.githubusercontent.com/expovin/trading-system/refs/heads/PAPER/docker-compose.yml
+          curl -s -H "Authorization: token $GH_TOKEN" -o docker-compose.yml https://raw.githubusercontent.com/expovin/trading-system/refs/heads/PAPER/docker-compose.yml
           docker compose down
           docker compose pull
           docker compose up -d --remove-orphans
