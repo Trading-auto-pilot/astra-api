@@ -157,12 +157,14 @@ jobs:
 
     - name: Crea shared cache volume se non esistente
       run: |
-        if ! docker volume ls --format '{{.Name}}' | grep -q '^shared_cache_data$'; then
-          echo "🛠️  Creo volume condiviso shared_cache_data..."
-          docker volume create shared_cache_data
-        else
-          echo "✅ Volume shared_cache_data già esistente, proseguo..."
-        fi
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST <<EOF
+          if ! docker volume ls --format '{{.Name}}' | grep -q '^shared_cache_data$'; then
+            echo "🛠️  Creo volume condiviso shared_cache_data..."
+            docker volume create shared_cache_data
+          else
+            echo "✅ Volume shared_cache_data già esistente, proseguo..."
+          fi
+        EOF
 
 
     - name: Start all other container
