@@ -1,5 +1,5 @@
 #!/bin/bash
-
+#
 # Controlla che sia stato passato un nome
 if [ -z "$1" ]; then
   echo "Uso: $0 <nome_servizio_docker_compose>"
