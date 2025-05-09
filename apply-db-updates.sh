@@ -9,7 +9,7 @@ fi
 # --- Configura qui i tuoi parametri locali ---
 #ENV_NAME="LOCAL"
 DB_HOST="127.0.0.1"
-DB_PORT="3306"
+DB_PORT="3316"
 #DB_USER="trading_user"
 #DB_PASS="trading_pass"
 DB_NAME="Trading"
