@@ -102,7 +102,7 @@ jobs:
       run: |
         scp -o StrictHostKeyChecking=no .env $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/.env
 
-    - name: Deploy updated containers to GCP VM
+    - name: Deploy updated DB
       run: |
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "GH_TOKEN=${GH_TOKEN} bash -s" <<'EOF'
           mkdir -p ~/deploy
@@ -121,13 +121,13 @@ jobs:
 
           docker compose down
           docker compose pull
-          docker compose --env-file .env up -d --remove-orphans mysql
+          docker compose --env-file .env up -d --remove-orphans ${ENV_NAME}_mysql
 
           max_attempts=10
           attempt=1
 
           echo "⏳ Attendo che mysql-db sia healthy..."
-          until docker compose ps --filter "status=running" | grep mysql | grep healthy; do
+          until docker compose ps --filter "status=running" | grep ${ENV_NAME}_mysql | grep healthy; do
             if [ $attempt -ge $max_attempts ]; then
               echo "❌ ${CONTAINER} non è diventato healthy dopo ${max_attempts} tentativi. Interrompo."
               exit 1
@@ -137,13 +137,22 @@ jobs:
             ((attempt++))
           done
           echo "✅ mysql-db è healthy" 
-
-          echo "🛠️  Applico modifiche al DB..."
-          docker compose exec -T mysql mysql -utrading_user -ptrading_pass Trading < db_update.sql
-
-          docker compose --env-file .env up -d --remove-orphans
-
         EOF
+
+    - name: Copy DB migration scripts to server
+      run: |
+        scp -o StrictHostKeyChecking=no -r db apply-db-updates.sh $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/
+
+    - name: Run DB migrations on server
+      run: |
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << EOF
+          cd ~/deploy
+          bash apply-db-updates.sh ${{ github.ref_name }}
+        EOF
+
+    - name: Start all other container
+      run: |
+        docker compose --env-file .env up -d --remove-orphans
 
     - name: Cleanup .env on server
       run: |
