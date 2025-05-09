@@ -122,15 +122,15 @@ jobs:
           echo "Environment: $ENV_NAME"
           echo "GitHub Token Length: ${#GH_TOKEN}"
 
-          docker compose down
+          docker compose -p $ENV_NAME down
           docker compose pull
-          docker compose --env-file .env up -d --remove-orphans ${ENV_NAME}_mysql
+          docker compose --env-file .env -p $ENV_NAME up -d --remove-orphans mysql
 
           max_attempts=10
           attempt=1
 
-          echo "⏳ Attendo che ${ENV_NAME}_mysql sia healthy..."
-          until docker compose ps --filter "status=running" | grep ${ENV_NAME}_mysql | grep healthy; do
+          echo "⏳ Attendo che mysql sia healthy..."
+          until docker compose ps --filter "status=running" | grep mysql | grep healthy; do
             if [ $attempt -ge $max_attempts ]; then
               echo "❌ ${CONTAINER} non è diventato healthy dopo ${max_attempts} tentativi. Interrompo."
               exit 1
@@ -139,7 +139,7 @@ jobs:
             sleep 2
             ((attempt++))
           done
-          echo "✅ ${ENV_NAME}_mysql è healthy" 
+          echo "✅ mysql è healthy" 
         EOF
 
     - name: Copy DB migration scripts to server
@@ -153,9 +153,19 @@ jobs:
           bash apply-db-updates.sh ${{ github.ref_name }}
         EOF
 
+    - name: Crea shared cache volume se non esistente
+      run: |
+        if ! docker volume ls --format '{{.Name}}' | grep -q '^shared_cache_data$'; then
+          echo "🛠️  Creo volume condiviso shared_cache_data..."
+          docker volume create shared_cache_data
+        else
+          echo "✅ Volume shared_cache_data già esistente, proseguo..."
+        fi
+
+
     - name: Start all other container
       run: |
-        docker compose --env-file .env up -d --remove-orphans
+        docker compose --env-file .env -p $ENV_NAME up -d --remove-orphans
 
     - name: Cleanup .env on server
       run: |
