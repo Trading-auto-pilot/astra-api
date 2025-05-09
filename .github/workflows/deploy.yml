@@ -119,6 +119,9 @@ jobs:
             exit 1
           fi
 
+          echo "Environment: $ENV_NAME"
+          echo "GitHub Token Length: ${#GH_TOKEN}"
+
           docker compose down
           docker compose pull
           docker compose --env-file .env up -d --remove-orphans ${ENV_NAME}_mysql

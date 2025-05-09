@@ -304,7 +304,8 @@ services:
       retries: 5
 
 volumes:
-  ${ENV_NAME}_mysql_data:
+  mysql_data:
+    name: ${ENV_NAME}_mysql_data
   cache_data:
 
 networks:
