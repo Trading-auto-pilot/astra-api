@@ -304,7 +304,6 @@ services:
 
 volumes:
   mysql_data:
-    name: mysql_data
   shared_cache_data:
     external: true
 
