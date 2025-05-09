@@ -119,12 +119,14 @@ jobs:
             exit 1
           fi
 
+          LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
           echo "Environment: $ENV_NAME"
           echo "GitHub Token Length: ${#GH_TOKEN}"
+          echo "Project Name: ${LOWER_PROJECT_NAME}"
 
-          docker compose -p $ENV_NAME down
+          docker compose -p "$LOWER_PROJECT_NAME" down
           docker compose pull
-          docker compose --env-file .env -p $ENV_NAME up -d --remove-orphans mysql
+          docker compose --env-file .env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans mysql
 
           max_attempts=10
           attempt=1
@@ -165,7 +167,7 @@ jobs:
 
     - name: Start all other container
       run: |
-        docker compose --env-file .env -p $ENV_NAME up -d --remove-orphans
+        docker compose --env-file .env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans
 
     - name: Cleanup .env on server
       run: |
