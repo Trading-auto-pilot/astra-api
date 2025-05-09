@@ -163,7 +163,6 @@ jobs:
         else
           echo "✅ Volume shared_cache_data già esistente, proseguo..."
         fi
-        EOF
 
 
     - name: Start all other container
