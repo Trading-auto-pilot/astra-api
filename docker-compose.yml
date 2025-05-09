@@ -13,7 +13,7 @@ version: '3.8'
 #   ENV_ORDERS : ${{ vars.ENV_ORDERS }}
 #   ENV_TRADING : ${{ vars.ENV_TRADING }}
 #   LOG_LEVEL : ${{ vars.LOG_LEVEL }}
-#
+
 
 services:
   mysql:
