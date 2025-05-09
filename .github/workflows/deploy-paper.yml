@@ -123,10 +123,18 @@ jobs:
           docker compose pull
           docker compose --env-file .env up -d --remove-orphans mysql
 
+          max_attempts=10
+          attempt=1
+
           echo "⏳ Attendo che mysql-db sia healthy..."
-          until docker compose ps --filter "status=running" | grep mysql-db | grep healthy; do
-            echo "⌛ mysql-db non ancora pronto, riprovo tra 2s..."
+          until docker compose ps --filter "status=running" | grep mysql | grep healthy; do
+            if [ $attempt -ge $max_attempts ]; then
+              echo "❌ ${CONTAINER} non è diventato healthy dopo ${max_attempts} tentativi. Interrompo."
+              exit 1
+            fi
+            echo "⌛ ${CONTAINER} non ancora pronto, tentativo ${attempt}/${max_attempts}, riprovo tra 2s..."
             sleep 2
+            ((attempt++))
           done
           echo "✅ mysql-db è healthy" 
 
