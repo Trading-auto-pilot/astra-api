@@ -3,7 +3,8 @@ name: CI/CD for PAPER Branch
 on:
   push:
     branches:
-      - ${{ github.ref_name }}
+      - PAPER
+      - LIVE
 
 env:
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
