@@ -104,7 +104,7 @@ jobs:
 
     - name: Deploy updated DB
       run: |
-        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "GH_TOKEN=${GH_TOKEN} bash -s" <<'EOF'
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} GH_TOKEN=${GH_TOKEN} bash -s" <<'EOF'
           mkdir -p ~/deploy
           cd ~/deploy
           echo "📥 Scarico docker-compose.yml..."
@@ -126,7 +126,7 @@ jobs:
           max_attempts=10
           attempt=1
 
-          echo "⏳ Attendo che mysql-db sia healthy..."
+          echo "⏳ Attendo che ${ENV_NAME}_mysql sia healthy..."
           until docker compose ps --filter "status=running" | grep ${ENV_NAME}_mysql | grep healthy; do
             if [ $attempt -ge $max_attempts ]; then
               echo "❌ ${CONTAINER} non è diventato healthy dopo ${max_attempts} tentativi. Interrompo."
@@ -136,7 +136,7 @@ jobs:
             sleep 2
             ((attempt++))
           done
-          echo "✅ mysql-db è healthy" 
+          echo "✅ ${ENV_NAME}_mysql è healthy" 
         EOF
 
     - name: Copy DB migration scripts to server
