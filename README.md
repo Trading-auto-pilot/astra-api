@@ -1,5 +1,5 @@
 # 🧭 Progetto Microservizi – Trading Automation
-
+#
 Questo repository contiene l'infrastruttura completa per un sistema di trading automatizzato basato su microservizi. Ogni servizio è containerizzato con Docker e orchestrato tramite `docker-compose`.
 
 ## 🧱 Servizi Inclusi
