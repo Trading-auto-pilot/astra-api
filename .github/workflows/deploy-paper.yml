@@ -3,7 +3,7 @@ name: CI/CD for PAPER Branch
 on:
   push:
     branches:
-      - PAPER
+      - ${{ github.ref_name }}
 
 env:
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -17,7 +17,7 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    environment: PAPER
+    environment: ${{ github.ref_name }}
 
     steps:
     - name: Checkout repository
@@ -83,6 +83,24 @@ jobs:
             --repo $GITHUB_REPOSITORY
           fi
 
+    - name: Generate .env for server
+      run: |
+        echo "LOG_LEVEL=${{ vars.LOG_LEVEL }}" > .env
+        echo "ENV_NAME=${{ github.ref_name }}" >> .env
+        echo "MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}" >> .env
+        echo "MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}" >> .env
+        echo "MYSQL_DATABASE=${{ vars.MYSQL_DATABASE }}" >> .env
+        echo "MYSQL_USER=${{ vars.MYSQL_USER }}" >> .env
+        echo "ALPACA_MARKET_FEED=${{ vars.ALPACA_MARKET_FEED }}" >> .env
+        echo "ENV_MARKET=${{ vars.ENV_MARKET }}" >> .env
+        echo "ENV_ORDERS=${{ vars.ENV_ORDERS }}" >> .env
+        echo "ENV_TRADING=${{ vars.ENV_TRADING }}" >> .env
+        echo "NETWORK=${{ vars.NETWORK }}" >> .env
+
+    - name: Copy .env to server
+      run: |
+        scp -o StrictHostKeyChecking=no .env $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/.env
+
     - name: Deploy updated containers to GCP VM
       run: |
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "GH_TOKEN=${GH_TOKEN} bash -s" <<'EOF'
@@ -102,7 +120,7 @@ jobs:
 
           docker compose down
           docker compose pull
-          docker compose up -d --remove-orphans mysql
+          docker compose --env-file .env up -d --remove-orphans mysql
 
           echo "⏳ Attendo che mysql-db sia healthy..."
           until docker compose ps --filter "status=running" | grep mysql-db | grep healthy; do
@@ -114,6 +132,12 @@ jobs:
           echo "🛠️  Applico modifiche al DB..."
           docker compose exec -T mysql mysql -utrading_user -ptrading_pass Trading < db_update.sql
 
-          docker compose up -d --remove-orphans
+          docker compose --env-file .env up -d --remove-orphans
 
+        EOF
+
+    - name: Cleanup .env on server
+      run: |
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << 'EOF'
+          rm -f ~/deply/.env
         EOF

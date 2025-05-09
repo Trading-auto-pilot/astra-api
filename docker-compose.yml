@@ -1,19 +1,34 @@
 version: '3.8'
 
+# env:
+#   ENV_NAME: ${{ github.ref_name }}
+#   #secrets
+#   MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+#   MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+#   #variabili
+#   MYSQL_DATABASE: ${{ vars.MYSQL_DATABASE }}
+#   MYSQL_USER : ${{ vars.MYSQL_USER }}
+#   ALPACA_MARKET_FEED : ${{ vars.ALPACA_MARKET_FEED }}
+#   ENV_MARKET : ${{ vars.ENV_MARKET }}
+#   ENV_ORDERS : ${{ vars.ENV_ORDERS }}
+#   ENV_TRADING : ${{ vars.ENV_TRADING }}
+#   LOG_LEVEL : ${{ vars.LOG_LEVEL }}
+#   NETWORK : ${{ github.ref_name }}-net
+
 services:
   mysql:
     image: mysql:8.0
-    container_name: mysql-db
+    container_name: ${ENV_NAME}_mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: example
-      MYSQL_DATABASE: Trading
-      MYSQL_USER: trading_user
-      MYSQL_PASSWORD: trading_pass
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     ports:
       - "3316:3306"
     networks:
-      - trading-net
+      - ${NETWORK}
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
@@ -24,7 +39,7 @@ services:
 
   dbmanager:
     image: expovin/dbmanager:1.0
-    container_name: dbmanager
+    container_name: ${ENV_NAME}_dbmanager
     build:
       context: .
       dockerfile: DBManager/Dockerfile
@@ -32,13 +47,13 @@ services:
     ports:
       - "3002:3002"
     networks:
-      - trading-net
+      - ${NETWORK}
     environment:
-      - DB_HOST=mysql-db
-      - DB_USER=trading_user
-      - DB_PASSWORD=trading_pass
-      - DB_NAME=Trading
-      - LOG_LEVEL=trace
+      - DB_HOST=${ENV_NAME}_mysql
+      - DB_USER=${MYSQL_USER}
+      - DB_PASSWORD=${MYSQL_PASSWORD}
+      - DB_NAME=${MYSQL_DATABASE}
+      - LOG_LEVEL=${LOG_LEVEL}
     depends_on:
       mysql:
         condition: service_healthy
@@ -50,7 +65,7 @@ services:
 
   cachemanager:
     image: expovin/cachemanager:1.0
-    container_name: cachemanager
+    container_name: ${ENV_NAME}_cachemanager
     build:
       context: .
       dockerfile: cacheManager/Dockerfile
@@ -58,12 +73,12 @@ services:
     ports:
       - "3006:3006"
     networks:
-      - trading-net
+      - ${NETWORK}
     volumes:
       - cache_data:/app/cache
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
-      - LOG_LEVEL=trace
+      - LOG_LEVEL=${LOG_LEVEL}
     depends_on:
       dbmanager:
         condition: service_healthy
@@ -76,7 +91,7 @@ services:
 
   alertingservice:
     image: expovin/alertingservice:1.0
-    container_name: alertingservice
+    container_name: ${ENV_NAME}_alertingservice
     build:
       context: .
       dockerfile: alertingService/Dockerfile
@@ -84,13 +99,13 @@ services:
     ports:
       - "3008:3008"
     networks:
-      - trading-net
+      - ${NETWORK}
     depends_on:
       dbmanager:
         condition: service_healthy
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
-      - LOG_LEVEL=trace
+      - LOG_LEVEL=${LOG_LEVEL}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3008/health"]
       interval: 10s
@@ -99,7 +114,7 @@ services:
 
   capitalmanager:
     image: expovin/capitalmanager:1.0
-    container_name: capitalmanager
+    container_name: ${ENV_NAME}_capitalmanager
     build:
       context: .
       dockerfile: capitalManager/Dockerfile
@@ -107,14 +122,14 @@ services:
     ports:
       - "3009:3009"
     networks:
-      - trading-net
+      - ${NETWORK}
     depends_on:
       dbmanager:
         condition: service_healthy
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
-      - LOG_LEVEL=trace
-      - ENV_ORDERS=PAPER
+      - LOG_LEVEL=${LOG_LEVEL}
+      - ENV_ORDERS=${ENV_ORDERS}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3009/health"]
       interval: 10s
@@ -124,7 +139,7 @@ services:
 
   strategyutils:
     image: expovin/strategyutils:1.0
-    container_name: strategyutils
+    container_name: ${ENV_NAME}_strategyutils
     build:
       context: .
       dockerfile: strategyUtils/Dockerfile
@@ -132,10 +147,10 @@ services:
     ports:
       - "3007:3007"
     networks:
-      - trading-net
+      - ${NETWORK}
     environment:
       - CACHEMANAGER_URL=http://cachemanager:3006
-      - LOG_LEVEL=trace
+      - LOG_LEVEL=${LOG_LEVEL}
     depends_on:
       cachemanager:
         condition: service_healthy
@@ -149,7 +164,7 @@ services:
 
   livemarketlistener:
     image: expovin/livemarketlistener:1.0
-    container_name: livemarketlistener
+    container_name: ${ENV_NAME}_livemarketlistener
     build:
       context: .
       dockerfile: LiveMarketListener/Dockerfile
@@ -157,7 +172,7 @@ services:
     ports:
       - "3012:3012"
     networks:
-      - trading-net
+      - ${NETWORK}
     depends_on:
       cachemanager:
         condition: service_healthy
@@ -176,18 +191,18 @@ services:
       ordersimulator:
         condition: service_healthy
     environment:
-      - LOG_LEVEL=trace
+      - LOG_LEVEL=${LOG_LEVEL}
       - DBMANAGER_URL=http://dbmanager:3002
-      - ENV_MARKET=LOCAL
-      - ENV_ORDERS=LOCAL
-      - FEED=iex
+      - ENV_MARKET=${ENV_MARKET}
+      - ENV_ORDERS=${ENV_ORDERS}
+      - FEED=${ALPACA_MARKET_FEED}
       - SMA_URL=http://sma:3010
       - CAPITAL_MANAGER_URL=http://capitalmanager:3009
       - ALERTINGMANAGER_URL=http://alertingservice:3008
 
   orderlistner:
     image: expovin/orderlistner:1.0
-    container_name: orderlistner
+    container_name: ${ENV_NAME}_orderlistner
     build:
       context: .
       dockerfile: orderListner/Dockerfile
@@ -195,7 +210,7 @@ services:
     ports:
       - "3011:3011"
     networks:
-      - trading-net
+      - ${NETWORK}
     depends_on:
       cachemanager:
         condition: service_healthy
@@ -208,16 +223,16 @@ services:
       ordersimulator:
         condition: service_healthy
     environment:
-      - LOG_LEVEL=trace
+      - LOG_LEVEL=${LOG_LEVEL}
       - DBMANAGER_URL=http://dbmanager:3002
-      - ENV_TRADING=LOCAL
+      - ENV_TRADING=${ENV_TRADING}
       - ALERTINGMANAGER_URL=http://alertingservice:3008
 
 
 
   sma:
     image: expovin/sma:1.0
-    container_name: sma
+    container_name: ${ENV_NAME}_sma
     build:
       context: .
       dockerfile: strategies/sma/Dockerfile
@@ -225,10 +240,10 @@ services:
     ports:
       - "3010:3010"
     networks:
-      - trading-net
+      - ${NETWORK}
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
-      - LOG_LEVEL=trace
+      - LOG_LEVEL=${LOG_LEVEL}
     depends_on:
       dbmanager:
         condition: service_healthy
@@ -243,7 +258,7 @@ services:
   # Sezione docker per la simulazione
   ordersimulator:
     image: expovin/ordersimulator:1.0
-    container_name: ordersimulator
+    container_name: ${ENV_NAME}_ordersimulator
     build:
       context: .
       dockerfile: orderSimulator/Dockerfile
@@ -251,9 +266,9 @@ services:
     ports:
       - "3004:3004"
     networks:
-      - trading-net
+      - ${NETWORK}
     environment:
-      - LOG_LEVEL=trace
+      - LOG_LEVEL=${LOG_LEVEL}
       - DBMANAGER_URL=http://dbmanager:3002
     depends_on:
       dbmanager:
@@ -267,7 +282,7 @@ services:
 
   marketsimulator:
     image: expovin/marketsimulator:1.0
-    container_name: marketsimulator
+    container_name: ${ENV_NAME}_marketsimulator
     build:
       context: .
       dockerfile: marketsimulator/Dockerfile
@@ -277,7 +292,7 @@ services:
     networks:
       - trading-net
     environment:
-      - LOG_LEVEL=trace
+      - LOG_LEVEL=${LOG_LEVEL}
       - DBMANAGER_URL=http://dbmanager:3002
     depends_on:
       dbmanager:
@@ -294,4 +309,5 @@ volumes:
 
 networks:
   trading-net:
+    name:  ${NETWORK}
     driver: bridge
