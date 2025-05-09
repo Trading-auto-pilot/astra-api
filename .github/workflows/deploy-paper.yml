@@ -12,6 +12,7 @@ env:
   GCP_USER: ${{ secrets.GCP_USER }}
   GH_TOKEN: ${{ secrets.GH_TOKEN }}
   SKIP_PUSH: true
+  CREATE_RELEASE: false
 
 jobs:
   build-and-deploy:
@@ -67,18 +68,20 @@ jobs:
 
     - name: Creazione release su github
       run: |
-        TAG=$(jq -r .version release.json)
-        TITLE=$(jq -r .note release.json)
+        if [ "$CREATE_RELEASE" != "false" ]; then
+          TAG=$(jq -r .version release.json)
+          TITLE=$(jq -r .note release.json)
 
-        # Genera le note
-        bash ./generate-release-notes.sh
+          # Genera le note
+          bash ./generate-release-notes.sh
 
-        # Crea la release (gh CLI deve essere installata)
-        gh release create "$TAG" \
-          --title "$TITLE" \
-          --notes-file release-notes.md \
-          --target PAPER \
-          --repo $GITHUB_REPOSITORY
+          # Crea la release (gh CLI deve essere installata)
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes-file release-notes.md \
+            --target PAPER \
+            --repo $GITHUB_REPOSITORY
+          fi
 
     - name: Deploy updated containers to GCP VM
       run: |
