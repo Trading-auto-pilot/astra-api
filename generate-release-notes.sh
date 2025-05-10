@@ -8,7 +8,7 @@ echo "============================================"
 echo "🚀 Riepilogo Release Globale del Progetto"
 echo "============================================"
 
-global_release="./Release.json"
+global_release="./release.json"
 
 if [[ -f "$global_release" ]]; then
   global_version=$(grep '"version"' "$global_release" | sed -E 's/.*: *"?([^",]+)"?.*/\1/' | tr -d '\r')

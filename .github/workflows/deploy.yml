@@ -82,6 +82,8 @@ jobs:
             --notes-file release-notes.md \
             --target PAPER \
             --repo $GITHUB_REPOSITORY
+          else
+            echo "🚫 Skip: Creazione release abilitata solo su LIVE o CREATE_RELEASE=false"
           fi
 
     - name: Generate .env for server
