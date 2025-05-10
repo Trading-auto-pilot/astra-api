@@ -15,7 +15,8 @@ OUTPUT_FILE="$OUTPUT_DIR/tradingDb-${DB_NAME}-${TIMESTAMP}.sql"
 
 # Dump del database
 echo "📦 Dump del database '$DB_NAME' su porta $DB_PORT → $OUTPUT_FILE"
-mysqldump --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASS" --skip-lock-tables --extended-insert "$DB_NAME" > "$OUTPUT_FILE"
+#mysqldump --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASS" --skip-lock-tables --extended-insert "$DB_NAME" > "$OUTPUT_FILE"
+mysqldump --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASS" --skip-lock-tables --no-create-info --extended-insert "$DB_NAME" > "$OUTPUT_DIR/tradingDb-${DB_NAME}-${TIMESTAMP}-data.sql"
 
 # Verifica esito
 if [ $? -eq 0 ]; then

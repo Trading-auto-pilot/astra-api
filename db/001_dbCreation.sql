@@ -158,17 +158,33 @@ INSERT INTO Trading.bots (name,ver,status,date_release,totalProfitLoss,container
 INSERT INTO Trading.strategies (idBot,idSymbol,status,params) VALUES
 	 (1,1,'active','{"MA":25, "SL":0.05, "TP":0.1, "TF":"15Min"}');
 
-INSERT INTO Trading.settings (param_key,param_value,active) VALUES
-	 ('ALPACA-MARKET-HOST','data.alpaca.markets',1),
-	 ('APCA-API-KEY-ID','PKNS94MR3ZI0U7AFMEBS',1),
-	 ('APCA-API-SECRET-KEY','Sm2wcfjDQZo0aNGoofSWFSDESWgdVhPD6QczFx0R',1),
-	 ('ALPACA-WSS-IEX','iex',1),
-	 ('ALPACA-WSS-SIP','sip',1),
-	 ('ALPACA-WSS-TEST','test',1),
-	 ('ALPACA-WSS-MARKET-STREAM-BASE','wss://stream.data.alpaca.markets/v2/',1),
-	 ('ALPACA-WSS-MARKET-SANDBOX-BASE','wss://stream.data.sandbox.alpaca.markets/v2/',1),
-	 ('ALPACA-WSS-STREAM-BASE','wss://api.alpaca.markets/stream',1),
-	 ('ALPACA-WSS-PAPER-STREAM-BASE','wss://paper-api.alpaca.markets/stream',1);
+INSERT INTO `settings` VALUES 
+  (11,'ALPACA-MARKET-HOST','data.alpaca.markets',1),
+  (12,'APCA-API-KEY-ID','PKNS94MR3ZI0U7AFMEBS',1),
+  (13,'APCA-API-SECRET-KEY','Sm2wcfjDQZo0aNGoofSWFSDESWgdVhPD6QczFx0R',1),
+  (14,'ALPACA-WSS-IEX','iex',1),
+  (15,'ALPACA-WSS-SIP','sip',1),
+  (16,'ALPACA-WSS-TEST','test',1),
+  (17,'ALPACA-LIVE-MARKET','wss://stream.data.alpaca.markets/v2',1),
+  (18,'ALPACA-SANDBOX-MARKET','wss://stream.data.sandbox.alpaca.markets/v2',1),
+  (19,'ALPACA-LIVE-TRADING','wss://data.alpaca.markets/stream',1),
+  (20,'ALPACA-PAPER-TRADING','wss://paper.api.alpaca.markets/stream',1),
+  (21,'ALPACA-API-TIMEOUT','3000',1),
+  (22,'TF-DEFAULT','15Min',1),
+  (23,'ALPACA-HISTORICAL-FEED','sip',1),
+  (24,'ALPACA-MARKET-DATA-BASE','data.alpaca.markets',1),
+  (25,'SMTP_HOST','smtp.mail.me.com',1),
+  (26,'SMTP_PORT','587',1),
+  (27,'SMTP_USER','expovin@icloud.com',1),
+  (28,'SMTP_PASSWORD','brcl-szle-lanq-bfug',1),
+  (29,'SMTP_FROM','expovin@icloud.com',1),
+  (30,'ALPACA-PAPER-BASE','https://paper-api.alpaca.markets',1),
+  (31,'ALPACA-LIVE-BASE','https://data.alpaca.markets',1),
+  (32,'STREAM-SIMULATION-DELAY','5',1),
+  (33,'LOCAL-WS-STREAM-BASE','ws://marketsimulator:3003/',1),
+  (34,'ALPACA-LOCAL-MARKET','ws://marketsimulator:3003/v2',1),
+  (35,'ALPACA-LOCAL-TRADING','ws://ordersimulator:3004',1),
+  (36,'ALPACA-LOCAL-BASE','http://ordersimulator:3004',1);
 
 INSERT INTO Trading.Symbols (name) VALUES
 	 ('MSFT'),
