@@ -1,5 +1,5 @@
 #!/bin/bash
-#
+
 
 # Salva output in file temporaneo
 RELEASE_NOTES_FILE=release-notes.md
