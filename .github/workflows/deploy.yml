@@ -171,7 +171,7 @@ jobs:
       run: |
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST <<'EOF'
           cd ~/deploy
-          docker compose --env-file .env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans
+          docker compose --env-file .env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans --no-recreate
         EOF
 
     - name: Cleanup .env on server
