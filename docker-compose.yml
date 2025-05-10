@@ -38,7 +38,7 @@ services:
       retries: 10
 
   dbmanager:
-    image: expovin/dbmanager:1.0
+    image: expovin/dbmanager:${DBMANAGER_VERSION}
     container_name: dbmanager
     build:
       context: .
@@ -64,7 +64,7 @@ services:
       retries: 5
 
   cachemanager:
-    image: expovin/cachemanager:1.0
+    image: expovin/cachemanager:{CACHEMANAGER_VERSION}
     container_name: cachemanager
     build:
       context: .
@@ -90,7 +90,7 @@ services:
       start_period: 15s
 
   alertingservice:
-    image: expovin/alertingservice:1.0
+    image: expovin/alertingservice:{ALERTINGSERVICE_VERSION}
     container_name: alertingservice
     build:
       context: .
@@ -113,7 +113,7 @@ services:
       retries: 5
 
   capitalmanager:
-    image: expovin/capitalmanager:1.0
+    image: expovin/capitalmanager:{CAPITALMANAGER_VERSION}
     container_name: capitalmanager
     build:
       context: .
@@ -138,7 +138,7 @@ services:
       start_period: 15s
 
   strategyutils:
-    image: expovin/strategyutils:1.0
+    image: expovin/strategyutils:{STRATEGYUTILS_VERSION}
     container_name: strategyutils
     build:
       context: .
@@ -163,7 +163,7 @@ services:
       retries: 5
 
   livemarketlistener:
-    image: expovin/livemarketlistener:1.0
+    image: expovin/livemarketlistener:{LIVEMARKETLISTENER_VERSION}
     container_name: livemarketlistener
     build:
       context: .
@@ -201,7 +201,7 @@ services:
       - ALERTINGMANAGER_URL=http://alertingservice:3008
 
   orderlistner:
-    image: expovin/orderlistner:1.0
+    image: expovin/orderlistner:{ORDERLISTNER_VERSION}
     container_name: orderlistner
     build:
       context: .
@@ -231,7 +231,7 @@ services:
 
 
   sma:
-    image: expovin/sma:1.0
+    image: expovin/sma:{SMA_VERSION}
     container_name: sma
     build:
       context: .
@@ -257,7 +257,7 @@ services:
 
   # Sezione docker per la simulazione
   ordersimulator:
-    image: expovin/ordersimulator:1.0
+    image: expovin/ordersimulator:{ORDERSIMULATOR_VERSION}
     container_name: ordersimulator
     build:
       context: .
@@ -281,7 +281,7 @@ services:
 
 
   marketsimulator:
-    image: expovin/marketsimulator:1.0
+    image: expovin/marketsimulator:{MARKETSIMULATOR_VERSION}
     container_name: marketsimulator
     build:
       context: .

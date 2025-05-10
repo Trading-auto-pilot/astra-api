@@ -98,6 +98,40 @@ jobs:
         echo "ENV_TRADING=${{ vars.ENV_TRADING }}" >> .env
         echo "NETWORK=${{ vars.NETWORK }}" >> .env
 
+    - name: Add .env with container versions from JS files
+      run: |
+        echo "📝 Genero .env con le versioni dei container dai file .js..."
+
+        for service in DBManager cacheManager capitalManager alertingService strategyUtils LiveMarketListener orderListner orderSimulator MarketSimulator strategies/sma; do
+          name=$(basename "$service" | tr '[:upper:]' '[:lower:]')
+
+          version_file=$(find "$service" -type f -name "*.js" | while read -r f; do
+            file_base=$(basename "$f" .js | tr '[:upper:]' '[:lower:]')
+            if [[ "$file_base" == "$name" ]]; then
+              echo "$f"
+              break
+            fi
+          done)
+
+          if [[ -z "$version_file" ]]; then
+            echo "⚠️  Nessun file .js corrispondente trovato in $service, salto..."
+            continue
+          fi
+
+          version=$(grep MODULE_VERSION "$version_file" | sed -E "s/.*MODULE_VERSION *= *['\"]([^'\";]+)['\"].*/\1/" | tr -d '\r')
+
+          if [[ -n "$version" ]]; then
+            VAR_NAME=$(echo "${name}_version" | tr '[:lower:]' '[:upper:]')
+            echo "${VAR_NAME}=${version}" >> .env
+            echo "✅ Aggiunto ${VAR_NAME}=${version}"
+          else
+            echo "⚠️  Versione non trovata in $version_file, salto..."
+          fi
+        done
+
+        echo "✅ File .env generato:"
+        cat .env
+
     - name: Copy .env to server
       run: |
         scp -o StrictHostKeyChecking=no .env $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/.env
