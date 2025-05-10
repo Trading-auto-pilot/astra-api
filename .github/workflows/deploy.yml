@@ -126,7 +126,7 @@ jobs:
 
           docker compose -p "$LOWER_PROJECT_NAME" down
           docker compose pull
-          docker compose --env-file ~/deply/.env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans mysql
+          docker compose --env-file .env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans mysql
 
           max_attempts=10
           attempt=1
@@ -170,11 +170,11 @@ jobs:
     - name: Start all other container
       run: |
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST <<'EOF'
-          docker compose --env-file ~/deply/.env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans
+          docker compose --env-file /home/$GCP_USER/deploy/.env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans
         EOF
 
     - name: Cleanup .env on server
       run: |
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << 'EOF'
-          rm -f ~/deply/.env
+          rm -f /home/$GCP_USER/deploy/.env
         EOF
