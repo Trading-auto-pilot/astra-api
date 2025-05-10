@@ -13,7 +13,7 @@ env:
   GCP_USER: ${{ secrets.GCP_USER }}
   GH_TOKEN: ${{ secrets.GH_TOKEN }}
   SKIP_PUSH: true
-  CREATE_RELEASE: false
+  CREATE_RELEASE: true
 
 jobs:
   build-and-deploy:
