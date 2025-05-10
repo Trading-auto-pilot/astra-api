@@ -118,7 +118,7 @@ jobs:
             continue
           fi
 
-          version=$(grep MODULE_VERSION "$version_file" | sed -E "s/.*MODULE_VERSION *= *['\"]([^'\";]+)['\"].*/\1/" | tr -d '\r')
+          version=$(grep -oE "MODULE_VERSION *= *['\"]([^'\"]+)['\"]" "$version_file" | head -n1 | sed -E "s/.*['\"]([^'\"]+)['\"].*/\1/" | tr -d '\r')
 
           if [[ -n "$version" ]]; then
             VAR_NAME=$(echo "${name}_version" | tr '[:lower:]' '[:upper:]')
