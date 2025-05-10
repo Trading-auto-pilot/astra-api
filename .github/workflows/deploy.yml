@@ -155,16 +155,16 @@ jobs:
           bash apply-db-updates.sh ${{ github.ref_name }}
         EOF
 
-    - name: Crea shared cache volume se non esistente
-      run: |
-        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST <<EOF
-          if ! docker volume ls --format '{{.Name}}' | grep -q '^shared_cache_data$'; then
-            echo "🛠️  Creo volume condiviso shared_cache_data..."
-            docker volume create shared_cache_data
-          else
-            echo "✅ Volume shared_cache_data già esistente, proseguo..."
-          fi
-        EOF
+    # - name: Crea shared cache volume se non esistente
+    #   run: |
+    #     ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST <<EOF
+    #       if ! docker volume ls --format '{{.Name}}' | grep -q '^shared_cache_data$'; then
+    #         echo "🛠️  Creo volume condiviso shared_cache_data..."
+    #         docker volume create shared_cache_data
+    #       else
+    #         echo "✅ Volume shared_cache_data già esistente, proseguo..."
+    #       fi
+    #     EOF
 
 
     - name: Start all other container
