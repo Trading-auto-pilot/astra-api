@@ -50,7 +50,7 @@ for service in DBManager cacheManager capitalManager alertingService strategyUti
 
   version=$(grep MODULE_VERSION "$version_file" | sed -E "s/.*MODULE_VERSION *= *['\"]([^'\";]+)['\"].*/\1/" | tr -d '\r')
 
-  release_file="$service/Release.json"
+  release_file="$service/release.json"
   if [[ -f "$release_file" ]]; then
     last_update=$(grep '"lastUpdate"' "$release_file" | sed -E 's/.*: *"?([^",]+)"?.*/\1/' | tr -d '\r')
     note=$(grep '"note"' "$release_file" | sed -E 's/.*: *"?([^"]+)"?.*/\1/' | tr -d '\r')
