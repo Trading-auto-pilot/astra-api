@@ -169,8 +169,9 @@ jobs:
 
     - name: Start all other container
       run: |
-        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST <<'EOF'
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -s" <<'EOF'
           cd ~/deploy
+          LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
           docker compose --env-file .env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans --no-recreate
         EOF
 
