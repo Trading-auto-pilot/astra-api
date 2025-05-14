@@ -12,7 +12,7 @@ env:
   GCP_HOST: ${{ secrets.GCP_HOST }}
   GCP_USER: ${{ secrets.GCP_USER }}
   GH_TOKEN: ${{ secrets.GH_TOKEN }}
-  SKIP_PUSH: false
+  SKIP_PUSH: true
   CREATE_RELEASE: true
 
 jobs:
@@ -128,7 +128,6 @@ jobs:
         echo "ENV_ORDERS=${{ vars.ENV_ORDERS }}" >> .env
         echo "ENV_TRADING=${{ vars.ENV_TRADING }}" >> .env
         echo "NETWORK=${{ vars.NETWORK }}" >> .env
-        echo "SSH_PRIVATE_KEY=${{ secrets.SSH_PRIVATE_KEY }}"
 
     - name: Add .env with container versions from JS files
       run: |
