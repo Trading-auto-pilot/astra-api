@@ -11,6 +11,7 @@ class DBManager {
 
   constructor() {
     this.host = process.env.DB_HOST || 'localhost';
+    this.port = process.env.DB_PORT || '3306';
     this.user = process.env.DB_USER || 'root';
     this.password = process.env.DB_PASSWORD || '';
     this.database = process.env.DB_NAME || 'Trading';
@@ -33,14 +34,16 @@ class DBManager {
     try {
       return await mysql.createConnection({
         host: this.host,
+        port: this.port,
         user: this.user,
         password: this.password,
         database: this.database
       });
+      logger.info('Connect to DB estabilished');
     } catch (err) {
       logger.error(`[getDbConnection] Errore apertura DB:`, err.message);
       throw err;
-    }
+    } 
   }
 
   // Ritorna le informazioni del modulo
@@ -155,8 +158,28 @@ class DBManager {
     }
   }
 
+    // Restituisce l'ordine con orderId
+    async getOrder(orderId) {  
+      const connection = await this.getDbConnection();
+      try {
+        const [rows] = await connection.query(`
+          SELECT * FROM orders 
+          WHERE id = ? 
+          ORDER BY id DESC 
+          LIMIT 1
+        `, [orderId]);
+  
+        return rows[0];
+      } catch (err) {
+        logger.error(`[getOrder] Errore select:`, err.message);
+        throw err;
+      } finally {
+        await connection.end();
+      }
+    }
+
   // Restituisce l'ultima transazione per uno ScenarioID
-  async getLastTransactionByScenario(scenarioId) {
+  async getLastTransactionByScenario(scenarioId) {  
     const connection = await this.getDbConnection();
     try {
       const [rows] = await connection.query(`
@@ -174,6 +197,26 @@ class DBManager {
       await connection.end();
     }
   }
+
+    // Recupera lo scenario Id di un certo ortdine
+    async getScenarioIdByOrderId(orderId) {  
+      const connection = await this.getDbConnection();
+      try {
+        const [rows] = await connection.query(`
+          SELECT * FROM transazioni 
+          WHERE orderId = ? 
+          ORDER BY id DESC 
+          LIMIT 1
+        `, [orderId]);
+  
+        return rows.length > 0 ? rows[0] : null;
+      } catch (err) {
+        logger.error(`[getScenarioIdByOrderId] Errore select:`, err.message);
+        throw err;
+      } finally {
+        await connection.end();
+      }
+    }
 
   // Inserisce o aggiorna un bot sulla base dei campi name + ver
   async insertOrUpdateBotByNameVer(name, ver) {
@@ -268,10 +311,68 @@ async getActiveStrategies(symbol = null) {
     }
   }
 
+  async  updateTransaction(transactionUpdate) {
+  
+    if (!transactionUpdate.id) {
+      logger.error('[updateTransaction] ID mancante o nessun campo da aggiornare');
+      return null;
+    }
+  
+    const setClauses = Object.keys(transactionUpdate)
+                        .filter(field => field !== 'id')
+                        .map(field => `${field} = ?`)
+                        .join(', ');
+    const values = Object.keys(transactionUpdate)
+                        .filter(field => field !== 'id')
+                        .map(field => transactionUpdate[field]);
+  
+    const sql = `UPDATE transazioni SET ${setClauses} WHERE id = ?`;
+  
+    try {
+      const connection = await this.getDbConnection();
+      await connection.execute(sql, [...values, transactionUpdate.id]);
+      await connection.end();
+      logger.info(`[updateOrder] Ordine ${transactionUpdate.id} aggiornato con successo`);
+      return { success: true, id:transactionUpdate.id };
+    } catch (error) {
+      logger.error(`[updateOrder] Errore: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async  updateOrder(orderUpdate) {
+  
+    if (!orderUpdate.id) {
+      logger.error('[updateOrder] ID mancante o nessun campo da aggiornare');
+      return null;
+    }
+  
+    const setClauses = Object.keys(orderUpdate)
+                        .filter(field => field !== 'id')
+                        .map(field => `${field} = ?`)
+                        .join(', ');
+    const values = Object.keys(orderUpdate)
+                        .filter(field => field !== 'id')
+                        .map(field => orderUpdate[field]);
+  
+    const sql = `UPDATE orders SET ${setClauses} WHERE id = ?`;
+  
+    try {
+      const connection = await this.getDbConnection();
+      await connection.execute(sql, [...values, orderUpdate.id]);
+      await connection.end();
+      logger.info(`[updateOrder] Ordine ${orderUpdate.id} aggiornato con successo`);
+      return { success: true, id:orderUpdate.id };
+    } catch (error) {
+      logger.error(`[updateOrder] Errore: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+
   // Inserisce un ordine nella tabella orders
   async insertOrder(orderData) {
 
-    const order=orderData.order;
+    const order=orderData;
     const connection = await this.getDbConnection();
     try {
       const query = `INSERT INTO orders (id, client_order_id, created_at, updated_at, submitted_at, filled_at, expired_at, 
@@ -280,7 +381,7 @@ async getActiveStrategies(symbol = null) {
           limit_price, stop_price, status, extended_hours, legs, trail_percent, trail_price, hwm, subtag, source, expires_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
       const values = [
-        orderData.execution_id,
+        order.id,
         order.client_order_id,
         order.created_at ? new Date(order.created_at) : null,
         order.updated_at ? new Date(order.updated_at) : null,
@@ -318,8 +419,8 @@ async getActiveStrategies(symbol = null) {
         order.expires_at ? new Date(order.expires_at) : null
       ];
       await connection.query(query, values);
-      logger.info(`[insertOrder] Ordine ${orderData.execution_id} inserito con successo`);
-      return (orderData.execution_id);
+      logger.info(`[insertOrder] Ordine ${orderData.id} inserito con successo`);
+      return (orderData.id);
     } catch (err) {
       logger.error(`[insertOrder] Errore insert ordine:`, err.message);
       throw err;
@@ -401,6 +502,24 @@ async updateStrategyCapitalAndOrders(id, capitaleInvestito, openOrders) {
     }
     return row;
   });
+}
+
+
+// Verifico quanti ordini aperti appartengono a StrategyId
+async  countTransactionsByStrategyAndOrders(scenarioId, orderIds) {
+  const connection = await this.getDbConnection();
+  try {
+    const [rows] = await connection.execute(
+      `SELECT COUNT(*) AS count FROM transazioni WHERE scenarioId = ? AND orderId IN (${orderIds.map(() => '?').join(',')})`,
+      [scenarioId, ...orderIds]
+    );
+    return rows[0].count;
+  } catch (error) {
+    console.error('Errore durante la query:', error.message);
+    return 0;
+  } finally {
+    await connection.end();
+  }
 }
 
 // Recupera capitaleInvestito e OpenOrders per una strategia specifica

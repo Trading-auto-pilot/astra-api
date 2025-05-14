@@ -1,0 +1,161 @@
+[
+    {
+      "event": "trade_updates",
+      "data": {
+        "event": "new",
+        "order": {
+          "id": "order-001",
+          "symbol": "AAPL",
+          "qty": "100",
+          "filled_qty": "0",
+          "status": "new"
+        }
+      }
+    },
+    {
+      "event": "trade_updates",
+      "data": {
+        "event": "partial_fill",
+        "order": {
+          "id": "order-002",
+          "symbol": "AAPL",
+          "qty": "100",
+          "filled_qty": "50",
+          "filled_avg_price": "150.25",
+          "status": "partially_filled"
+        }
+      }
+    },
+    {
+      "event": "trade_updates",
+      "data": {
+        "event": "fill",
+        "order": {
+          "id": "order-003",
+          "symbol": "AAPL",
+          "qty": "100",
+          "filled_qty": "100",
+          "filled_avg_price": "150.50",
+          "status": "filled"
+        }
+      }
+    },
+    {
+      "event": "trade_updates",
+      "data": {
+        "event": "done_for_day",
+        "order": {
+          "id": "order-004",
+          "symbol": "AAPL",
+          "qty": "100",
+          "filled_qty": "0",
+          "status": "done_for_day"
+        }
+      }
+    },
+    {
+      "event": "trade_updates",
+      "data": {
+        "event": "canceled",
+        "order": {
+          "id": "order-005",
+          "symbol": "AAPL",
+          "qty": "100",
+          "filled_qty": "0",
+          "status": "canceled"
+        }
+      }
+    },
+    {
+      "event": "trade_updates",
+      "data": {
+        "event": "expired",
+        "order": {
+          "id": "order-006",
+          "symbol": "AAPL",
+          "qty": "100",
+          "filled_qty": "0",
+          "status": "expired"
+        }
+      }
+    },
+    {
+      "event": "trade_updates",
+      "data": {
+        "event": "replaced",
+        "order": {
+          "id": "order-007",
+          "symbol": "AAPL",
+          "qty": "100",
+          "filled_qty": "0",
+          "status": "replaced"
+        }
+      }
+    },
+    {
+      "event": "trade_updates",
+      "data": {
+        "event": "stopped",
+        "order": {
+          "id": "order-008",
+          "symbol": "AAPL",
+          "qty": "100",
+          "filled_qty": "0",
+          "status": "stopped"
+        }
+      }
+    },
+    {
+      "event": "trade_updates",
+      "data": {
+        "event": "rejected",
+        "order": {
+          "id": "order-009",
+          "symbol": "AAPL",
+          "qty": "100",
+          "filled_qty": "0",
+          "status": "rejected"
+        }
+      }
+    },
+    {
+      "event": "trade_updates",
+      "data": {
+        "event": "suspended",
+        "order": {
+          "id": "order-010",
+          "symbol": "AAPL",
+          "qty": "100",
+          "filled_qty": "0",
+          "status": "suspended"
+        }
+      }
+    },
+    {
+      "event": "trade_updates",
+      "data": {
+        "event": "calculated",
+        "order": {
+          "id": "order-011",
+          "symbol": "AAPL",
+          "qty": "100",
+          "filled_qty": "0",
+          "status": "calculated"
+        }
+      }
+    },
+    {
+      "event": "trade_updates",
+      "data": {
+        "event": "order_cancel_rejected",
+        "order": {
+          "id": "order-012",
+          "symbol": "AAPL",
+          "qty": "100",
+          "filled_qty": "0",
+          "status": "order_cancel_rejected"
+        }
+      }
+    }
+  ]
+  

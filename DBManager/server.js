@@ -34,9 +34,9 @@ app.get('/symbols', async (req, res) => {
   }
 });
 
-// Endpoint per recuperare strategie attive per un simbolo
-app.get('/strategies/:symbol', async (req, res) => {
-  const symbol = req.params.symbol;
+// Endpoint per recuperare tutte le strategie o quelle di uno specifico simbolo
+app.get('/strategies/:symbol?', async (req, res) => {
+  const symbol = req.params.symbol;  // undefined se non specificato
   try {
     const strategies = await dbManager.getActiveStrategies(symbol);
     res.json(strategies);
@@ -46,14 +46,14 @@ app.get('/strategies/:symbol', async (req, res) => {
   }
 });
 
-// Endpoint per recuperare tutte le strategie attive
-app.get('/strategies', async (req, res) => {
-  const symbol = req.params.symbol;
+// Endpoint per recuperare tutte le strategie o quelle di uno specifico simbolo
+app.get('/order/:id?', async (req, res) => {
+  const id = req.params.id;  // undefined se non specificato
   try {
-    const strategies = await dbManager.getActiveStrategies();
-    res.json(strategies);
+    const order = await dbManager.getOrder(id);
+    res.json(order);
   } catch (error) {
-    console.error('[ERROR] /strategies:', error.message);
+    console.error('[ERROR] /order:', error.message);
     res.status(500).json({ error: 'Errore interno' });
   }
 });
@@ -136,7 +136,7 @@ app.post('/insertBuyTransaction', async (req, res) => {
   
     // Validazione base
     if (!scenarioId || !capitaleInvestito || !prezzo || !orderId) {
-      return res.status(400).json({ error: 'Parametri scenarioId, capitaleInvestito, prezzo obbligatori' });
+      return res.status(400).json({ error: 'Parametri scenarioId, capitaleInvestito, prezzo e orderId obbligatori' });
     }
   
     try {
@@ -225,6 +225,21 @@ app.get('/getActiveStrategies/:symbol', async (req, res) => {
     }
   });
 
+  app.get('/getScenarioIdByOrderId/:orderId', async (req, res) => {
+    const orderId = req.params.orderId;
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'orderId mancante' });
+    }
+
+    try {
+      const result = await dbManager.getScenarioIdByOrderId(orderId);
+      res.json(result || {});
+    } catch (err) {
+      res.status(500).json({ error: 'Errore nel recupero transazione', message: err.message });
+    }
+  });
+
   // POST /bot/insertOrUpdate
   app.post('/bot/registra', async (req, res) => {
     const { name, ver } = req.body;
@@ -256,6 +271,25 @@ app.get('/getActiveStrategies/:symbol', async (req, res) => {
     }
   });
 
+  app.post('/getTransactionCount', async (req, res) => {
+    try {
+      const { strategyId, orderIds } = req.body;
+  
+      if (!strategyId || !Array.isArray(orderIds) || orderIds.length === 0) {
+        return res.status(400).json({ error: 'strategyId and non-empty orderIds array are required.' });
+      }
+  
+      const count = await dbManager.countTransactionsByStrategyAndOrders(strategyId, orderIds);
+  
+      return res.status(200).json({ count });
+    } catch (error) {
+      console.error(`[getTransactionCount] Errore durante il conteggio delle transazioni: ${error.message}`);
+      return res.status(500).json({ error: 'Errore durante il conteggio delle transazioni.' });
+    }
+  });
+
+  
+
     // Inserimento ordine simulato (verrà salvato in DB in futuro)
     app.post('/insertOrder', async (req, res) => {
       try {
@@ -266,6 +300,28 @@ app.get('/getActiveStrategies/:symbol', async (req, res) => {
         res.status(500).json({ error: err.message });
       }
     });
+
+    // Aggiornamento ordine simulato (verrà salvato in DB in futuro)
+  app.post('/updateTransaction', async (req, res) => {
+    try {
+      const result = await dbManager.updateTransaction(req.body);
+      res.status(200).json(result);
+    } catch (err) {
+      console.error(`[updateTransaction] ${err.message}`);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+    // Aggiornamento ordine simulato (verrà salvato in DB in futuro)
+  app.post('/updateOrder', async (req, res) => {
+    try {
+      const result = await dbManager.updateOrder(req.body);
+      res.status(200).json(result);
+    } catch (err) {
+      console.error(`[updateOrder] ${err.message}`);
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   // Inserimento ordine simulato (verrà salvato in DB in futuro)
   app.post('/insertSimulatedOrder', async (req, res) => {

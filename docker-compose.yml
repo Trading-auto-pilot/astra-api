@@ -26,7 +26,7 @@ services:
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     ports:
-      - "3316:3306"
+      - "3306:3306"
     networks:
       - trading-net
     volumes:
@@ -50,6 +50,7 @@ services:
       - trading-net
     environment:
       - DB_HOST=mysql
+      - DB_PORT=${MYSQL_PORT}
       - DB_USER=${MYSQL_USER}
       - DB_PASSWORD=${MYSQL_PASSWORD}
       - DB_NAME=${MYSQL_DATABASE}
@@ -208,7 +209,7 @@ services:
       dockerfile: orderListner/Dockerfile
     restart: unless-stopped
     ports:
-      - "3011:3011"
+      - "3005:3005"
     networks:
       - trading-net
     depends_on:

@@ -1,6 +1,7 @@
 // orderListener/OrderListener.js
 const WebSocket = require('ws');
 const axios = require('axios');
+const routeEvent = require('./router');
 const createLogger = require('../shared/logger');
 
 const MODULE_NAME = 'OrderListener';
@@ -73,7 +74,7 @@ class OrderListener {
       logger.info(`[${MODULE_NAME}][connect] WebSocket connesso. Autenticazione in corso...`);
 
       this.ws.send(JSON.stringify({
-        action: 'authenticate',
+        action: 'auth',
         data: {
           key_id: this.settings['APCA-API-KEY-ID'],
           secret_key: this.settings['APCA-API-SECRET-KEY']
@@ -90,7 +91,7 @@ class OrderListener {
         return;
       }
 
-      if (msg.stream === 'authorization') {
+      if (msg.stream === 'authorization' ) {
         logger.info(`Autenticazione: ${msg.data.status}`);
         return;
       }
@@ -100,12 +101,14 @@ class OrderListener {
         return;
       }
 
-      if (msg.stream === 'trade_updates') {
+      if (msg.event === 'trade_updates') {
         const event = msg.data.event;
-        logger.log(`Evento ordine: ${event}`);
         logger.trace(JSON.stringify(msg.data, null, 2));
 
-        // TODO: qui possiamo inviare al DBManager, Alerting, ecc.
+        // Invio messaggio al router
+        routeEvent(msg.data.event, msg.data);
+      }   else {
+        logger.warning('[connect] Altri tipi di eventi:', parsed);
       }
     });
 

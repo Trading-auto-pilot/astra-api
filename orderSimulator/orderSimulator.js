@@ -5,7 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 const createLogger = require('../shared/logger');
 
 const MODULE_NAME = 'OrderSimulator';
-const MODULE_VERSION = '1.0';
+const MODULE_VERSION = '1.1';
 const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL);
 
 class OrderSimulator {
@@ -67,52 +67,45 @@ class OrderSimulator {
     const orderId = uuidv4();
     const clientOrderId = uuidv4();
 
-    const simulatedResponse = {
-      stream: "trade_updates",
-      data: {
-        event: "fill",
-        execution_id: uuidv4(),
-        order: {
-          asset_class: "crypto",
-          asset_id: uuidv4(),
-          cancel_requested_at: null,
-          canceled_at: null,
-          client_order_id: clientOrderId,
-          created_at: now,
-          expired_at: null,
-          extended_hours: false,
-          failed_at: null,
-          filled_at: now,
-          filled_avg_price: orderPayload.limit_price || "100.00",
-          filled_qty: orderPayload.qty,
-          id: orderId,
-          legs: null,
-          limit_price: orderPayload.limit_price || null,
-          notional: null,
-          order_class: "",
-          order_type: orderPayload.type,
-          qty: orderPayload.qty,
-          replaced_at: null,
-          replaced_by: null,
-          replaces: null,
-          side: orderPayload.side,
-          status: "filled",
-          stop_price: orderPayload.stop_price || null,
-          submitted_at: now,
-          symbol: orderPayload.symbol,
-          time_in_force: orderPayload.time_in_force,
-          trail_percent: null,
-          trail_price: null,
-          type: orderPayload.type,
-          updated_at: now
-        },
-        position_qty: "0",
-        price: orderPayload.limit_price || "100.00",
-        qty: orderPayload.qty,
-        timestamp: now
-      }
-    };
-
+    const simulatedResponse =  {
+        "id": "dad32b64-1b9a-42ac-ba38-1b12ed6c7891",
+        "client_order_id": "2203bf6b-598d-47db-b647-d276fd400851",
+        "created_at": "2025-05-10T12:52:49.542957477Z",
+        "updated_at": "2025-05-10T12:52:49.544975207Z",
+        "submitted_at": "2025-05-10T12:52:49.542957477Z",
+        "filled_at": null,
+        "expired_at": null,
+        "canceled_at": null,
+        "failed_at": null,
+        "replaced_at": null,
+        "replaced_by": null,
+        "replaces": null,
+        "asset_id": "b6d1aa75-5c9c-4353-a305-9e2caa1925ab",
+        "symbol": "MSFT",
+        "asset_class": "us_equity",
+        "notional": null,
+        "qty": "101",
+        "filled_qty": "0",
+        "filled_avg_price": null,
+        "order_class": "",
+        "order_type": "limit",
+        "type": "limit",
+        "side": "buy",
+        "position_intent": "buy_to_open",
+        "time_in_force": "day",
+        "limit_price": "383",
+        "stop_price": null,
+        "status": "accepted",
+        "extended_hours": false,
+        "legs": null,
+        "trail_percent": null,
+        "trail_price": null,
+        "hwm": null,
+        "subtag": null,
+        "source": null,
+        "expires_at": "2025-05-12T20:00:00Z"
+    }
+    
     // Invia ordine simulato a DBManager
     try {
       await axios.post(`${this.dbManagerUrl}/insertSimulatedOrder`, {
@@ -134,13 +127,21 @@ class OrderSimulator {
         ws.isAuthenticated = false;
         this.wsClients.push(ws);
 
-        ws.on('message', (data) => {
+        ws.on('message', (message) => {
+
             try {
-            const msg = JSON.parse(data);
+              const msg = JSON.parse(message);
+              logger.log(`[WebSocket] Messaggio ricevuto ${JSON.stringify(msg)}`);
             if (msg.action === 'auth') {
                 if (msg.key === this.settings['APCA-API-KEY-ID'] && msg.secret === this.settings['APCA-API-SECRET-KEY']) {
                 ws.isAuthenticated = true;
-                ws.send(JSON.stringify({ T: 'success', msg: 'authenticated' }));
+                ws.send(JSON.stringify({
+                  "stream": "authorization",
+                  "data": {
+                    "status": "authorized",
+                    "action": "authenticate"
+                  }
+                }));
                 logger.info('[WebSocket] Autenticazione riuscita');
                 } else {
                 ws.send(JSON.stringify({ T: 'error', msg: 'authentication failed' }));

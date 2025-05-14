@@ -33,8 +33,37 @@ jobs:
         username: ${{ env.DOCKERHUB_USERNAME }}
         password: ${{ env.DOCKERHUB_TOKEN }}
 
+    - name: 🚦 Verifica modalità di deploy su LIVE
+      run: |
+        BRANCH_NAME="${{ github.ref_name }}"
+        EVENT_NAME="${{ github.event_name }}"
+        SOURCE_BRANCH="${{ github.event.pull_request.head.ref }}"
+        TARGET_BRANCH="${{ github.event.pull_request.base.ref }}"
+
+        echo "🔍 Branch: $BRANCH_NAME, Evento: $EVENT_NAME, PR Source: $SOURCE_BRANCH, PR Target: $TARGET_BRANCH"
+
+        if [[ "$BRANCH_NAME" == "LIVE" ]]; then
+          if [[ "$EVENT_NAME" != "pull_request" ]]; then
+            echo "❌ Deploy su LIVE permesso solo tramite Pull Request da PAPER"
+            exit 1
+          fi
+
+          if [[ "$SOURCE_BRANCH" != "PAPER" || "$TARGET_BRANCH" != "LIVE" ]]; then
+            echo "❌ Solo PR da PAPER a LIVE sono consentite"
+            exit 1
+          fi
+        fi
+
+        echo "✅ Controllo superato, proseguo con il deploy..."
+
+
     - name: Build and push all Docker images
       run: |
+        if [[ "${{ github.ref_name }}" == "LIVE" ]]; then
+          echo "⚠️  Skip build e push: il branch LIVE deve solo eseguire il deploy di immagini già pubblicate."
+          exit 0
+        fi
+
         for service in DBManager cacheManager capitalManager alertingService strategyUtils LiveMarketListener orderListner orderSimulator MarketSimulator strategies/sma; do
           name=$(basename "$service" | tr '[:upper:]' '[:lower:]')
 
@@ -69,7 +98,7 @@ jobs:
 
     - name: Creazione release su github
       run: |
-        if [ "$CREATE_RELEASE" != "false" ]; then
+        if [ "${{ github.ref_name }}" == "LIVE" ] && [ "$CREATE_RELEASE" != "false" ]; then
           TAG=$(jq -r .version release.json)
           TITLE=$(jq -r .note release.json)
 

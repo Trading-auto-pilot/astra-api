@@ -35,7 +35,7 @@ app.post('/stop', (req, res) => {
 app.post('/send', (req, res) => {
   try {
     const payload = req.body;
-    simulator.sendPayload(payload);
+    simulator.sendPayloadToClients(payload);
     res.status(200).json({ message: 'Payload inviato' });
   } catch (err) {
     logger.error('Errore in /send', err.message);

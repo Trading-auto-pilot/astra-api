@@ -1,4 +1,4 @@
 {
     "lastUpdate" : "08/05/2025 2025",
-    "note" : "LiveMarketListner : First version test in PAPER environment"
+    "note" : "LiveMarketListner : First version test in PAPER environment \n Fissato problema con mount in limit order ora il limit order e' il prodotto tra il prezzo di chiusura e la percentuale espressa in limit_order nel DB"
 }

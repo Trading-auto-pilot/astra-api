@@ -1,0 +1,24 @@
+[{
+    "alertingservice" : 3008,
+    "cachemanager" : 3006,
+    "capitalmanager" : 3009,
+    "dbmanager" : 3002,
+    "livemarketlistner" : 3012,
+    "marketsimulator" : 3003,
+    "orderlistner" : 3005,
+    "ordersimulator" : 3004,
+    "sma" : 3010,
+    "strategyUtils" : 3007
+},
+{
+    "dbmanager" : 3002,
+    "marketsimulator" : 3003,
+    "ordersimulator" : 3004,
+    "orderlistner" : 3005,
+    "cachemanager" : 3006,
+    "strategyUtils" : 3007,
+    "alertingservice" : 3008,
+    "capitalmanager" : 3009,
+    "sma" : 3010,
+    "livemarketlistner" : 3012
+}]
