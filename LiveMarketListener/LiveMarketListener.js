@@ -39,6 +39,7 @@ class LiveMarketListener {
     
 
     await this.loadSettings();
+    await this.loadActiveStrategies();
     
     this.connect();
   }
@@ -107,8 +108,11 @@ class LiveMarketListener {
         logger.trace(`[connect] messaggio ricevuto ${data}`);
         const messages = JSON.parse(data);
       //  for (const msg of messages) {
-            if (messages.T === 'success' && messages.msg === 'authenticated') {
+            if (messages[0].T === 'success' && messages[0].msg === 'authenticated') {
+                logger.info('Autenticato. Passo alla sottoscrizione dei simboli');
+                
                 const symbols = Object.keys(this.symbolStrategyMap);
+                logger.info(`[connect] Sottoscritto ai simboli: ${JSON.stringify(symbols)}`);
                 this.ws.send(JSON.stringify({
                     action: 'subscribe',
                     bars: symbols
@@ -134,7 +138,7 @@ class LiveMarketListener {
   async processBar(bar) {
 
     logger.log(`[processBar] Recupero strategie attive...`);
-    await this.loadActiveStrategies();
+    //await this.loadActiveStrategies();
     logger.log(`[processBar] Avviato con bar : ${JSON.stringify(bar)}`);
     const symbol = bar.S;
     const strategies = this.symbolStrategyMap[symbol] || [];
