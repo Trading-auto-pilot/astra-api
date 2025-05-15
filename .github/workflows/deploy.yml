@@ -85,9 +85,14 @@ jobs:
           echo "🔧 Building $name from $version_file with version $version..."
 
           if [ "$SKIP_PUSH" != "true" ]; then
-            docker build -t $DOCKERHUB_USERNAME/$name:latest -t $DOCKERHUB_USERNAME/$name:$version -f $service/Dockerfile .
-            docker push $DOCKERHUB_USERNAME/$name:latest
-            docker push $DOCKERHUB_USERNAME/$name:$version
+            docker buildx build \
+              --push \
+              --tag $DOCKERHUB_USERNAME/$name:latest \
+              --tag $DOCKERHUB_USERNAME/$name:$version \
+              --cache-from=type=registry,ref=$DOCKERHUB_USERNAME/$name:cache \
+              --cache-to=type=registry,ref=$DOCKERHUB_USERNAME/$name:cache,mode=max \
+              -f $service/Dockerfile \
+              .
           fi
         done
 
