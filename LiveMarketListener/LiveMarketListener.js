@@ -107,8 +107,8 @@ class LiveMarketListener {
     this.ws.on('message', async (data) => {
         logger.trace(`[connect] messaggio ricevuto ${data}`);
         const messages = JSON.parse(data);
-      //  for (const msg of messages) {
-            if (messages[0].T === 'success' && messages[0].msg === 'authenticated') {
+        for (const msg of messages) {
+            if (msg.T === 'success' && msg.msg === 'authenticated') {
                 logger.info('Autenticato. Passo alla sottoscrizione dei simboli');
                 
                 const symbols = Object.keys(this.symbolStrategyMap);
@@ -120,10 +120,10 @@ class LiveMarketListener {
                 logger.info(`[connect] Sottoscritto ai simboli: ${symbols.join(', ')}`);
             }
 
-            if (messages.T === 'b') {
-                await this.processBar(messages);
+            if (msg.T === 'b') {
+                await this.processBar(msg);
             }
-       // }
+        }
     });
 
     this.ws.on('close', () => {

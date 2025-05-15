@@ -243,6 +243,7 @@ jobs:
           cd ~/deploy
           LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
           docker compose --env-file .env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans --no-recreate
+          docker image prune -a -f
         EOF
 
     - name: Cleanup .env on server
