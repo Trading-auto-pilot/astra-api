@@ -86,12 +86,13 @@ class OrderListener {
       let msg;
       try {
         msg = JSON.parse(raw);
+        logger.trace(`[message] messaggio ricevuto ${JSON.stringify(msg)}`)
       } catch (err) {
         logger.warning(`[message] JSON malformato: ${raw}`);
         return;
       }
-
-      if (msg.stream === 'authorization' && msg.data.status === 'authorized' ) {
+      //for (const msg of messages) {
+        if (msg.stream === 'authorization' && msg.data.status === 'authorized' ) {
           logger.info(`Autenticazione riuscita : ${msg.data.status}`);
           this.ws.send(JSON.stringify({
             action: "listen",
@@ -99,23 +100,25 @@ class OrderListener {
               streams: ["trade_updates"]
             }
           }));
-        return;
-      }
+          return;
+        }
 
-      if (msg.stream === 'listening') {
-        logger.info(`In ascolto sugli eventi`);
-        return;
-      }
+        if (msg.stream === 'listening') {
+          logger.info(`In ascolto sugli eventi`);
+          return;
+        }
 
-      if (msg.event === 'trade_updates') {
-        const event = msg.data.event;
-        logger.trace(JSON.stringify(msg.data, null, 2));
+        if (msg.event === 'trade_updates') {
+          const event = msg.data.event;
+          logger.trace(JSON.stringify(msg.data, null, 2));
 
-        // Invio messaggio al router
-        routeEvent(msg.data.event, msg.data);
-      }   else {
-        logger.warning('[connect] Altri tipi di eventi:', parsed);
-      }
+          // Invio messaggio al router
+          routeEvent(msg.data.event, msg.data);
+        }   else {
+          logger.warning('[connect] Altri tipi di eventi:', parsed);
+        }
+      //}
+
     });
 
     this.ws.on('error', (err) => {
