@@ -1,29 +1,7 @@
--- Aggiungi 'share' se non esiste
-DO
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
-                 WHERE TABLE_NAME = 'strategies' AND COLUMN_NAME = 'share') THEN
-    ALTER TABLE strategies ADD COLUMN `share` DOUBLE DEFAULT NULL;
-  END IF;
-END;
-
--- Aggiungi 'CapitaleInvestito' se non esiste
-DO
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
-                 WHERE TABLE_NAME = 'strategies' AND COLUMN_NAME = 'CapitaleInvestito') THEN
-    ALTER TABLE strategies ADD COLUMN `CapitaleInvestito` DOUBLE DEFAULT NULL;
-  END IF;
-END;
-
--- Aggiungi 'OpenOrders' se non esiste
-DO
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
-                 WHERE TABLE_NAME = 'strategies' AND COLUMN_NAME = 'OpenOrders') THEN
-    ALTER TABLE strategies ADD COLUMN `OpenOrders` DOUBLE DEFAULT NULL;
-  END IF;
-END;
+ALTER TABLE strategies
+  ADD COLUMN `share` DOUBLE DEFAULT NULL,
+  ADD COLUMN `CapitaleInvestito` DOUBLE DEFAULT NULL,
+  ADD COLUMN `OpenOrders` DOUBLE DEFAULT NULL;
 
 ALTER TABLE strategies MODIFY COLUMN params VARCHAR(500) DEFAULT NULL;
 
