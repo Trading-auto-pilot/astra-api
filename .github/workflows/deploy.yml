@@ -12,7 +12,7 @@ env:
   GCP_HOST: ${{ secrets.GCP_HOST }}
   GCP_USER: ${{ secrets.GCP_USER }}
   GH_TOKEN: ${{ secrets.GH_TOKEN }}
-  SKIP_PUSH: true
+  SKIP_PUSH: false
   CREATE_RELEASE: true
 
 jobs:
