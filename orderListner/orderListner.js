@@ -93,7 +93,7 @@ class OrderListener {
 
       if (msg.stream === 'authorization' && msg.data.status === 'authorized' ) {
           logger.info(`Autenticazione riuscita : ${msg.data.status}`);
-          ws.send(JSON.stringify({
+          this.ws.send(JSON.stringify({
             action: "listen",
             data: {
               streams: ["trade_updates"]
