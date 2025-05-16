@@ -71,7 +71,7 @@ select
   
 from
     ((`strategies` `S`
-join `Bots` `B`)
+join `bots` `B`)
 join `Symbols` `C`)
 where
     ((`S`.`idBot` = `B`.`id`)
