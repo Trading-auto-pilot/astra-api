@@ -25,7 +25,6 @@ ALTER TABLE Trading.strategies MODIFY COLUMN MinDay double DEFAULT 0 NULL;
 ALTER TABLE Trading.strategies ADD CapitaleResiduo DOUBLE DEFAULT 0 NULL;
 
 
-
 ALTER TABLE Trading.transazioni ADD PLAzione DOUBLE DEFAULT 0 NULL;
 ALTER TABLE Trading.transazioni ADD PLOperazione DOUBLE DEFAULT 0 NULL;
 ALTER TABLE Trading.transazioni ADD PLPerc DECIMAL(4,2) DEFAULT 0 NULL;
