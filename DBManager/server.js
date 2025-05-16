@@ -302,6 +302,17 @@ app.get('/getActiveStrategies/:symbol', async (req, res) => {
     });
 
     // Aggiornamento ordine simulato (verrà salvato in DB in futuro)
+  app.post('/updateStrategies', async (req, res) => {
+    try {
+      const result = await dbManager.updateStrategies(req.body);
+      res.status(200).json(result);
+    } catch (err) {
+      console.error(`[updateStrategies] ${err.message}`);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+    // Aggiornamento ordine simulato (verrà salvato in DB in futuro)
   app.post('/updateTransaction', async (req, res) => {
     try {
       const result = await dbManager.updateTransaction(req.body);

@@ -1,5 +1,6 @@
 {
     "lastUpdate" : "08/05/2025",
-    "note" : ["DBManager : First version test in PAPER environment",
-                "Seconda nota"]
+    "note" : [  "DBManager : First version test in PAPER environment",
+                "Aggiunta funzione updateStrategies con relativo endpoint"
+            ]
 }

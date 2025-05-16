@@ -1,4 +1,6 @@
 {
-    "lastUpdate" : "08/05/2025 2025",
-    "note" : ["OrderListner : First version test in PAPER environment"]
+    "lastUpdate" : "16/05/2025",
+    "note" : [  "Aggiunto file fillCommon come libreria in comune tra handler fill and partial fill",
+                "Modificata gestione messaggio trade_updates con messaggio proveniente da rete Alpaca"
+            ]
 }

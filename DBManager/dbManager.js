@@ -4,7 +4,7 @@ const createLogger = require('../shared/logger');
 
 // Costanti globali di modulo
 const MODULE_NAME = 'DBManager';
-const MODULE_VERSION = '1.0';
+const MODULE_VERSION = '1.1';
 const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
 
 class DBManager {
@@ -308,6 +308,35 @@ async getActiveStrategies(symbol = null) {
       throw err;
     } finally {
       await connection.end();
+    }
+  }
+
+  async  updateStrategies(strategiesUpdate) {
+  
+    if (!strategiesUpdate.id) {
+      logger.error('[updateStrategies] ID mancante o nessun campo da aggiornare');
+      return null;
+    }
+  
+    const setClauses = Object.keys(strategiesUpdate)
+                        .filter(field => field !== 'id')
+                        .map(field => `${field} = ?`)
+                        .join(', ');
+    const values = Object.keys(strategiesUpdate)
+                        .filter(field => field !== 'id')
+                        .map(field => strategiesUpdate[field]);
+  
+    const sql = `UPDATE strategies SET ${setClauses} WHERE id = ?`;
+  
+    try {
+      const connection = await this.getDbConnection();
+      await connection.execute(sql, [...values, strategiesUpdate.id]);
+      await connection.end();
+      logger.info(`[updateStrategies] Ordine ${strategiesUpdate.id} aggiornato con successo`);
+      return { success: true, id:strategiesUpdate.id };
+    } catch (error) {
+      logger.error(`[updateStrategies] Errore: ${error.message}`);
+      return { success: false, error: error.message };
     }
   }
 

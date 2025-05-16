@@ -5,7 +5,7 @@ const routeEvent = require('./router');
 const createLogger = require('../shared/logger');
 
 const MODULE_NAME = 'OrderListener';
-const MODULE_VERSION = '1.0';
+const MODULE_VERSION = '1.1';
 const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL);
 
 class OrderListener {
@@ -108,14 +108,13 @@ class OrderListener {
           return;
         }
 
-        if (msg.event === 'trade_updates') {
-          const event = msg.data.event;
+        if (msg.stream === 'trade_updates') {
           logger.trace(JSON.stringify(msg.data, null, 2));
 
           // Invio messaggio al router
-          routeEvent(msg.data.event, msg.data);
+          routeEvent(msg.stream, msg.data);
         }   else {
-          logger.warning('[connect] Altri tipi di eventi:', parsed);
+          logger.warning('[connect] Altri tipi di eventi:', JSON.stringify(msg));
         }
       //}
 

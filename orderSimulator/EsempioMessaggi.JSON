@@ -156,6 +156,52 @@
           "status": "order_cancel_rejected"
         }
       }
+    },
+  {
+  "stream": "trade_updates",
+  "data": {
+    "at": "2025-05-15T19:25:27.513582Z",
+    "event_id": "01JVAPH9JSR442QJECWN84M6RQ",
+    "event": "accepted",
+    "timestamp": "2025-05-15T19:25:27.51358205Z",
+    "order": {
+      "id": "5084aca9-92b8-4280-b79b-f2922758280f",
+      "client_order_id": "0cc2a5a0-547a-4145-952c-d5ac88b5f46a",
+      "created_at": "2025-05-13T10:46:06.092993Z",
+      "updated_at": "2025-05-15T19:25:27.51241939Z",
+      "submitted_at": "2025-05-15T19:25:27.51241859Z",
+      "filled_at": null,
+      "expired_at": null,
+      "cancel_requested_at": null,
+      "canceled_at": null,
+      "failed_at": null,
+      "replaced_at": null,
+      "replaced_by": null,
+      "replaces": null,
+      "asset_id": "b6d1aa75-5c9c-4353-a305-9e2caa1925ab",
+      "symbol": "MSFT",
+      "asset_class": "us_equity",
+      "notional": null,
+      "qty": "87",
+      "filled_qty": "0",
+      "filled_avg_price": null,
+      "order_class": "",
+      "order_type": "trailing_stop",
+      "type": "trailing_stop",
+      "side": "sell",
+      "position_intent": "sell_to_close",
+      "time_in_force": "gtc",
+      "limit_price": null,
+      "stop_price": "451.6281",
+      "status": "accepted",
+      "extended_hours": false,
+      "legs": null,
+      "trail_percent": "1",
+      "trail_price": null,
+      "hwm": "456.19",
+      "expires_at": "2025-08-11T20:00:00Z"
     }
+  }
+}
   ]
   

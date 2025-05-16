@@ -3,7 +3,7 @@
 module.exports = async (data) => {
   const axios = require('axios');
   const createLogger = require('../../shared/logger');
-  const MODULE_NAME = 'OrderListener Fill';
+  const MODULE_NAME = 'OrderListener Partial Fill';
   const MODULE_VERSION = '1.0';
   const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL);
   logger.trace('[FILL] Order completely filled:', JSON.stringify(data));

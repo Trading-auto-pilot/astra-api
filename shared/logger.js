@@ -12,24 +12,30 @@ const COLORS = {
   reset: '\x1b[0m'   // reset color
 };
 
+// Funzione per generare timestamp
+function getTimestamp() {
+  const now = new Date();
+  return now.toISOString().replace('T', ' ').replace('Z', '');
+}
+
 
 function createLogger(moduleName = '', level='info' ) {
   const currentIndex = levels.indexOf(level);
   return {
     trace: (...args) => {
-      if (currentIndex <= 0) console.log(`${COLORS.trace}[${moduleName}][TRACE]`, ...args, COLORS.reset);
+      if (currentIndex <= 0) console.log(`${COLORS.trace}[${getTimestamp()}][${moduleName}][TRACE]`, ...args, COLORS.reset);
     },
     log: (...args) => {
-      if (currentIndex <= 1) console.log(`${COLORS.log}[${moduleName}][LOG]`, ...args, COLORS.reset);
+      if (currentIndex <= 1) console.log(`${COLORS.log}[${getTimestamp()}][${moduleName}][LOG]`, ...args, COLORS.reset);
     },
     info: (...args) => {
-      if (currentIndex <= 2) console.log(`${COLORS.info}[${moduleName}][INFO]`, ...args, COLORS.reset);
+      if (currentIndex <= 2) console.log(`${COLORS.info}[${getTimestamp()}][${moduleName}][INFO]`, ...args, COLORS.reset);
     },
     warning: (...args) => {
-      if (currentIndex <= 3) console.warn(`${COLORS.warning}[${moduleName}][WARNING]`, ...args, COLORS.reset);
+      if (currentIndex <= 3) console.warn(`${COLORS.warning}[${getTimestamp()}][${moduleName}][WARNING]`, ...args, COLORS.reset);
     },
     error: (...args) => {
-      if (currentIndex <= 3) console.error(`${COLORS.error}[${moduleName}][ERROR]`, ...args, COLORS.reset);
+      if (currentIndex <= 3) console.error(`${COLORS.error}[${getTimestamp()}][${moduleName}][ERROR]`, ...args, COLORS.reset);
     }
   };
 }
