@@ -156,7 +156,7 @@
           "status": "order_cancel_rejected"
         }
       }
-    },
+    }, 
   {
   "stream": "trade_updates",
   "data": {
