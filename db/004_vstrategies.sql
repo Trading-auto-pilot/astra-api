@@ -1,27 +1,27 @@
 
 ALTER TABLE Trading.strategies ADD numAzioniBuy INTEGER DEFAULT 0 NULL;
 ALTER TABLE Trading.strategies ADD numAzioniSell INTEGER DEFAULT 0 NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN AvgBuy double DEFAULT 0 NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN AvgSell double DEFAULT 0 NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN NumeroOperazioni int DEFAULT 0 NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN NumeroOperazioniVincenti int DEFAULT 0 NULL;
+ALTER TABLE Trading.strategies ADD COLUMN AvgBuy double DEFAULT 0 NULL;
+ALTER TABLE Trading.strategies ADD COLUMN AvgSell double DEFAULT 0 NULL;
+ALTER TABLE Trading.strategies ADD COLUMN NumeroOperazioni int DEFAULT 0 NULL;
+ALTER TABLE Trading.strategies ADD COLUMN NumeroOperazioniVincenti int DEFAULT 0 NULL;
 ALTER TABLE Trading.strategies ADD posizioneMercato varchar(5) DEFAULT "OFF" NULL;
-ALTER TABLE Trading.strategies CHANGE PLAzion PLAzione double NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN PLCapitale double DEFAULT 0 NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN PLAzione double DEFAULT 0 NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN PLPerc decimal(4,2) DEFAULT 0 NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN CAGR double DEFAULT 0 NULL COMMENT 'ProfitLoss Annualizzato';
-ALTER TABLE Trading.strategies MODIFY COLUMN Drawdown_PeakMax double DEFAULT -999999 NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN Drawdown_PeakMin double DEFAULT 999999 NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN MaxDrawdown double DEFAULT 0 NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN Mean double DEFAULT 0 NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN M2 double DEFAULT 0 NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN Count int DEFAULT 0 NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN Varianza double DEFAULT 0 NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN ScartoQuadratico double DEFAULT 0 NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN ggCapitaleInvestito double DEFAULT 0 NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN MaxDay double DEFAULT 0 NULL;
-ALTER TABLE Trading.strategies MODIFY COLUMN MinDay double DEFAULT 0 NULL;
+ALTER TABLE Trading.strategies ADD  PLAzione double NULL;
+ALTER TABLE Trading.strategies ADD COLUMN PLCapitale double DEFAULT 0 NULL;
+ALTER TABLE Trading.strategies ADD COLUMN PLAzione double DEFAULT 0 NULL;
+ALTER TABLE Trading.strategies ADD COLUMN PLPerc decimal(4,2) DEFAULT 0 NULL;
+ALTER TABLE Trading.strategies ADD COLUMN CAGR double DEFAULT 0 NULL COMMENT 'ProfitLoss Annualizzato';
+ALTER TABLE Trading.strategies ADD COLUMN Drawdown_PeakMax double DEFAULT -999999 NULL;
+ALTER TABLE Trading.strategies ADD COLUMN Drawdown_PeakMin double DEFAULT 999999 NULL;
+ALTER TABLE Trading.strategies ADD COLUMN MaxDrawdown double DEFAULT 0 NULL;
+ALTER TABLE Trading.strategies ADD COLUMN Mean double DEFAULT 0 NULL;
+ALTER TABLE Trading.strategies ADD COLUMN M2 double DEFAULT 0 NULL;
+ALTER TABLE Trading.strategies ADD COLUMN Count int DEFAULT 0 NULL;
+ALTER TABLE Trading.strategies ADD COLUMN Varianza double DEFAULT 0 NULL;
+ALTER TABLE Trading.strategies ADD COLUMN ScartoQuadratico double DEFAULT 0 NULL;
+ALTER TABLE Trading.strategies ADD COLUMN ggCapitaleInvestito double DEFAULT 0 NULL;
+ALTER TABLE Trading.strategies ADD COLUMN MaxDay double DEFAULT 0 NULL;
+ALTER TABLE Trading.strategies ADD COLUMN MinDay double DEFAULT 0 NULL;
 ALTER TABLE Trading.strategies ADD CapitaleResiduo DOUBLE DEFAULT 0 NULL;
 
 
