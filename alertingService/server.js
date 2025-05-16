@@ -20,6 +20,20 @@ app.get('/info', (req, res) => {
   res.json(alerting.getInfo());
 });
 
+// Info Mode backTest
+app.get('/backTestMode', (req, res) => {
+  res.status(200).json({status:alerting.getBackTestMode()});
+});
+
+app.put('/backTestMode', async (req, res) => {
+  const { status } = req.body;
+  if (!req.body.hasOwnProperty('status')) {
+    return res.status(400).json({ error: 'Parametri richiesti: status' });
+  }
+  alerting.setBackTestMode(status)
+  res.status(200).json({status:alerting.getBackTestMode()});
+});
+
 // Invio email
 app.post('/email/send', async (req, res) => {
   const { to, subject, body } = req.body;

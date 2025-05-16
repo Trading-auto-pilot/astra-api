@@ -1,3 +1,9 @@
-node_modules/
-cache/
+
 .env
+
+
+# Ignora tutti i node_modules in qualsiasi sottocartella
+**/node_modules/
+
+# Ignora tutte le cartelle cache in qualsiasi sottocartella
+**/cache/

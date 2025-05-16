@@ -1,4 +1,4 @@
 {
     "lastUpdate" : "15/05/2025",
-    "note" : "Fissato problema in cui il Listner non recuperava le strategie in init e non faceva sottoscrizione"
+    "note" : ["Fissato problema in cui il Listner non recuperava le strategie in init e non faceva sottoscrizione"]
 }

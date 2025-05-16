@@ -1,63 +1,57 @@
 ============================================
 🚀 Riepilogo Release Globale del Progetto
 ============================================
-📦 Version: 1.0
-🕒 Last update: 08/05/2025 2025
-🕒 Last update: Prima Versione di test
-📝 Note: First version test in PAPER environment
-=====================================
+📦 Version: 2.0
+🕒 Last update: 15/05/2025
+📝 Title: Prima da LIVE
+📝 Note:
+Questa versione contiene il minimo indispensavile per la prima LIVE
+============================================
 
 🧪 Estrazione versioni + note dai moduli
 
-📦 dbmanager → v1.0
-      version: MODULE_VERSION,
-   🕒 Last update: 08/05/2025 2025
-   📝 Note: First version test in PAPER environment
+📦 livemarketlistener → v
+   🕒 Last update: 15/05/2025
+   📝 Note: - Fissato problema in cui il Listner non recuperava le strategie in init e non faceva sottoscrizione
 
-📦 cachemanager → v1.0
-      version: MODULE_VERSION,
-   🕒 Last update: 08/05/2025 2025
-   📝 Note: First version test in PAPER environment
 
-📦 capitalmanager → v1.0
-      version: MODULE_VERSION,
-   🕒 Last update: 08/05/2025 2025
-   📝 Note: First version test in PAPER environment
+📦 marketsimulator → v
+   🕒 Last update: 15/05/2025
+   📝 Note: - Fissato problema in cui il Listner non recuperava le strategie in init e non faceva sottoscrizione
 
-📦 alertingservice → v1.0
-      version: MODULE_VERSION,
-   🕒 Last update: 08/05/2025 2025
-   📝 Note: First version test in PAPER environment
 
-📦 strategyutils → v1.0
-    logger.info(`[constructor] initialized - version ${MODULE_VERSION}`);
-      version: MODULE_VERSION,
-   🕒 Last update: N/D
-   📝 Note: Nessuna release note disponibile
+📦 cachemanager → v
+   🕒 Last update: 15/05/2025
+   📝 Note: - Fissato problema in cui il Listner non recuperava le strategie in init e non faceva sottoscrizione
 
-📦 livemarketlistener → v1.0
-      version: MODULE_VERSION,
-   🕒 Last update: 08/05/2025 2025
-   📝 Note: First version test in PAPER environment
 
-📦 orderlistner → v1.0
-      version: MODULE_VERSION,
-   🕒 Last update: 08/05/2025 2025
-   📝 Note: First version test in PAPER environment
+📦 orderlistner → v
+   🕒 Last update: 15/05/2025
+   📝 Note: - Fissato problema in cui il Listner non recuperava le strategie in init e non faceva sottoscrizione
 
-📦 ordersimulator → v1.0
-      version: MODULE_VERSION,
-   🕒 Last update: 08/05/2025 2025
-   📝 Note: First version test in PAPER environment
 
-📦 marketsimulator → v1.0
-      version: MODULE_VERSION,
-   🕒 Last update: 08/05/2025 2025
-   📝 Note: First version test in PAPER environment
+📦 ordersimulator → v
+   🕒 Last update: 15/05/2025
+   📝 Note: - Fissato problema in cui il Listner non recuperava le strategie in init e non faceva sottoscrizione
 
-📦 sma → v1.0
-      version: MODULE_VERSION,
-        ver: MODULE_VERSION
-   🕒 Last update: N/D
-   📝 Note: Nessuna release note disponibile
+
+📦 alertingservice → v
+   🕒 Last update: 15/05/2025
+   📝 Note: - Fissato problema in cui il Listner non recuperava le strategie in init e non faceva sottoscrizione
+
+
+📦 capitalmanager → v
+   🕒 Last update: 15/05/2025
+   📝 Note: - Fissato problema in cui il Listner non recuperava le strategie in init e non faceva sottoscrizione
+
+
+📦 dbmanager → v
+   🕒 Last update: 15/05/2025
+   📝 Note: - Fissato problema in cui il Listner non recuperava le strategie in init e non faceva sottoscrizione
+
+
+📦 sma → v
+   🕒 Last update: 15/05/2025
+   📝 Note: - Fissato problema in cui il Listner non recuperava le strategie in init e non faceva sottoscrizione
+
 

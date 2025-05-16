@@ -1,4 +1,5 @@
 {
-    "lastUpdate" : "08/05/2025 2025",
-    "note" : "DBManager : First version test in PAPER environment"
+    "lastUpdate" : "08/05/2025",
+    "note" : ["DBManager : First version test in PAPER environment",
+                "Seconda nota"]
 }

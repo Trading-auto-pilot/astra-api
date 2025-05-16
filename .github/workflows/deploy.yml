@@ -101,6 +101,9 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
+    - name: Install jq
+      run: sudo apt-get update && sudo apt-get install -y jq
+
     - name: Creazione release su github
       run: |
         if [ "${{ github.ref_name }}" == "LIVE" ] && [ "$CREATE_RELEASE" != "false" ]; then

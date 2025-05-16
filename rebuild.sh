@@ -34,3 +34,6 @@ echo "==> [5] Avviando il container $SERVICE_NAME in background"
 docker-compose up "$SERVICE_NAME" -d
 
 echo "==> Completato per il servizio: $SERVICE_NAME"
+
+echo "==> Prune di tutte le immagini orfane"
+docker image prune -a -f

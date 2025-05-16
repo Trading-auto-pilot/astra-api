@@ -1,4 +1,4 @@
-version: '3.8'
+#version: '3.8'
 
 # env:
 #   ENV_NAME: ${{ github.ref_name }}
@@ -25,6 +25,7 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_PORT : ${MYSQL_PORT}
     ports:
       - "3306:3306"
     networks:
@@ -107,6 +108,7 @@ services:
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
       - LOG_LEVEL=${LOG_LEVEL}
+      - BACKTESTMODE=false
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3008/health"]
       interval: 10s
@@ -138,30 +140,30 @@ services:
       retries: 5
       start_period: 15s
 
-  strategyutils:
-    image: expovin/strategyutils:${STRATEGYUTILS_VERSION}
-    container_name: strategyutils
-    build:
-      context: .
-      dockerfile: strategyUtils/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "3007:3007"
-    networks:
-      - trading-net
-    environment:
-      - CACHEMANAGER_URL=http://cachemanager:3006
-      - LOG_LEVEL=${LOG_LEVEL}
-    depends_on:
-      cachemanager:
-        condition: service_healthy
-      dbmanager:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3007/health"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
+  # strategyutils:
+  #   image: expovin/strategyutils:${STRATEGYUTILS_VERSION}
+  #   container_name: strategyutils
+  #   build:
+  #     context: .
+  #     dockerfile: strategyUtils/Dockerfile
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3007:3007"
+  #   networks:
+  #     - trading-net
+  #   environment:
+  #     - CACHEMANAGER_URL=http://cachemanager:3006
+  #     - LOG_LEVEL=${LOG_LEVEL}
+  #   depends_on:
+  #     cachemanager:
+  #       condition: service_healthy
+  #     dbmanager:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:3007/health"]
+  #     interval: 10s
+  #     timeout: 10s
+  #     retries: 5
 
   livemarketlistener:
     image: expovin/livemarketlistener:${LIVEMARKETLISTENER_VERSION}
@@ -185,8 +187,8 @@ services:
         condition: service_healthy
       alertingservice:
         condition: service_healthy
-      strategyutils:
-        condition: service_healthy
+      # strategyutils:
+      #   condition: service_healthy
       marketsimulator:
         condition: service_healthy
       ordersimulator:

@@ -4,12 +4,13 @@ const axios = require('axios');
 const createLogger = require('../shared/logger');
 
 const MODULE_NAME = 'AlertingService';
-const MODULE_VERSION = '1.0';
-const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
+const MODULE_VERSION = '1.1';
+const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info'); 
 
 class AlertingService {
   constructor() {
     this.transporter = null;
+    this.backTestMode = process.env.BACKTESTMODE;
   }
 
   // Recupera configurazione SMTP da DBManager
@@ -24,7 +25,6 @@ class AlertingService {
         try {
           logger.trace(`[loadSetting] Chiamo url ${dbManagerUrl}/getSetting/${key}`);
           const res = await axios.get(`${dbManagerUrl}/getSetting/${key}`);
-          console.log(res.data.value);
           settings[key] = res.data.value;
           logger.trace(`[loadSetting] Setting variavile ${key} : ${settings[key]}`);
         } catch (err) {
@@ -55,22 +55,34 @@ class AlertingService {
     logger.info(`[loadSetting] Configurazione SMTP caricata.`);
   }
 
+  setBackTestMode(status) {
+    logger.log(`[setBackTestMode] backTest mode set to ${status}`);
+    this.backTestMode=status;
+  }
+  getBackTestMode() {
+    logger.log(`[getBackTestMode] status ${this.backTestMode}`);
+    return this.backTestMode;
+  }
+
   // Invio email
   async sendEmail(params) {
-      logger.log(`[sendEmail] richiamata con parametri ${params.to} ${params.subject} ${params.body}`);
-      try {
-        const info = await this.transporter.sendMail({
-          from: this.smtpFrom,
-          to:params.to,
-          subject:params.subject,
-          text: params.body
-        });
-        logger.log(`[${MODULE_NAME}][sendEmail] Email inviata a ${to}: ${JSON.stringify(info)}`);
-        return;
-      } catch (err) {
-        logger.error(`[${MODULE_NAME}][sendEmail] Errore invio email: ${err.message} ${to}`);
-        throw err;
-      }
+      if(!this.backTestMode){
+        logger.log(`[sendEmail] richiamata con parametri ${params.to} ${params.subject} ${params.body}`);
+        try {
+          const info = await this.transporter.sendMail({
+            from: this.smtpFrom,
+            to:params.to,
+            subject:params.subject,
+            text: params.body
+          });
+          logger.log(`[${MODULE_NAME}][sendEmail] Email inviata a ${to}: ${JSON.stringify(info)}`);
+          return;
+        } catch (err) {
+          logger.error(`[${MODULE_NAME}][sendEmail] Errore invio email: ${err.message} ${to}`);
+          throw err;
+        }
+      } else
+        logger.trace('BackTestMode ON, invio email disabilitato');
   }
 
   // Informazioni sul modulo

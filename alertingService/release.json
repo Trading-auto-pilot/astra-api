@@ -1,4 +1,5 @@
 {
-    "lastUpdate" : "08/05/2025 2025",
-    "note" : "AlertingService : First version test in PAPER environment"
+    "lastUpdate" : "16/05/2025",
+    "note" : ["Variabile ambiente BACKTESTMODE per skippare invio email durante backtest che puo essere cambiata via REST con PUT /backTestMode"
+            ]
 }
