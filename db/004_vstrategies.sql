@@ -1,3 +1,10 @@
+-- Backup delle tabelle
+DROP TABLE IF EXISTS Trading.strategies_backup;
+CREATE TABLE Trading.strategies_backup AS SELECT * FROM Trading.strategies;
+
+DROP TABLE IF EXISTS Trading.transazioni_backup;
+CREATE TABLE Trading.transazioni_backup AS SELECT * FROM Trading.transazioni;
+
 
 ALTER TABLE Trading.strategies ADD numAzioniBuy INTEGER DEFAULT 0 NULL;
 ALTER TABLE Trading.strategies ADD numAzioniSell INTEGER DEFAULT 0 NULL;
