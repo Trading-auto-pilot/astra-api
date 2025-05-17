@@ -2,6 +2,15 @@
 
 DECISION=$1
 
+# --- Configura qui i tuoi parametri locali ---
+#ENV_NAME="LOCAL"
+DB_HOST="127.0.0.1"
+DB_PORT="3306"
+#DB_USER="trading_user"
+#DB_PASS="trading_pass"
+DB_NAME="Trading"
+
+
 if [[ -z "$DECISION" ]]; then
   echo "❌ Devi specificare OK o KO come parametro."
   exit 1
