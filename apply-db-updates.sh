@@ -40,6 +40,12 @@ for script in $(ls db/*.sql | sort); do
       exit 1
     fi
 
+    # Controlla presenza di ERROR nell'output
+    if echo "$OUTPUT" | grep -q -i "ERROR"; then
+      echo "❌ Errore rilevato nell'output di $script_name"
+      exit 1
+    fi
+
     mysql -h $DB_HOST -P $DB_PORT -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE -e \
       "INSERT INTO schema_version (script_name) VALUES ('$script_name');"
   else

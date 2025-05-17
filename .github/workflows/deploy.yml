@@ -229,6 +229,7 @@ jobs:
           cd ~/deploy
           bash apply-db-updates.sh ${{ github.ref_name }}
           STATUS=$?
+          
           echo "apply db exited with STATUS: $STATUS"
           if [[ $STATUS -eq 0 ]]; then
             echo "✅ Migrazione riuscita. Pulizia backup..."
