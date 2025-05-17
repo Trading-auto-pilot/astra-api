@@ -35,7 +35,7 @@ elif [[ "$DECISION" == "KO" ]]; then
       RENAME TABLE \`$DB_NAME\`.\`$backup_table\` TO \`$DB_NAME\`.\`$original_table\`;
     "
   done
-  echo "✅ Ripristino completato."
+  echo "✅ Ripristino completato. "
 
 else
   echo "⚠️  Parametro non valido. Usa OK o KO."
