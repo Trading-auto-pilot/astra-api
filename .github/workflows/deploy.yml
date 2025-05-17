@@ -237,13 +237,13 @@ jobs:
         echo "Status was: ${{ steps.prepare.outputs.status }}"
         if [[ "${{ steps.prepare.outputs.status }}" -eq 0 ]]; then
           echo "✅ Migrazione riuscita. Pulizia backup..."
-          ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << EOF
+          ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << 'EOF'
             cd ~/deploy
             bash apply-db-decision.sh OK
           EOF
         else
           echo "❌ Errore durante la migrazione. Ripristino backup..."
-          ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << EOF
+          ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << 'EOF'
             cd ~/deploy
             bash apply-db-decision.sh KO
           EOF
