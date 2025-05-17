@@ -219,7 +219,7 @@ jobs:
 
     - name: Copy DB migration scripts to server
       run: |
-        scp -o StrictHostKeyChecking=no -r db apply-db-updates.sh apply-db-decision.sh $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/
+        scp -o StrictHostKeyChecking=no -r db apply-db-updates.sh apply_schema_decision.sh $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/
 
     - name: Run DB migrations on server
       id: prepare
@@ -232,10 +232,10 @@ jobs:
           echo "apply db exited with STATUS: $STATUS"
           if [[ \$STATUS -eq 0 ]]; then
             echo "✅ Migrazione riuscita. Pulizia backup..."
-            bash apply-db-decision.sh OK
+            bash apply_schema_decision.sh OK
           else
             echo "❌ Errore durante la migrazione. Ripristino backup..."
-            bash apply-db-decision.sh KO
+            bash apply_schema_decision.sh KO
             exit 1
           fi
           
