@@ -219,7 +219,7 @@ jobs:
 
     - name: Copy DB migration scripts to server
       run: |
-        scp -o StrictHostKeyChecking=no -r db apply-db-updates.sh apply_schema_decision.sh $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/
+        scp -o StrictHostKeyChecking=no -r db apply-db-updates.sh $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/
 
     - name: Run DB migrations on server
       id: prepare
