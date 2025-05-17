@@ -30,7 +30,7 @@ for script in $(ls db/*.sql | sort); do
 
   if [[ "$already_applied" -eq "0" ]]; then
     echo "⚙️  Applico $script_name su $ENV_NAME..."
-    OUTPUT=$(mysql --abort-source-on-error -h $DB_HOST -P $DB_PORT -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE < "$script" 2>&1)
+    OUTPUT=$(mysql -h $DB_HOST -P $DB_PORT -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE < "$script" 2>&1)
     STATUS=$?
 
     echo "$OUTPUT"
