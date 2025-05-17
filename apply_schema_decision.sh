@@ -10,7 +10,7 @@ fi
 echo "🔍 Recupero delle tabelle di backup presenti nel database..."
 
 # Recupera l'elenco delle tabelle _backup
-TABLES=$(mysql -h $DB_HOST -u $DB_USER -p$DB_PASS -N -e "SHOW TABLES LIKE '%_backup';" $DB_NAME)
+TABLES=$(mysql -h $DB_HOST -P $DB_PORT -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE -N -e "SHOW TABLES LIKE '%_backup';" $DB_NAME)
 
 if [[ -z "$TABLES" ]]; then
   echo "ℹ️  Nessuna tabella di backup trovata."
@@ -21,7 +21,7 @@ if [[ "$DECISION" == "OK" ]]; then
   echo "✅ Pulizia di tutte le tabelle di backup..."
   for table in $TABLES; do
     echo "🗑️  Eliminazione $table..."
-    mysql -h $DB_HOST -u $DB_USER -p$DB_PASS -e "DROP TABLE IF EXISTS \`$DB_NAME\`.\`$table\`;"
+    mysql -h $DB_HOST -P $DB_PORT -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE -e "DROP TABLE IF EXISTS \`$DB_NAME\`.\`$table\`;"
   done
   echo "✅ Pulizia completata."
 
@@ -30,7 +30,7 @@ elif [[ "$DECISION" == "KO" ]]; then
   for backup_table in $TABLES; do
     original_table=${backup_table%_backup}
     echo "🔄 Ripristino $original_table da $backup_table..."
-    mysql -h $DB_HOST -u $DB_USER -p$DB_PASS -e "
+    mysql -h $DB_HOST -P $DB_PORT -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE -e "
       DROP TABLE IF EXISTS \`$DB_NAME\`.\`$original_table\`;
       RENAME TABLE \`$DB_NAME\`.\`$backup_table\` TO \`$DB_NAME\`.\`$original_table\`;
     "
