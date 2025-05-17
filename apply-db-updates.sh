@@ -31,7 +31,16 @@ for script in $(ls db/*.sql | sort); do
 
   if [[ "$already_applied" -eq "0" ]]; then
     echo "⚙️  Applico $script_name su $ENV_NAME..."
-    mysql -h $DB_HOST -P $DB_PORT -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE < "$script"
+    OUTPUT=$(mysql --abort-source-on-error -h $DB_HOST -P $DB_PORT -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE < "$script" 2>&1)
+    STATUS=$?
+
+    echo "$OUTPUT"
+
+    if [[ $STATUS -ne 0 ]]; then
+      echo "❌ Errore durante l'applicazione di $script_name"
+      exit 1
+    fi
+
     mysql -h $DB_HOST -P $DB_PORT -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE -e \
       "INSERT INTO schema_version (script_name) VALUES ('$script_name');"
   else
