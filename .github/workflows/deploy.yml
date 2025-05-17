@@ -223,7 +223,7 @@ jobs:
 
     - name: Run DB migrations on server
       id: prepare
-      run: |  
+      run: |
         set +e
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << EOF
           cd ~/deploy
@@ -240,13 +240,13 @@ jobs:
           ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << 'EOF'
             cd ~/deploy
             bash apply-db-decision.sh OK
-          EOF
+        EOF
         else
           echo "❌ Errore durante la migrazione. Ripristino backup..."
           ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << 'EOF'
             cd ~/deploy
             bash apply-db-decision.sh KO
-          EOF
+        EOF
           exit 1
         fi
 
