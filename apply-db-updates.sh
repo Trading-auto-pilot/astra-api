@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 # Carica il file .env se esiste
 if [ -f .env ]; then
