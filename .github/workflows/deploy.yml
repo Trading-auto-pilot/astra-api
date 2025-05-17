@@ -222,8 +222,8 @@ jobs:
         scp -o StrictHostKeyChecking=no -r db apply-db-updates.sh $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/
 
     - name: Run DB migrations on server
-      run: |
-        id: prepare
+      id: prepare
+      run: |  
         set +e
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << EOF
           cd ~/deploy
