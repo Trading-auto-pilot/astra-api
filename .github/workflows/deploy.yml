@@ -228,27 +228,16 @@ jobs:
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << EOF
           cd ~/deploy
           bash apply-db-updates.sh ${{ github.ref_name }}
-        EOF
-        STATUS=$?
-        echo "status=$?" >> $GITHUB_OUTPUT
-
-    - name: Apply or rollback DB changes based on status
-      run: |
-        echo "Status was: ${{ steps.prepare.outputs.status }}"
-        if [[ "${{ steps.prepare.outputs.status }}" -eq 0 ]]; then
-          echo "✅ Migrazione riuscita. Pulizia backup..."
-          ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << 'EOF'
-            cd ~/deploy
+          if [[ $STATUS -eq 0 ]]; then
+            echo "✅ Migrazione riuscita. Pulizia backup..."
             bash apply-db-decision.sh OK
-        EOF
-        else
-          echo "❌ Errore durante la migrazione. Ripristino backup..."
-          ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << 'EOF'
-            cd ~/deploy
+          else
+            echo "❌ Errore durante la migrazione. Ripristino backup..."
             bash apply-db-decision.sh KO
+            exit 1
+          fi
+          
         EOF
-          exit 1
-        fi
 
     - name: Crea shared cache volume se non esistente
       if: false
