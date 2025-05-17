@@ -223,6 +223,7 @@ jobs:
 
     - name: Run DB migrations on server
       run: |
+        id: prepare
         set +e
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << EOF
           cd ~/deploy
