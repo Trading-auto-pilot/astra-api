@@ -15,7 +15,6 @@ ALTER TABLE Trading.strategies ADD COLUMN NumeroOperazioniVincenti int DEFAULT 0
 ALTER TABLE Trading.strategies ADD COLUMN posizioneMercato varchar(5) DEFAULT "OFF" NULL;
 ALTER TABLE Trading.strategies ADD COLUMN PLAzione double NULL;
 ALTER TABLE Trading.strategies ADD COLUMN PLCapitale double DEFAULT 0 NULL;
-ALTER TABLE Trading.strategies ADD COLUMN PLAzione double DEFAULT 0 NULL;
 ALTER TABLE Trading.strategies ADD COLUMN PLPerc decimal(4,2) DEFAULT 0 NULL;
 ALTER TABLE Trading.strategies ADD COLUMN CAGR double DEFAULT 0 NULL COMMENT 'ProfitLoss Annualizzato';
 ALTER TABLE Trading.strategies ADD COLUMN Drawdown_PeakMax double DEFAULT -999999 NULL;
@@ -33,7 +32,6 @@ ALTER TABLE Trading.strategies ADD COLUMN CapitaleResiduo DOUBLE DEFAULT 0 NULL;
 
 
 ALTER TABLE Trading.transazioni ADD COLUMN PLAzione DOUBLE DEFAULT 0 NULL;
-ALTER TABLE Trading.transazioni ADD COLUMN PLOperazione DOUBLE DEFAULT 0 NULL;
 ALTER TABLE Trading.transazioni ADD COLUMN PLPerc DECIMAL(4,2) DEFAULT 0 NULL;
 ALTER TABLE Trading.transazioni ADD COLUMN idOperazione varchar(100) NULL;
 ALTER TABLE Trading.transazioni ADD COLUMN PLOperazionePerc DECIMAL(4,2) DEFAULT 0 NULL;
