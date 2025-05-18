@@ -5,7 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 const { placeOrder } = require('./placeOrders');
 const createLogger = require('../shared/logger');
 const MODULE_NAME = 'LiveMarketListener';
-const MODULE_VERSION = '1.1';
+const MODULE_VERSION = '1.2';
 
 const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
 
@@ -138,7 +138,6 @@ class LiveMarketListener {
   async processBar(bar) {
 
     logger.log(`[processBar] Recupero strategie attive...`);
-    //await this.loadActiveStrategies();
     logger.log(`[processBar] Avviato con bar : ${JSON.stringify(bar)}`);
     const symbol = bar.S;
     const strategies = this.symbolStrategyMap[symbol] || [];
@@ -301,10 +300,12 @@ class LiveMarketListener {
                                                 strategy.params.buy.stop_price,
                                                 strategy.params.buy.trail_price,
                                                 strategy.params.buy.extended_hours,
-                                                strategy.id+'-'+uuidv4(),
-                                                "bracket",
-                                                talke_profit,
-                                                stop_loss
+                                                strategy.id+'-'+uuidv4()
+                                                // v.1.2 Rimuovo l'ordine braket e gestisco manualmente dal
+                                                // momento che sembra non affidabile.
+                                                //"bracket",
+                                                //talke_profit,
+                                                //stop_loss
                                               );            
     }
     catch (error) {

@@ -1,4 +1,6 @@
 {
-    "lastUpdate" : "15/05/2025",
-    "note" : ["Fissato problema in cui il Listner non recuperava le strategie in init e non faceva sottoscrizione"]
+    "lastUpdate" : "18/05/2025",
+    "note" : ["v.1.1 Fissato problema in cui il Listner non recuperava le strategie in init e non faceva sottoscrizione",
+                "v.1.2 Eliminazione ordr braket perche' non affidabile",
+                "v.1.2 Inserimento ordine SL o TP a mercato qauando viene raggiunto la soglia"]
 }
