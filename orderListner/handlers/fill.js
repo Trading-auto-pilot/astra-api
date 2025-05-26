@@ -1,9 +1,9 @@
 
 
-module.exports = async (data) => {
+module.exports = async (data, event_type, AlpacaEnv) => {
   const axios = require('axios');
   const createLogger = require('../../shared/logger');
-  const fillCommClass = require('./fillCommon');
+  const fillOrder = require('./fillOrder');
   const MODULE_NAME = 'OrderListener Fill';
   const MODULE_VERSION = '1.1';
   const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL);
@@ -11,6 +11,7 @@ module.exports = async (data) => {
 
   const dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
   const alertingUrl = process.env.ALERTINGMANAGER_URL || 'http://localhost:3008';
+  //const AlpacaEnv = process.env.
   let transazioni, strategia, myStrategy, dettOrder, cache;
 
   /**  ***************************************************************************************** */
@@ -18,6 +19,7 @@ module.exports = async (data) => {
   try {
     logger.trace(`[FILL] Recupero ScenarioId con  ${dbManagerUrl}/getScenarioIdByOrderId/${data.order.id}`);
     transazioni = await axios.get(`${dbManagerUrl}/getScenarioIdByOrderId/${data.order.id}`);
+    logger.trace(`[FILL] trovata transazione ${JSON.stringify(transazioni.data)}`);
   }
   catch (error) {
     logger.error(`[FILL] Errore durante il recupero della strategy id ${error.message}`);
@@ -28,8 +30,9 @@ module.exports = async (data) => {
   /**  ***************************************************************************************** */
   // Recupero strategia
   try {
-    logger.trace(`[FILL] Recupero ScenarioId con  ${dbManagerUrl}/getStrategyCapitalAndOrders/${transazioni.data[0].ScenarioID}`);
-    strategia = await axios.get(`${dbManagerUrl}/getStrategyCapitalAndOrders/${transazioni.data[0].ScenarioID}`);
+    logger.trace(`[FILL] Recupero ScenarioId con  ${dbManagerUrl}/getStrategyCapitalAndOrders/${transazioni.data.ScenarioID}`);
+    strategia = await axios.get(`${dbManagerUrl}/getStrategyCapitalAndOrders/${transazioni.data.ScenarioID}`);
+    logger.trace(`[FILL] Strategia recuperata  ${JSON.stringify(strategia.data[0])}`);
   }
   catch (error) {
     logger.error(`[FILL] Errore durante il recupero della strategy id ${error.message}`);
@@ -40,12 +43,12 @@ module.exports = async (data) => {
 
   /**  ***************************************************************************************** */
   // Recupero capitale totale disponibile
-  logger.log(`[getAvailableCapital] Recupero capitale disponibile da Alpaca : ${this.env}/v2/account`);
+  logger.log(`[getAvailableCapital] Recupero capitale disponibile da Alpaca : ${AlpacaEnv}/v2/account`);
   try {
-    const res = await axios.get(this.env+'/v2/account', {
+    const res = await axios.get(AlpacaEnv+'/v2/account', {
       headers: {
-        'APCA-API-KEY-ID':  apiKey.data.value,
-        'APCA-API-SECRET-KEY': apiSecret.data.value
+        'APCA-API-KEY-ID':  process.env.APCA_API_KEY_ID,
+        'APCA-API-SECRET-KEY': process.env.APCA_API_SECRET_KEY
       }
     });
     logger.log(`[getAvailableCapital] Recuperato capitale ${res.data.cash}`);
@@ -60,7 +63,7 @@ module.exports = async (data) => {
   //Recupero il dettaglio dell'ordine
   try{
     logger.trace(`[FILL] Recupero il dettaglio dell'ordine ${dbManagerUrl}/order/${data.order.id}`);
-    dettOrder = await axios.post(`${dbManagerUrl}/order/${data.order.id}`);
+    dettOrder = await axios.get(`${dbManagerUrl}/order/${data.order.id}`);
   }  catch (error) {
     logger.error(`[FILL] Errore durante il recupero il dettaglio dell'ordine  ${data.order.id} ${error.message}`);
     return null;
@@ -71,22 +74,19 @@ module.exports = async (data) => {
 
   /**  ***************************************************************************************** */
   // Recupero gli ordini ancora aperti per verificare se esistono altri ordini su questo symbol
-  logger.trace(`[FILL] Recupero Indirizzo Alpaca ${dbManagerUrl}/getSetting/ALPACA-${process.env.ENV_ORDER}-BASE`);
-  const alpacaServer = await axios.get(`${dbManagerUrl}/getSetting/ALPACA-${process.env.ENV_ORDER}-BASE`);
-  const apiKey = await axios.get(`${dbManagerUrl}/getSetting/APCA-API-KEY-ID`);
-  const apiSecret = await axios.get(`${dbManagerUrl}/getSetting/APCA-API-SECRET-KEY`);
+  logger.trace(`[FILL] Recupero Indirizzo Alpaca ${AlpacaEnv}`);
   let openOrders;
 
   try {
-    logger.trace(`[FILL] Recupero Ordini ancora aperti ${alpacaServer.data.value}/v2/orders`);
-    openOrders = await axios.get(`${alpacaServer.data.value}/v2/orders`,  {
+    logger.trace(`[FILL] Recupero Ordini ancora aperti ${AlpacaEnv}/v2/orders`);
+    openOrders = await axios.get(`${AlpacaEnv}/v2/orders`,  {
       params : {
         status : 'open',
         side : 'buy'
       },
       headers: {
-        'APCA-API-KEY-ID': apiKey.data.value,
-        'APCA-API-SECRET-KEY': apiSecret.data.value
+        'APCA-API-KEY-ID':  process.env.APCA_API_KEY_ID,
+        'APCA-API-SECRET-KEY': process.env.APCA_API_SECRET_KEY
       }
     });
   } catch (error) {
@@ -94,33 +94,38 @@ module.exports = async (data) => {
     return null;
   }
   const ids = openOrders.data.map(order => order.id);
-
+  logger.trace(`[FILL] ids : ${JSON.stringify(ids)}`);
   /**  ***************************************************************************************** */
 
   /**  ***************************************************************************************** */
   //Verifico quanti degli ordini aperti appartengono allo stesso scenario
-  try{
-    logger.trace(`[FILL] Verifico quanti degli ordini aperti appartengono allo stesso scenario ${dbManagerUrl}/getTransactionCount`);
-    openOrders = await axios.post(`${dbManagerUrl}/getTransactionCount`,  
-      {
-        strategyId : data.order.id,
-        orderIds : ids
-      });
-  }  catch (error) {
-    logger.error(`[FILL] Errore durante la verifica di ordini aperti con scenario  ${data.order.id} ${error.message}`);
-    return null;
+  if(ids.length > 0){
+    try{
+      logger.trace(`[FILL] Verifico quanti degli ordini aperti appartengono allo stesso scenario ${dbManagerUrl}/getTransactionCount`);
+      openOrders = await axios.post(`${dbManagerUrl}/getTransactionCount`,  
+        {
+          strategyId : data.order.id,
+          orderIds : ids
+        });
+    }  catch (error) {
+      logger.error(`[FILL] Errore durante la verifica di ordini aperti con scenario  ${data.order.id} ${error.message}`);
+      return null;
+    }
+  } else {
+    openOrders={"data" : { "count" : 0}}
   }
+
   /**  ***************************************************************************************** */
 
 
   // Istanzio la calsse comune e gli passo le transazioni e la strategia.
-  const fillComm = new fillCommClass(MODULE_NAME, data, transazioni.data, strategia.data[0], dettOrder, cache, openOrders);
+  const fillComm = new fillOrder(event_type, data, transazioni.data, strategia.data[0], dettOrder.data, cache, openOrders.data.count);
 
   fillComm.updateKPIs();
 
   // Aggiorno la tabella transazioni
   try {
-    logger.trace(`[FILL] Aggiorno Tabella Transazioni ${dbManagerUrl}/updateTransaction`);
+    logger.trace(`[FILL] Aggiorno Tabella Transazioni ${dbManagerUrl}/updateTransaction con ${JSON.stringify(fillComm.getTransazioni())}`);
     const ret = await axios.post(`${dbManagerUrl}/updateTransaction`, fillComm.getTransazioni());
   } catch (error) {
     logger.trace(`[FILL] Errore nell'aggiornamento della tabella transazioni ${error.message}`);
@@ -129,7 +134,7 @@ module.exports = async (data) => {
 
   // Aggiorno la tabella Strategies
   try{
-    logger.trace(`[FILL] Aggiorno Tabella Strategies ${dbManagerUrl}/updateStrategies`);
+    logger.trace(`[FILL] Aggiorno Tabella Strategies ${dbManagerUrl}/updateStrategies con ${JSON.stringify(fillComm.getStrategia())}`);
     const ret = await axios.post(`${dbManagerUrl}/updateStrategies`, fillComm.getStrategia());
   } catch (error) {
     logger.trace(`[FILL] Errore nell'aggiornamento della tabella strategies ${error.message}`);

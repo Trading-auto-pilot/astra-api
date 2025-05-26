@@ -1,5 +1,6 @@
 const express = require('express');
 const axios = require('axios');
+const redis = require('redis');
 const CapitalManager = require('./capitalManager');
 const createLogger = require('../shared/logger');
 require('dotenv').config();
@@ -18,8 +19,6 @@ const dbManagerBaseUrl = process.env.DBMANAGER_URL || 'http://dbmanager:3002';
 // Funzione per leggere i parametri di configurazione da DBManager
 async function loadSettings() {
   const keys = [
-    'APCA-API-KEY-ID',
-    'APCA-API-SECRET-KEY',
     'ALPACA-'+process.env.ENV_ORDERS+'-BASE'
   ];
 
@@ -99,10 +98,33 @@ app.get('/evaluate/:strategyId', async (req, res) => {
             key:settings['APCA-API-KEY-ID'],
             secret:settings['APCA-API-SECRET-KEY'],
             env:settings['ALPACA-'+process.env.ENV_ORDERS+'-BASE']
-        })
+      })
+
+      const subscriber = redis.createClient({ url: process.env.REDIS_URL || 'redis://redis:6379' });
+      subscriber.on('error', (err) => console.error('❌ Redis error:', err));
+
+      await subscriber.connect();
+      console.log('✅ Connesso a Redis per Pub/Sub');
+
+      await subscriber.subscribe('commands', async (message) => {
+        console.log(`📩 Ricevuto su 'commands':`, message);
+        try {
+          const parsed = JSON.parse(message);
+          if (parsed.action === 'loadSettings') {
+            await loadSettings();
+            console.log('✔️  Eseguito comando:', parsed.action);
+          }
+        } catch (err) {
+          console.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
+        }
+      });
+      
       app.listen(port, () => {
         console.log(`[capital-manager] Server avviato sulla porta ${port}`);
       });
+
+
+
     } catch (err) {
       console.error(`[capital-manager][startup] Errore avvio: ${err.message}`);
       process.exit(1);

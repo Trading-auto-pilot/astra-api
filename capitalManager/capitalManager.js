@@ -3,7 +3,7 @@ const axios = require('axios');
 const createLogger = require('../shared/logger');
 
 const MODULE_NAME = 'capitalManager';
-const MODULE_VERSION = '1.0';
+const MODULE_VERSION = '1.1';
 const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
 
 class CapitalManager {
@@ -34,11 +34,12 @@ class CapitalManager {
 
   async getAvailableCapital() {
     logger.log(`[getAvailableCapital] Recupero capitale disponibile da Alpaca : ${this.env}/v2/account`);
+    
     try {
       const res = await axios.get(this.env+'/v2/account', {
         headers: {
-          'APCA-API-KEY-ID': this.key,
-          'APCA-API-SECRET-KEY': this.secret
+          'APCA-API-KEY-ID': process.env.APCA_API_KEY_ID,
+          'APCA-API-SECRET-KEY': process.env.APCA_API_SECRET_KEY
         }
       });
       logger.log(`[getAvailableCapital] Recuperato capitale ${res.data.cash}`);
@@ -77,6 +78,7 @@ class CapitalManager {
 
   async evaluateAllocation(strategyId) {
 
+    logger.trace(`[evaluateAllocation] Valutazione capitale per strategyId ${strategyId}`);
     const cache = await this.getAvailableCapital();        
     
     const strategyDetails = await this.getStrategyDetaisl(strategyId);

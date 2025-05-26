@@ -1,4 +1,6 @@
 [{
+    "mysql":3306,
+    "redis":6379,
     "alertingservice" : 3008,
     "cachemanager" : 3006,
     "capitalmanager" : 3009,
@@ -8,7 +10,8 @@
     "orderlistner" : 3005,
     "ordersimulator" : 3004,
     "sma" : 3010,
-    "strategyUtils" : 3007
+    "strategyUtils" : 3007,
+    "sltp":3011
 },
 {
     "dbmanager" : 3002,
@@ -20,5 +23,8 @@
     "alertingservice" : 3008,
     "capitalmanager" : 3009,
     "sma" : 3010,
-    "livemarketlistner" : 3012
+    "sltp" : 3011,
+    "livemarketlistner" : 3012,
+    "mysql":3306,
+    "redis":6379
 }]

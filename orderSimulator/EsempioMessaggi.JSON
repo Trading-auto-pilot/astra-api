@@ -202,6 +202,56 @@
       "expires_at": "2025-08-11T20:00:00Z"
     }
   }
-}
+},
+{
+  "id": "f7a1b0d0-XXXX-XXXX-XXXX-1a2b3c4d5e6f",
+  "account_number": "12345678",
+  "status": "ACTIVE",
+  "currency": "USD",
+  "buying_power": "40000.00",
+  "cash": "10000.00",
+  "cash_withdrawable": "10000.00",
+  "cash_transferable": "10000.00",
+  "portfolio_value": "10000.00",
+  "pattern_day_trader": false,
+  "trading_blocked": false,
+  "transfers_blocked": false,
+  "account_blocked": false,
+  "created_at": "2024-01-15T09:21:36.099136Z",
+  "trade_suspended_by_user": false,
+  "multiplier": "4",
+  "shorting_enabled": true,
+  "equity": "10000.00",
+  "last_equity": "10000.00",
+  "long_market_value": "0",
+  "short_market_value": "0",
+  "initial_margin": "0",
+  "maintenance_margin": "0",
+  "last_maintenance_margin": "0",
+  "sma": "0",
+  "daytrade_count": 0
+},
+[
+  {
+    "asset_id": "b0b6dd9d-8b9b-48a9-ba46-b9d54906e415",
+    "symbol": "AAPL",
+    "exchange": "NASDAQ",
+    "asset_class": "us_equity",
+    "qty": "100",
+    "avg_entry_price": "150.00",
+    "side": "long",
+    "market_value": "15200.00",
+    "cost_basis": "15000.00",
+    "unrealized_pl": "200.00",
+    "unrealized_plpc": "0.0133",
+    "unrealized_intraday_pl": "50.00",
+    "unrealized_intraday_plpc": "0.0033",
+    "current_price": "152.00",
+    "lastday_price": "151.50",
+    "change_today": "0.0033",
+    "qty_available": "100"
+  }
+]
+
   ]
   

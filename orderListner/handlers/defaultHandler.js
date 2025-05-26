@@ -1,4 +1,4 @@
-module.exports = async (data) => {
+module.exports = async (data,event_type,AlpacaEnv) => {
   const axios = require('axios');
   const createLogger = require('../../shared/logger');
   const MODULE_NAME = 'defaultHandler';

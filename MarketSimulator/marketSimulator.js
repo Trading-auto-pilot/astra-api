@@ -125,6 +125,9 @@ class MarketSimulator {
                 return;
               }
         
+              // Aggiorno posizioni 
+              const ret = updatePositionFromCandle({ T: 'b', ...candle });
+
               const candle = candles[index++];
               const payload = JSON.stringify({ T: 'b', ...candle });
         
@@ -140,7 +143,8 @@ class MarketSimulator {
     }
   }
 
-  broadcastMessage(payload) {
+  async broadcastMessage(payload) {
+    const ret = await this.updatePositionFromCandle(payload);
     const message = JSON.stringify(payload);
   
     this.wsClients.forEach(client => {
@@ -158,6 +162,53 @@ class MarketSimulator {
       logger.info(`[stopSimulation] Simulazione fermata`);
     }
   }
+
+async  updatePositionFromCandle(candle) {
+  const symbol = candle.symbol;
+  const close = parseFloat(candle.c);
+
+  if (!symbol || isNaN(close)) {
+    logger.warning('[updatePositionFromCandle] Candela non valida o incompleta');
+    return { updated: false, reason: 'symbol o close mancanti' };
+  }
+
+  const allPositions = await dbManagerUrl.getAllPositionsAsJson();
+  const position = allPositions.find(pos => pos.symbol === symbol);
+
+  if (!position) {
+    logger.info(`[updatePositionFromCandle] Nessuna posizione attiva per ${symbol}`);
+    return { updated: false, reason: 'nessuna posizione trovata' };
+  }
+
+  const qty = parseFloat(position.qty);
+  const avg_entry_price = parseFloat(position.avg_entry_price);
+  const cost_basis = parseFloat(position.cost_basis);
+  const lastday_price = parseFloat(position.lastday_price);
+
+  const market_value = qty * close;
+  const unrealized_pl = (close - avg_entry_price) * qty;
+  const unrealized_plpc = cost_basis !== 0 ? unrealized_pl / cost_basis : 0;
+  const unrealized_intraday_pl = (close - lastday_price) * qty;
+  const unrealized_intraday_plpc = lastday_price !== 0 ? (close - lastday_price) / lastday_price : 0;
+  const change_today = unrealized_intraday_plpc;
+
+  const updatedFields = {
+    asset_id: position.asset_id,
+    symbol: position.symbol,
+    current_price: close.toFixed(2),
+    market_value: market_value.toFixed(2),
+    unrealized_pl: unrealized_pl.toFixed(2),
+    unrealized_plpc: unrealized_plpc.toFixed(6),
+    unrealized_intraday_pl: unrealized_intraday_pl.toFixed(2),
+    unrealized_intraday_plpc: unrealized_intraday_plpc.toFixed(6),
+    change_today: change_today.toFixed(6)
+  };
+
+  await dbManagerUrl.updatePosition(updatedFields);
+  logger.info(`[updatePositionFromCandle] Posizione ${symbol} aggiornata con candela`);
+
+  return { updated: true, symbol, updatedFields };
+}
 
   getInfo() {
     return {

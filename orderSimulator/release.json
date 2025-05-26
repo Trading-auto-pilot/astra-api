@@ -1,4 +1,6 @@
 {
-    "lastUpdate" : "08/05/2025",
-    "note" : ["Simulated order insert response cambiata con quella arrivata dal server Alpaca"]
+    "lastUpdate" : "23/05/2025",
+    "note" : ["v.1.1 Simulated order insert response cambiata con quella arrivata dal server Alpaca",
+                "v.1.2 Aggiunta gestione con REDIS per esecuzione comandi centralizzati",
+                "v.1.2 Gestisce la richiesta informazione account, Ordini e posizioni"]
 }

@@ -1,0 +1,5 @@
+{
+  "watch": ["server.js", "alertingService.js"],
+  "ignore": ["*.test.js", "node_modules","cache","Dockerfile","README.md","release.json"],
+  "exec": "node server.js"
+}

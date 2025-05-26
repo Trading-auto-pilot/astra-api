@@ -5,7 +5,7 @@ const createLogger = require('../shared/logger');
 
 // Costanti globali di modulo
 const MODULE_NAME = 'CacheManager';
-const MODULE_VERSION = '1.0';
+const MODULE_VERSION = '1.1';
 const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
 
 class CacheManager {

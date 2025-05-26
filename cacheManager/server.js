@@ -1,5 +1,6 @@
 const express = require('express');
 const axios = require('axios');
+const redis = require('redis');
 const CacheManager = require('./cacheManager');
 const createLogger = require('../shared/logger');
 require('dotenv').config();
@@ -10,14 +11,59 @@ const MODULE_NAME = 'CacheManager RESTServer';
 const MODULE_VERSION = '1.0';
 const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
 
-let cacheManager = null;
+
 const dbManagerBaseUrl = process.env.DBMANAGER_URL || 'http://dbmanager:3002'; // URL del microservizio DBManager
+let cacheManager = null;
+
+// Configurazione REDIS
+// Redis Pub/Sub Integration
+(async () => {
+  const settings = await loadSettings();
+        cacheManager = new CacheManager({
+        cacheBasePath: './cache',
+        tf: settings['TF-DEFAULT'],
+        feed: settings['ALPACA-HISTORICAL-FEED'],
+        apiKey: process.env.APCA_API_KEY_ID,
+        apiSecret: process.env.APCA_API_SECRET_KEY,
+        restUrl: settings['ALPACA-LIVE-BASE'],
+        timeout: settings['ALPACA-API-TIMEOUT']
+      });
+
+      const subscriber = redis.createClient({ url: process.env.REDIS_URL || 'redis://redis:6379' });
+      subscriber.on('error', (err) => console.error('❌ Redis error:', err));
+
+      await subscriber.connect();
+      console.log('✅ Connesso a Redis per Pub/Sub');
+
+      await subscriber.subscribe('commands', async (message) => {
+        console.log(`📩 Ricevuto su 'commands':`, message);
+        try {
+          const parsed = JSON.parse(message);
+          if (parsed.action === 'loadSettings') {
+            await loadSettings();
+            console.log('✔️  Eseguito comando:', parsed.action);
+          }
+        } catch (err) {
+          console.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
+        }
+      });
+
+      // Avvio del server REST
+      try {
+        app.listen(port, () => {
+          console.log(`[cacheManager] Server avviato sulla porta ${port}`);
+        });
+      } catch (err) {
+        console.error('[STARTUP] Errore nell\'inizializzazione del servizio:', err.message);
+        console.log(err);
+        process.exit(1);
+      }
+    
+})();
 
 // Funzione per leggere i parametri di configurazione da DBManager
 async function loadSettings() {
   const keys = [
-    'APCA-API-KEY-ID',
-    'APCA-API-SECRET-KEY',
     'ALPACA-LIVE-MARKET',
     'ALPACA-HISTORICAL-FEED',
     'TF-DEFAULT',
@@ -69,27 +115,3 @@ app.get('/candles', async (req, res) => {
   }
 });
 
-// Avvio server dopo aver caricato i parametri
-(async () => {
-  try {
-    const settings = await loadSettings();
-
-    cacheManager = new CacheManager({
-      cacheBasePath: './cache',
-      tf: settings['TF-DEFAULT'],
-      feed: settings['ALPACA-HISTORICAL-FEED'],
-      apiKey: settings['APCA-API-KEY-ID'],
-      apiSecret: settings['APCA-API-SECRET-KEY'],
-      restUrl: settings['ALPACA-LIVE-BASE'],
-      timeout: settings['ALPACA-API-TIMEOUT']
-    });
-
-    app.listen(port, () => {
-      console.log(`[cacheManager] Server avviato sulla porta ${port}`);
-    });
-  } catch (err) {
-    console.error('[STARTUP] Errore nell\'inizializzazione del servizio:', err.message);
-    console.log(err);
-    process.exit(1);
-  }
-})();

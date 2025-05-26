@@ -1,4 +1,5 @@
 const express = require('express');
+const redis = require('redis');
 const SMA = require('./SMA');
 require('dotenv').config();
 
@@ -9,6 +10,33 @@ const strategy = new SMA();
 
 app.use(express.json());
 
+// Configurazione REDIS
+// Redis Pub/Sub Integration
+(async () => {
+  const subscriber = redis.createClient({ url: process.env.REDIS_URL || 'redis://redis:6379' });
+  subscriber.on('error', (err) => console.error('❌ Redis error:', err));
+
+  await subscriber.connect();
+  console.log('✅ Connesso a Redis per Pub/Sub');
+
+  await subscriber.subscribe('commands', async (message) => {
+    console.log(`📩 Ricevuto su 'commands':`, message);
+    try {
+      const parsed = JSON.parse(message);
+      if (parsed.action === 'registerBot') {
+        strategy.registerBot();
+        console.log('✔️  Eseguito comando:', parsed.action);
+      }
+    } catch (err) {
+      console.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
+    }
+  });
+})();
+
+
+
+
+// Configurazione REST
 // 🔁 Healthcheck
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', service: 'SMA', uptime: process.uptime() });
@@ -29,7 +57,7 @@ app.post('/processCandle', async (req, res) => {
 
   try {
 
-    const result = await strategy.processCandle(candle, strategyParams.id, strategyParams.symbol, strategyParams.params);
+    const result = await strategy.processCandle(candle, strategyParams.id, strategyParams.idSymbol, strategyParams.params);
     res.json(result);
   } catch (err) {
     console.error('[SMA][processCandle][REST Server] Errore:', err.message);

@@ -5,7 +5,7 @@ const routeEvent = require('./router');
 const createLogger = require('../shared/logger');
 
 const MODULE_NAME = 'OrderListener';
-const MODULE_VERSION = '1.1';
+const MODULE_VERSION = '1.2';
 const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL);
 
 class OrderListener {
@@ -14,6 +14,7 @@ class OrderListener {
     this.settings = {};
     this.dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
     this.timeout = 10000;
+    this.AlpacaEnv=null;
   }
 
   async init() {
@@ -38,11 +39,13 @@ class OrderListener {
   async loadSettings() {
     logger.info(`[loadSettings] Lettura setting da DBManager...`);
     const keys = [
-      'APCA-API-KEY-ID',
-      'APCA-API-SECRET-KEY',
       'ALPACA-PAPER-TRADING',
       'ALPACA-LIVE-TRADING',
       'ALPACA-LOCAL-TRADING',
+      'ALPACA-DEV-TRADING',
+      'ALPACA-PAPER-BASE',
+      'ALPACA-LIVE-BASE',
+      'ALPACA-LOCAL-BASE',
       'ALPACA-API-TIMEOUT'
     ];
 
@@ -56,6 +59,8 @@ class OrderListener {
         throw err;
       }
     }
+    this.AlpacaEnv = this.settings['ALPACA-'+process.env.ENV_ORDERS+'-BASE'];
+    logger.trace(`[loadSettings] this.AlpacaEnv = ${this.AlpacaEnv}`);
 
     for (const [key, value] of Object.entries(process.env)) {
       logger.trace(`Environment variable ${key}=${value}`);
@@ -76,8 +81,8 @@ class OrderListener {
       this.ws.send(JSON.stringify({
         action: 'auth',
         data: {
-          key_id: this.settings['APCA-API-KEY-ID'],
-          secret_key: this.settings['APCA-API-SECRET-KEY']
+          key_id: process.env.APCA_API_KEY_ID,
+          secret_key: process.env.APCA_API_SECRET_KEY
         }
       }));
     });
@@ -112,7 +117,7 @@ class OrderListener {
           logger.trace(JSON.stringify(msg.data, null, 2));
 
           // Invio messaggio al router
-          routeEvent(msg.stream, msg.data);
+          routeEvent(msg.data.event, msg.data, this.AlpacaEnv);
         }   else {
           logger.warning('[connect] Altri tipi di eventi:', JSON.stringify(msg));
         }

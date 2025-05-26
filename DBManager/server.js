@@ -135,12 +135,12 @@ app.post('/insertBuyTransaction', async (req, res) => {
     const { scenarioId, element, capitaleInvestito, prezzo, operation, MA, orderId, NumAzioni } = req.body;
   
     // Validazione base
-    if (!scenarioId || !capitaleInvestito || !prezzo || !orderId) {
-      return res.status(400).json({ error: 'Parametri scenarioId, capitaleInvestito, prezzo e orderId obbligatori' });
+    if (!scenarioId || !prezzo || !orderId) {
+      return res.status(400).json({ error: 'Parametri scenarioId, prezzo e orderId obbligatori' });
     }
   
     try {
-      await dbManager.insertBuyTransaction(scenarioId, element, capitaleInvestito, prezzo, operation || 'BUY', MA, orderId, NumAzioni);
+      await dbManager.insertBuyTransaction(scenarioId, element, capitaleInvestito, prezzo, operation , MA, orderId, NumAzioni);
       console.log(`[${MODULE_NAME}][insertBuyTransaction] Transazione BUY inserita correttamente per ScenarioID: ${scenarioId} orderId ${orderId}`);
       res.status(200).json({ message: 'Transazione BUY inserita con successo scenarioId '+ scenarioId});
     } catch (error) {
@@ -186,6 +186,15 @@ app.get('/getActiveStrategies/:symbol', async (req, res) => {
     } catch (error) {
       console.error(`[${MODULE_NAME}][getActiveStrategies] Errore durante la richiesta GET:`, error.message);
       res.status(500).json({ error: 'Errore interno durante il recupero delle strategie attive' });
+    }
+  });
+
+  app.get('/getActiveBots', async (req, res) => {
+    try {
+      const result = await dbManager.getActiveBots();
+      res.status(200).json(result);
+    } catch (err) {
+      res.status(500).json({ error: 'Errore nel recupero dei bot attivi', message: err.message });
     }
   });
   
@@ -271,6 +280,24 @@ app.get('/getActiveStrategies/:symbol', async (req, res) => {
     }
   });
 
+  app.get('/transactions/:orderId', async (req, res) => {
+  const { orderId } = req.params;
+
+  try {
+    const transactions = await dbManager.getTransaction(orderId);
+
+    if (transactions.length === 0) {
+      return res.status(404).json({ message: 'Nessuna transazione trovata' });
+    }
+
+    res.status(200).json(transactions);
+  } catch (error) {
+    console.error('❌ Errore endpoint /transactions/:orderId:', error.message);
+    res.status(500).json({ error: 'Errore del server' });
+  }
+});
+
+
   app.post('/getTransactionCount', async (req, res) => {
     try {
       const { strategyId, orderIds } = req.body;
@@ -288,18 +315,99 @@ app.get('/getActiveStrategies/:symbol', async (req, res) => {
     }
   });
 
-  
+
+  app.post('/simul/account', async (req, res) => {
+    try {
+      const result = await dbManager.updateAccount(req.body);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: 'Errore durante l\'update dell\'account' });
+    }
+  });
+
+  app.get('/simul/account', async (req, res) => {
+    try {
+      const account = await dbManager.getAccountAsJson();
+
+      if (!account) {
+        return res.status(404).json({ error: 'Account non trovato' });
+      }
+      res.json(account);
+    } catch (error) {
+      console.error(`[GET /simul/account] Errore: ${error.message}`);
+      res.status(500).json({ error: 'Errore interno' });
+    }
+  });
+
+  app.get('/simul/positions', async (req, res) => {
+  try {
+    const result = await dbManager.getAllPositionsAsJson();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: 'Errore durante la lettura delle posizioni' });
+  }
+});
+
+  app.post('/simul/positions', async (req, res) => {
+    try {
+      const result = await dbManager.insertPosition(req.body);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: 'Errore durante l\'inserimento della posizione' });
+    }
+  });
+
+  app.put('/simul/positions', async (req, res) => {
+    try {
+      const result = await dbManager.updatePosition(req.body);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: 'Errore durante l\'aggiornamento della posizione' });
+    }
+  });
+
+  // Inserimento ordine simulato (verrà salvato in DB in futuro)
+  app.post('/simul/orders', async (req, res) => {
+    try {
+      const result = await dbManager.insertSimulatedOrder(req.body);
+      res.status(200).json(result);
+    } catch (err) {
+      console.error(`[insertOrder] ${err.message}`);
+      res.status(500).json({ error: err.message });
+    }
+  });
 
     // Inserimento ordine simulato (verrà salvato in DB in futuro)
-    app.post('/insertOrder', async (req, res) => {
-      try {
-        const result = await dbManager.insertOrder(req.body);
-        res.status(200).json(result);
-      } catch (err) {
-        console.error(`[insertOrder] ${err.message}`);
-        res.status(500).json({ error: err.message });
-      }
-    });
+  app.put('/simul/orders', async (req, res) => {
+    try {
+      const result = await dbManager.updateSimulOrder(req.body);
+      res.status(200).json(result);
+    } catch (err) {
+      console.error(`[insertOrder] ${err.message}`);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Inserimento ordine simulato (verrà salvato in DB in futuro)
+  app.get('/simul/orders', async (req, res) => {
+  try {
+    const result = await dbManager.getAllOrdersAsJson();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: 'Errore durante la lettura delle posizioni' });
+  }
+});
+
+    // Inserimento ordine simulato (verrà salvato in DB in futuro)
+app.post('/insertOrder', async (req, res) => {
+  try {
+    const result = await dbManager.insertOrder(req.body);
+    res.status(200).json(result);
+  } catch (err) {
+    console.error(`[insertOrder] ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
 
     // Aggiornamento ordine simulato (verrà salvato in DB in futuro)
   app.post('/updateStrategies', async (req, res) => {

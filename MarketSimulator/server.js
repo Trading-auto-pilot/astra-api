@@ -1,12 +1,14 @@
 const express = require('express');
 const http = require('http');
+const redis = require('redis');
 const dotenv = require('dotenv');
 const MarketSimulator = require('./marketSimulator');
 const createLogger = require('../shared/logger');
 
 dotenv.config();
 
-const MODULE_NAME = 'MarketSimulator';
+const MODULE_NAME = 'MarketSimulator RESTServer';
+const MODULE_VERSION='1.2';
 const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'log');
 
 const app = express();
@@ -67,3 +69,26 @@ app.get('/health', (req, res) => {
 server.listen(port, () => {
   logger.info(`[server] Server avviato sulla porta ${port}`);
 });
+
+// Configurazione REDIS
+// Redis Pub/Sub Integration
+(async () => {
+  const subscriber = redis.createClient({ url: process.env.REDIS_URL || 'redis://redis:6379' });
+  subscriber.on('error', (err) => console.error('❌ Redis error:', err));
+
+  await subscriber.connect();
+  console.log('✅ Connesso a Redis per Pub/Sub');
+
+  await subscriber.subscribe('commands', async (message) => {
+    console.log(`📩 Ricevuto su 'commands':`, message);
+    try {
+      const parsed = JSON.parse(message);
+      if (parsed.action === 'loadSettings') {
+        simulator.loadSettings();
+        console.log('✔️  Eseguito comando:', parsed.action);
+      }
+    } catch (err) { 
+      console.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
+    }
+  });
+})();

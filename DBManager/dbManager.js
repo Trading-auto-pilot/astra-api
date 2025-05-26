@@ -10,11 +10,11 @@ const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
 class DBManager {
 
   constructor() {
-    this.host = process.env.DB_HOST || 'localhost';
-    this.port = process.env.DB_PORT || '3306';
-    this.user = process.env.DB_USER || 'root';
-    this.password = process.env.DB_PASSWORD || '';
-    this.database = process.env.DB_NAME || 'Trading';
+    this.host = process.env.MYSQL_HOST || 'localhost';
+    this.port = process.env.MYSQL_PORT || '3306';
+    this.user = process.env.MYSQL_USER || 'root';
+    this.password = process.env.MYSQL_PASSWORD || '';
+    this.database = process.env.MYSQL_DATABASE || 'Trading';
 
     // Log delle variabili definite nell'istanza
     for (const key of Object.keys(this)) {
@@ -218,6 +218,20 @@ class DBManager {
       }
     }
 
+  async getActiveBots(){
+    const connection = await this.getDbConnection();
+
+    try {
+      const [rows] = await connection.execute("SELECT * FROM bots WHERE status = 'active'");
+      return rows;
+    } catch (error) {
+      logger.error('[getActiveBots] Errore durante il recupero dei bot attivi:', error);
+      throw error;
+    } finally {
+      await connection.end();
+    }
+
+  }
   // Inserisce o aggiorna un bot sulla base dei campi name + ver
   async insertOrUpdateBotByNameVer(name, ver) {
     const connection = await this.getDbConnection();
@@ -225,7 +239,7 @@ class DBManager {
     try {
       // Verifica se esiste già un bot con stesso name e ver
       const [rows] = await connection.query(
-        `SELECT id FROM Bots WHERE name = ? AND ver = ?`,
+        `SELECT id FROM bots WHERE name = ? AND ver = ?`,
         [name, ver]
       );
 
@@ -234,7 +248,7 @@ class DBManager {
 
         // Aggiorna solo date_release
         await connection.query(
-          `UPDATE Bots SET date_release = NOW() WHERE id = ?`,
+          `UPDATE bots SET date_release = NOW() WHERE id = ?`,
           [existingId]
         );
 
@@ -244,12 +258,12 @@ class DBManager {
 
       // Altrimenti crea un nuovo bot
       const [result] = await connection.query(
-        `INSERT INTO Bots (name, ver, status, date_release, totalProfitLoss)
+        `INSERT INTO bots (name, ver, status, date_release, totalProfitLoss)
         VALUES (?, ?, 'inactive', NOW(), 0)`,
         [name, ver]
       );
 
-      logger.log(`[insertOrUpdateBotByNameVer] Bot creato con id ${result.insertId}`);
+      logger.log(`[insertOrUpdateBotByNameVer] bot creato con id ${result.insertId}`);
       return result.insertId;
 
     } catch (err) {
@@ -311,20 +325,60 @@ async getActiveStrategies(symbol = null) {
     }
   }
 
+async resolveBotIdByName(name) {
+  const connection = await this.getDbConnection();
+  const [rows] = await connection.execute('SELECT id FROM bots WHERE name = ? LIMIT 1', [name]);
+  await connection.end();
+  if (rows.length > 0) {
+    return rows[0].id;
+  } else {
+    throw new Error(`Bot con nome "${name}" non trovato`);
+  }
+}
+
+async resolveSymbolIdByName(name) {
+  const connection = await this.getDbConnection();
+  const [rows] = await connection.execute('SELECT id FROM Symbols WHERE name = ? LIMIT 1', [name]);
+  await connection.end();
+  if (rows.length > 0) {
+    return rows[0].id;
+  } else {
+    throw new Error(`Simbolo con nome "${name}" non trovato`);
+  }
+}
+
   async  updateStrategies(strategiesUpdate) {
   
     if (!strategiesUpdate.id) {
       logger.error('[updateStrategies] ID mancante o nessun campo da aggiornare');
       return null;
     }
-  
-    const setClauses = Object.keys(strategiesUpdate)
-                        .filter(field => field !== 'id')
-                        .map(field => `${field} = ?`)
-                        .join(', ');
-    const values = Object.keys(strategiesUpdate)
-                        .filter(field => field !== 'id')
-                        .map(field => strategiesUpdate[field]);
+
+    if (strategiesUpdate.idBotIn) {
+      strategiesUpdate.idBotIn = await this.resolveBotIdByName(strategiesUpdate.idBotIn);
+    }
+
+    if (strategiesUpdate.idBotOut) {
+      strategiesUpdate.idBotOut = await this.resolveBotIdByName(strategiesUpdate.idBotOut);
+    }
+
+    if (strategiesUpdate.idSymbol) {
+      strategiesUpdate.idSymbol = await this.resolveSymbolIdByName(strategiesUpdate.idSymbol);
+    }
+
+    const excludedFields = ['id', 'TotalCommitted'];
+    const fields = Object.keys(strategiesUpdate).filter(field => !excludedFields.includes(field));
+
+    const setClauses = fields
+      .map(field => `${field} = ?`)
+      .join(', ');
+
+    const values = fields.map(field => {
+      if (field === 'params') {
+        return JSON.stringify(strategiesUpdate[field]);
+      }
+      return strategiesUpdate[field];
+    });
   
     const sql = `UPDATE strategies SET ${setClauses} WHERE id = ?`;
   
@@ -347,13 +401,18 @@ async getActiveStrategies(symbol = null) {
       return null;
     }
   
-    const setClauses = Object.keys(transactionUpdate)
-                        .filter(field => field !== 'id')
-                        .map(field => `${field} = ?`)
-                        .join(', ');
-    const values = Object.keys(transactionUpdate)
-                        .filter(field => field !== 'id')
-                        .map(field => transactionUpdate[field]);
+    const fields = Object.keys(transactionUpdate).filter(field => field !== 'id');
+
+    const setClauses = fields
+      .map(field => `${field} = ?`)
+      .join(', ');
+
+    const values = fields.map(field => {
+      if (field === 'operationDate') {
+        return this.formatDateForMySQL(transactionUpdate[field]);
+      }
+      return transactionUpdate[field];
+    });
   
     const sql = `UPDATE transazioni SET ${setClauses} WHERE id = ?`;
   
@@ -375,14 +434,16 @@ async getActiveStrategies(symbol = null) {
       logger.error('[updateOrder] ID mancante o nessun campo da aggiornare');
       return null;
     }
-  
-    const setClauses = Object.keys(orderUpdate)
-                        .filter(field => field !== 'id')
-                        .map(field => `${field} = ?`)
-                        .join(', ');
-    const values = Object.keys(orderUpdate)
-                        .filter(field => field !== 'id')
-                        .map(field => orderUpdate[field]);
+
+    const fields = Object.keys(orderUpdate).filter(field => field !== 'id');
+    const setClauses = fields.map(field => `${field} = ?`).join(', ');
+
+    const values = fields.map(field => {
+      const value = orderUpdate[field];
+      return field.endsWith('_at') && value
+        ? this.formatDateForMySQL(value)
+        : value;
+    });
   
     const sql = `UPDATE orders SET ${setClauses} WHERE id = ?`;
   
@@ -533,6 +594,23 @@ async updateStrategyCapitalAndOrders(id, capitaleInvestito, openOrders) {
   });
 }
 
+// Recupera transazione con orderId
+async getTransaction(orderId) {
+  const connection = await this.getDbConnection();
+  try {
+    const [rows] = await connection.execute(
+      `SELECT * FROM transazioni WHERE orderId = ?`,
+      [orderId]
+    );
+    return rows;
+  } catch (error) {
+    console.error('❌ Errore durante la query getTransaction:', error.message);
+    return [];
+  } finally {
+    await connection.end();
+  }
+}
+
 
 // Verifico quanti ordini aperti appartengono a StrategyId
 async  countTransactionsByStrategyAndOrders(scenarioId, orderIds) {
@@ -589,17 +667,338 @@ async getStrategyCapitalAndOrders(id) {
   }
 }
 
+async  updateAccount(accountUpdate) {
+  if (!accountUpdate.id) {
+    logger.error('[updateAccount] ID mancante');
+    return { success: false, error: 'ID obbligatorio per aggiornare l\'account' };
+  }
+
+  const fields = Object.keys(accountUpdate).filter(
+    key => key !== 'id' && accountUpdate[key] !== undefined
+  );
+
+  if (fields.length === 0) {
+    logger.warn('[updateAccount] Nessun campo da aggiornare');
+    return { success: false, error: 'Nessun campo da aggiornare' };
+  }
+
+  const setClause = fields.map(field => `${field} = ?`).join(', ');
+  const values = fields.map(field => {
+    const value = accountUpdate[field];
+    if (typeof value === 'boolean') return value ? 1 : 0;
+    if (typeof value === 'string' && !isNaN(value)) return parseFloat(value);
+    if (field.endsWith('_at') && value) return new Date(value);
+    return value;
+  });
+
+  const sql = `UPDATE Simul.Account SET ${setClause} WHERE id = ?`;
+
+  try {
+    const connection = await this.getDbConnection();
+    await connection.execute(sql, [...values, accountUpdate.id]);
+    await connection.end();
+
+    logger.info(`[updateAccount] Account ${accountUpdate.id} aggiornato`);
+    return { success: true };
+  } catch (error) {
+    logger.error(`[updateAccount] Errore: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
+
+async  getAccountAsJson() {
+  const connection = await this.getDbConnection();
+
+  try {
+    const [rows] = await connection.execute('SELECT * FROM Simul.Account LIMIT 1');
+    if (rows.length === 0) return null;
+
+    const row = rows[0];
+
+    return {
+      id: row.id,
+      account_number: row.account_number,
+      status: row.status,
+      currency: row.currency,
+      buying_power: row.buying_power?.toString(),
+      cash: row.cash?.toString(),
+      cash_withdrawable: row.cash_withdrawable?.toString(),
+      cash_transferable: row.cash_transferable?.toString(),
+      portfolio_value: row.portfolio_value?.toString(),
+      pattern_day_trader: !!row.pattern_day_trader,
+      trading_blocked: !!row.trading_blocked,
+      transfers_blocked: !!row.transfers_blocked,
+      account_blocked: !!row.account_blocked,
+      created_at: row.created_at?.toISOString(),
+      trade_suspended_by_user: !!row.trade_suspended_by_user,
+      multiplier: row.multiplier,
+      shorting_enabled: !!row.shorting_enabled,
+      equity: row.equity?.toString(),
+      last_equity: row.last_equity?.toString(),
+      long_market_value: row.long_market_value?.toString(),
+      short_market_value: row.short_market_value?.toString(),
+      initial_margin: row.initial_margin?.toString(),
+      maintenance_margin: row.maintenance_margin?.toString(),
+      last_maintenance_margin: row.last_maintenance_margin?.toString(),
+      sma: row.sma?.toString(),
+      daytrade_count: row.daytrade_count
+    };
+  } catch (error) {
+    logger.error(`[getAccountAsJson] Errore durante la lettura: ${error.message}`);
+    throw error;
+  } finally {
+    await connection.end();
+  }
+}
+
+async insertPosition(position) {
+  const connection = await this.getDbConnection();
+
+  const sql = `
+    INSERT INTO Simul.Positions (
+      asset_id,
+      symbol,
+      exchange,
+      asset_class,
+      qty,
+      avg_entry_price,
+      side,
+      market_value,
+      cost_basis,
+      unrealized_pl,
+      unrealized_plpc,
+      unrealized_intraday_pl,
+      unrealized_intraday_plpc,
+      current_price,
+      lastday_price,
+      change_today,
+      qty_available
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  const values = [
+    position.asset_id,
+    position.symbol,
+    position.exchange || null,
+    position.asset_class || null,
+    parseFloat(position.qty),
+    parseFloat(position.avg_entry_price),
+    position.side,
+    parseFloat(position.market_value),
+    parseFloat(position.cost_basis),
+    parseFloat(position.unrealized_pl),
+    parseFloat(position.unrealized_plpc),
+    parseFloat(position.unrealized_intraday_pl),
+    parseFloat(position.unrealized_intraday_plpc),
+    parseFloat(position.current_price),
+    parseFloat(position.lastday_price),
+    parseFloat(position.change_today),
+    parseFloat(position.qty_available)
+  ];
+
+  try {
+    await connection.execute(sql, values);
+    logger.info(`[insertPosition] Posizione ${position.symbol} inserita con successo`);
+    return { success: true, symbol: position.symbol };
+  } catch (error) {
+    logger.error(`[insertPosition] Errore: ${error.message}`);
+    return { success: false, error: error.message };
+  } finally {
+    await connection.end();
+  }
+}
+
+async  updatePosition(positionUpdate) {
+  if (!positionUpdate.asset_id || !positionUpdate.symbol) {
+    logger.error('[updatePosition] id o symbol mancante');
+    return { success: false, error: 'Chiavi primarie mancanti' };
+  }
+
+  const fields = Object.keys(positionUpdate).filter(
+    key => key !== 'asset_id' && key !== 'symbol' && positionUpdate[key] !== undefined
+  );
+
+  if (fields.length === 0) {
+    logger.warn('[updatePosition] Nessun campo da aggiornare');
+    return { success: false, error: 'Nessun campo da aggiornare' };
+  }
+
+  const setClause = fields.map(field => `${field} = ?`).join(', ');
+  const values = fields.map(field => {
+    let value = positionUpdate[field];
+
+    if (value === undefined) return null; // evita errore di bind
+
+    if (typeof value === 'boolean') return value ? 1 : 0;
+    if (field.endsWith('_at') && value) return new Date(value);
+    if (typeof value === 'object' && value !== null && field === 'legs') return JSON.stringify(value);
+    if (typeof value === 'string' && !isNaN(value)) return parseFloat(value);
+    
+    return value;
+  });
+
+
+  const sql = `
+    UPDATE Simul.Positions
+    SET ${setClause}
+    WHERE asset_id = ? AND symbol = ?
+  `;
+
+  try {
+    const connection = await this.getDbConnection();
+    await connection.execute(sql, [...values, positionUpdate.asset_id, positionUpdate.symbol]);
+    await connection.end();
+
+    logger.info(`[updatePosition] Posizione ${positionUpdate.symbol} aggiornata`);
+    return { success: true };
+  } catch (error) {
+    logger.error(`[updatePosition] Errore: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
+
+async getAllPositionsAsJson() {
+  const connection = await this.getDbConnection();
+
+  try {
+    const [rows] = await connection.execute('SELECT * FROM Simul.Positions where softDel=0');
+
+    const positions = rows.map(row => ({
+      asset_id: row.asset_id,
+      symbol: row.symbol,
+      exchange: row.exchange,
+      asset_class: row.asset_class,
+      qty: row.qty.toString(),
+      avg_entry_price: row.avg_entry_price.toString(),
+      side: row.side,
+      market_value: row.market_value.toString(),
+      cost_basis: row.cost_basis.toString(),
+      unrealized_pl: row.unrealized_pl.toString(),
+      unrealized_plpc: row.unrealized_plpc.toString(),
+      unrealized_intraday_pl: row.unrealized_intraday_pl.toString(),
+      unrealized_intraday_plpc: row.unrealized_intraday_plpc.toString(),
+      current_price: row.current_price.toString(),
+      lastday_price: row.lastday_price.toString(),
+      change_today: row.change_today.toString(),
+      qty_available: row.qty_available.toString(),
+      softDel: row.softDel.toString()
+    }));
+
+    return positions;
+  } catch (error) {
+    logger.error(`[getAllPositionsAsJson] Errore: ${error.message}`);
+    throw error;
+  } finally {
+    await connection.end();
+  }
+}
+
+async  getAllOrdersAsJson() {
+  const connection = await this.getDbConnection();
+
+  try {
+    const [rows] = await connection.execute('SELECT * FROM Simul.Orders');
+
+    const orders = rows.map(row => ({
+      id: row.id,
+      client_order_id: row.client_order_id,
+      created_at: row.created_at?.toISOString(),
+      updated_at: row.updated_at?.toISOString(),
+      submitted_at: row.submitted_at?.toISOString(),
+      filled_at: row.filled_at?.toISOString(),
+      expired_at: row.expired_at?.toISOString(),
+      canceled_at: row.canceled_at?.toISOString(),
+      failed_at: row.failed_at?.toISOString(),
+      replaced_at: row.replaced_at?.toISOString(),
+      replaced_by: row.replaced_by,
+      replaces: row.replaces,
+      asset_id: row.asset_id,
+      symbol: row.symbol,
+      asset_class: row.asset_class,
+      notional: row.notional?.toString(),
+      qty: row.qty?.toString(),
+      filled_qty: row.filled_qty?.toString(),
+      filled_avg_price: row.filled_avg_price?.toString(),
+      order_class: row.order_class,
+      order_type: row.order_type,
+      type: row.type,
+      side: row.side,
+      time_in_force: row.time_in_force,
+      limit_price: row.limit_price?.toString(),
+      stop_price: row.stop_price?.toString(),
+      status: row.status,
+      extended_hours: !!row.extended_hours,
+      legs: row.legs ? JSON.parse(row.legs) : null,
+      trail_percent: row.trail_percent?.toString(),
+      trail_price: row.trail_price?.toString(),
+      hwm: row.hwm,
+      subtag: row.subtag,
+      source: row.source
+    }));
+
+    return orders;
+  } catch (error) {
+    logger.error(`[getAllOrdersAsJson] Errore: ${error.message}`);
+    throw error;
+  } finally {
+    await connection.end();
+  }
+}
+
+async  updateSimulOrder(orderUpdate) {
+  if (!orderUpdate.id) {
+    logger.error('[updateOrder] ID mancante');
+    return { success: false, error: 'Campo id obbligatorio' };
+  }
+
+  const fields = Object.keys(orderUpdate).filter(
+    key => key !== 'id' && orderUpdate[key] !== undefined
+  );
+
+  if (fields.length === 0) {
+    logger.warn('[updateOrder] Nessun campo da aggiornare');
+    return { success: false, error: 'Nessun campo da aggiornare' };
+  }
+
+  const setClause = fields.map(field => `${field} = ?`).join(', ');
+
+  const values = fields.map(field => {
+    const value = orderUpdate[field];
+
+    if (typeof value === 'boolean') return value ? 1 : 0;
+    if (typeof value === 'object' && field === 'legs') return JSON.stringify(value);
+    if (field.endsWith('_at') && value) return new Date(value);
+    if (typeof value === 'string' && !isNaN(value)) return parseFloat(value);
+    return value;
+  });
+
+  const sql = `UPDATE Simul.Orders SET ${setClause} WHERE id = ?`;
+
+  try {
+    const connection = await this.getDbConnection();
+    await connection.execute(sql, [...values, orderUpdate.id]);
+    await connection.end();
+
+    logger.info(`[updateOrder] Ordine ${orderUpdate.id} aggiornato`);
+    return { success: true };
+  } catch (error) {
+    logger.error(`[updateOrder] Errore: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
 
 
 async insertSimulatedOrder(envelop) {
-    const order = envelop.order;
+    const order = envelop;
 
     logger.log(`[insertSimulatedOrder] Ordine ricevuto da inserire nel DB : ${JSON.stringify(order)}`);
     const connection = await this.getDbConnection();
 
     try {
       const query = `
-        INSERT INTO OrdersSimulated (
+        INSERT INTO Simul.Orders (
           id, client_order_id, created_at, updated_at, submitted_at, filled_at, expired_at, canceled_at,
           failed_at, replaced_at, replaced_by, replaces, asset_id, symbol, asset_class, notional, qty,
           filled_qty, filled_avg_price, order_class, order_type, type, side, time_in_force,
@@ -669,6 +1068,8 @@ async insertSimulatedOrder(envelop) {
 
   // Formatta una data per MySQL
   formatDateForMySQL(date) {
+    if (!date) return null;
+    
     const d = new Date(date);
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');

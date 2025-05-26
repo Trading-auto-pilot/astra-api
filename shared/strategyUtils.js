@@ -48,7 +48,7 @@ class StrategyUtils {
     const startDate = new Date(endDate);
     startDate.setDate(endDate.getDate() - periodDays);
   
-    const cacheManagerURL = process.env.CACHEMANAGER_URL || 'http://cachemanager:3006';
+    const cacheManagerURL = process.env.CACHEMANAGER_URL || 'http://localhost:3006';
   
     logger.log(`[calcMediaMobile] richiamo ${cacheManagerURL}/candles`);
     try {

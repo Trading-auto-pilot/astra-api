@@ -4,7 +4,7 @@ const axios = require('axios');
 const createLogger = require('../shared/logger');
 
 const MODULE_NAME = 'AlertingService';
-const MODULE_VERSION = '1.1';
+const MODULE_VERSION = '1.2';
 const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info'); 
 
 class AlertingService {
@@ -76,13 +76,14 @@ class AlertingService {
             text: params.body
           });
           logger.log(`[${MODULE_NAME}][sendEmail] Email inviata a ${to}: ${JSON.stringify(info)}`);
-          return;
+          return({status:"OK", info:JSON.stringify(info)});
         } catch (err) {
           logger.error(`[${MODULE_NAME}][sendEmail] Errore invio email: ${err.message} ${to}`);
-          throw err;
+          return({status:"KO", info:JSON.stringify(err)});
         }
       } else
         logger.trace('BackTestMode ON, invio email disabilitato');
+        return({status:"OK", message:"BackTestMode ON. Invio non fatto"})
   }
 
   // Informazioni sul modulo

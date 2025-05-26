@@ -7,3 +7,6 @@
 
 # Ignora tutte le cartelle cache in qualsiasi sottocartella
 **/cache/
+
+#Ignora la cartella logs
+logs/

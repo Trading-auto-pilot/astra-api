@@ -1,0 +1,21 @@
+{
+    "TP":0.1, 
+    "SL":-0.005, 
+    "TF":"15Min", 
+    "MA":25,
+    "buy" : {
+        "type":"limit", 
+        "limit_price":0.005,
+        "time_in_force":"day",
+        "stop_price":null,
+        "trail_price":null,
+        "extended_hours":false
+    }, "sell":{
+        "type":"limit",
+        "time_in_force":"gtc",
+        "limit_price":0.005,
+        "stop_price":0.004,
+        "trail_price":null,
+        "extended_hours":null
+    }
+}

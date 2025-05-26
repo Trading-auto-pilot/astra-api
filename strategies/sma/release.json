@@ -1,4 +1,5 @@
 {
-    "lastUpdate" : "08/05/2025",
-    "note" : ["Simulated order insert response cambiata con quella arrivata dal server Alpaca"]
+    "lastUpdate" : "18/05/2025",
+    "note" : ["v.1.0 Simulated order insert response cambiata con quella arrivata dal server Alpaca",
+                "v.1.1 alutazione SELL quando si raggiunge SL o TP" ]
 }

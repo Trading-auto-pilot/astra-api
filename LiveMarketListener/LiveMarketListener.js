@@ -4,10 +4,12 @@ const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const { placeOrder } = require('./placeOrders');
 const createLogger = require('../shared/logger');
+
 const MODULE_NAME = 'LiveMarketListener';
 const MODULE_VERSION = '1.2';
 
 const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
+const isLocal = process.env.ENV_NAME === 'LOCAL';
 
 class LiveMarketListener {
   constructor() {
@@ -15,11 +17,11 @@ class LiveMarketListener {
     this.active = true;
     this.symbolStrategyMap = {}; // { symbol: [strategyObj, ...] }
     this.settings = {};
+    this.bots = [];
     this.dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
-    this.smaUrl = process.env.SMA_URL;
     this.capialManagerUrl = process.env.CAPITAL_MANAGER_URL || 'http://localhost:3009';
     this.alertingManagerUrl = process.env.ALERTINGMANAGER_URL || 'http://localhost:3008';
-    
+    this.orderActive=[];
   }
 
   async init() {
@@ -37,18 +39,42 @@ class LiveMarketListener {
       logger.trace(`Environment variable ${key}=${value}`);
     }
     
-
+ 
     await this.loadSettings();
     await this.loadActiveStrategies();
-    
+    await this.getActiveBots();
+    await this.getActiveOrders();
+
     this.connect();
+   
+  }
+
+  async getActiveOrders(){
+    let res;
+    logger.info(`[getActiveOrders] Recupero gli ordini da  ${this.alpacaAPIServer}`);
+    try {
+      res = await axios.get(`${this.alpacaAPIServer}`);
+      const orders = Array.isArray(res.data) ? res.data : [];
+
+      this.orderActive = [
+        ...new Set(
+          orders
+            .filter(order => order.status === 'accepted' || order.status === 'new')
+            .map(order => order.symbol)
+        )
+      ];
+    } catch (err) {
+      logger.error(`[orderActive] Errore durante il recupero ordini: ${err.message}`);
+      this.orderActive = [];
+    }
+
+  logger.info(`[getActiveOrders] Recuperato ordini attivi ${JSON.stringify(this.orderActive)}`);
+
   }
 
   async loadSettings() {
     logger.info(`[loadSetting] Lettura setting da repository...`);
     const keys = [
-      'APCA-API-KEY-ID',
-      'APCA-API-SECRET-KEY',
       'ALPACA-LIVE-MARKET',
       'ALPACA-SANDBOX-MARKET',
       'ALPACA-LOCAL-MARKET',
@@ -56,9 +82,9 @@ class LiveMarketListener {
       'ALPACA-API-TIMEOUT',
       'ALPACA-PAPER-BASE',
       'ALPACA-LOCAL-BASE',
-      'ALPACA-LIVE-BASE'
-
-
+      'ALPACA-LIVE-BASE',
+      'ALPACA-DEV-MARKET',
+      'ALPACA-DEV-BASE'
     ];
 
     for (const key of keys) {
@@ -70,6 +96,19 @@ class LiveMarketListener {
     logger.trace(`[loadSetting] variabile alpacaAPIServer ${this.alpacaAPIServer}`);
   }
 
+  updateOrderActive(symbolsToRemove) {
+    if (!Array.isArray(this.orderActive)) {
+      this.orderActive = [];
+    }
+
+    this.orderActive = this.orderActive.filter(
+      symbol => !symbolsToRemove.includes(symbol)
+    );
+
+    logger.trace(`[updateOrderActive] Rimosso: ${symbolsToRemove.join(', ')}`);
+  }
+
+
   async loadActiveStrategies() {
     logger.info(`[loadActiveStrategies] Lettura strategie attive da repository...`);
     logger.log(`[loadActiveStrategies] mi connetto al server ${this.dbManagerUrl}/strategies`);
@@ -78,13 +117,20 @@ class LiveMarketListener {
 
     this.symbolStrategyMap = {};
     for (const strategy of strategies) {
-        const symbol = strategy.symbol;
+        const symbol = strategy.idSymbol;
         logger.trace(`[loadActiveStrategies] Recuperato symbol : ${symbol}`)
         if (!this.symbolStrategyMap[symbol]) {
             this.symbolStrategyMap[symbol] = [];
         }
         this.symbolStrategyMap[symbol].push(strategy);
     }
+  }
+
+  async getActiveBots(){
+    logger.info(`[getActiveBots] Recupero i Bot attivi da repository...`);
+    logger.log(`[loadActiveStrategies] mi connetto al server ${this.dbManagerUrl}/getActiveBots`);
+    const res = await axios.get(`${this.dbManagerUrl}/getActiveBots`);
+    this.bots = res.data;
   }
 
   connect() {
@@ -99,8 +145,8 @@ class LiveMarketListener {
       logger.info(`[connect] WebSocket connesso. Autenticazione in corso...`);
       this.ws.send(JSON.stringify({
         action: 'auth',
-        key: this.settings['APCA-API-KEY-ID'],
-        secret: this.settings['APCA-API-SECRET-KEY']
+        key: process.env.APCA_API_KEY_ID,
+        secret: process.env.APCA_API_SECRET_KEY
       }));
     });
 
@@ -120,8 +166,11 @@ class LiveMarketListener {
                 logger.info(`[connect] Sottoscritto ai simboli: ${symbols.join(', ')}`);
             }
 
-            if (msg.T === 'b') {
-                await this.processBar(msg);
+            if (msg.T === 'b' && !this.orderActive.includes(msg.S)) {
+              await this.processBar(msg);
+            }
+            else {
+              logger.trace(`[connect] Candela non processata per ordine gia attivo`);
             }
         }
     });
@@ -131,12 +180,11 @@ class LiveMarketListener {
     });
 
     this.ws.on('error', (err) => {
-      logger.error(`[connect] Errore WebSocket: ${err.message}`);
+      logger.error(`[connect] Errore WebSocket ${wsUrl}: ${err.message}`);
     });
   }
 
   async processBar(bar) {
-
     logger.log(`[processBar] Recupero strategie attive...`);
     logger.log(`[processBar] Avviato con bar : ${JSON.stringify(bar)}`);
     const symbol = bar.S;
@@ -151,30 +199,69 @@ class LiveMarketListener {
             h: bar.h,
             l: bar.l,
             c: bar.c,
-            v: bar.v
+            v: bar.v,
+            s: bar.S
             },
             strategyParams: strategy
         };
 
-        try {
-            const url = `${this.smaUrl}/processCandle`;
-            body['scenarioId']=body.strategyParams.id;
-            logger.trace(`[processBar] Invio candela per processamento a url ${url} con body ${JSON.stringify(body)}`);
-            const response = await axios.post(url, body);
-            const result = response.data;
+        // Se non ho comprato azioni valuto acquisto
+        let url;
+        if(strategy.numAzioniBuy === 0){
+          logger.log(`[processBar] Non ho azioni per questa strategia, valuto solo acquisto`);
+          // Trova il bot con quel nome
+          const bot = this.bots.find(b => b.name === strategy.idBotIn);
 
-            if (!this.active) {
-                logger.warning(`[processBar] Sistema in pausa. Ignorato segnale per ${symbol}`);
-            return;
-            }
+          let botUrl = bot?.url;
+          if (isLocal && botUrl) {
+            const urlObj = new URL(botUrl);
+            urlObj.hostname = 'localhost';
+            botUrl = urlObj.toString();
+          }
 
-            if (result.action === 'BUY' || result.action === 'SELL') {
-                logger.trace(`[processBar] Ricevuto segnale di ${result.action}`);
-                await this.handleTradeSignal(result, strategy, bar);
-            }
-        } catch (err) {
-            logger.error(`[processBar] Errore chiamata processCandle per ${symbol}:`, err.message);
+          if (botUrl) {
+            logger.log(`[processBar] Utilizzo url per bot ${strategy.idBotIn} url ${botUrl}`)
+          } else {
+            logger.error(`Bot ${strategy.idBotIn} non trovato. strategy ${strategy.idBotIn} bots ${JSON.stringify(this.bots)} `);
+            return null;
+          }
+          
+          url = new URL('/processCandle', botUrl).toString();
+        } 
+        // Altrimenti valuto vendita
+        else {
+          logger.log(`[processBar] Esistono ${strategy.numAzioniBuy} azioni per questa strategia, valuto solo vendita`);
+          // Trova il bot con quel nome
+          const bot = this.bots.find(b => b.name === strategy.idBotOut);
+
+          if (bot) {
+            logger.log(`[processBar] Utilizzo url per bot ${strategy.idBotOut} url ${bot.url}`)
+          } else {
+            logger.error(`Bot ${strategy.idBotOut} non trovato. strategy ${strategy.idBotOut} bots  ${JSON.stringify(this.bots)}`);
+          }
+          
+          url = `${bot.url}/processCandle`;
         }
+
+        try {
+          body['scenarioId']=body.strategyParams.id;
+          logger.trace(`[processBar] Invio candela per processamento a url ${url} con body ${JSON.stringify(body)}`);
+          const response = await axios.post(url, body);
+          const result = response.data;
+
+          if (!this.active) {
+              logger.warning(`[processBar] Sistema in pausa. Ignorato segnale per ${symbol}`);
+              return;
+          }
+
+          if (result.action === 'BUY' || result.action === 'SELL') {
+              logger.trace(`[processBar] Ricevuto segnale di ${result.action}`);
+              await this.handleTradeSignal(result, strategy, bar);
+          }
+        } catch (err) {
+             logger.error(`[processBar] Errore chiamata processCandle per ${symbol}:`, err.message);
+        }
+
     }
   }
 
@@ -189,17 +276,17 @@ class LiveMarketListener {
         
       }
       catch (error) {
-        logger.error(`[richiestaCapitale] Errore durante richiesta capitale disponibile ${strategy.id}: ${err.message}`);
+        logger.error(`[richiestaCapitale] Errore durante richiesta capitale disponibile ${strategy.id}: ${error.message}`);
         return;
       }
 
       if (!evalResult.approved) {
-        logger.info(`[richiestaCapitale] Allocazione rifiutata per ${strategy.symbol} (${strategy.id})`);
+        logger.info(`[richiestaCapitale] Allocazione rifiutata per ${strategy.idSymbol} (${strategy.id})`);
         return;
       }
   
       if(evalResult.grantedAmount < bar.c){
-        logger.info(`[richiestaCapitale] Non ci sono fondi sufficienti per ${strategy.symbol} (${strategy.id}). Capitale rimasto ${evalResult.grantedAmount} costo azione ${bar.c}`);
+        logger.info(`[richiestaCapitale] Non ci sono fondi sufficienti per ${strategy.idSymbol} (${strategy.id}). Capitale rimasto ${evalResult.grantedAmount} costo azione ${bar.c}`);
         return;
       }
 
@@ -235,14 +322,30 @@ class LiveMarketListener {
   }
 
   async aggiungiTransazione(strategy, evalResult,bar,orderRes){
+    let numShare, speso, operation;
+
+    logger.trace(`[aggiungiTransazione] strategy : ${JSON.stringify(strategy)}`);
+    logger.trace(`[aggiungiTransazione] evalResult : ${JSON.stringify(evalResult)}`);
+    logger.trace(`[aggiungiTransazione] bar : ${JSON.stringify(bar)}`);
+    logger.trace(`[aggiungiTransazione] orderRes : ${JSON.stringify(orderRes)}`);
     try{
-      //Aggiungo la transazione nella tabella transazioni
-      console.log(orderRes.id);
-      let numShare = Math.floor(evalResult.grantedAmount / bar.c);
-      let speso= numShare * bar.c;
-      logger.trace(`[aggiungiTransazione] Aggiungo record a tabella transazioni ${this.dbManagerUrl}/insertBuyTransaction ${strategy.id} ${JSON.stringify(bar)} ${speso} ${bar.c} 'BUY ORDER'} ${strategy.params.MA} ${orderRes.id} ${numShare}`);
-      await axios.post(`${this.dbManagerUrl}/insertBuyTransaction`,{orderId:orderRes.id, scenarioId:strategy.id, element:bar, capitaleInvestito:speso, prezzo:bar.c, operation:'BUY ORDER', MA:strategy.params.MA, NumAzioni:numShare });
-    }
+
+      //Aggiungo la transazione BUY nella tabella transazioni
+      if(orderRes.side === 'buy'){
+        numShare = Math.floor(evalResult.grantedAmount / bar.c);
+        speso= numShare * ((parseFloat(strategy.params.buy.limit_price) +1) * bar.c);
+        operation="BUY ORDER"
+        logger.trace(`[aggiungiTransazione] Aggiungo record BUY a tabella transazioni ${this.dbManagerUrl}/insertBuyTransaction ${strategy.id} ${JSON.stringify(bar)} ${speso} ${bar.c} ${operation}} ${strategy.params.MA} ${orderRes.id} ${numShare}`);
+        await axios.post(`${this.dbManagerUrl}/insertBuyTransaction`,{orderId:orderRes.id, scenarioId:strategy.id, element:bar, capitaleInvestito:speso, prezzo:bar.c, operation:operation, MA:strategy.params.MA, NumAzioni:numShare });
+        //Aggiungo la transazione SELL nella tabella transazioni
+      } else {
+        numShare = orderRes.qty;
+        speso=null;
+        operation="SELL ORDER"
+      logger.trace(`[aggiungiTransazione] Aggiungo record a tabella SELL alla transazioni ${this.dbManagerUrl}/insertSellTransaction ${strategy.id} ${JSON.stringify(bar)} ${speso} ${bar.c} ${operation}} ${strategy.params.MA} ${orderRes.id} ${numShare}`);
+      await axios.post(`${this.dbManagerUrl}/insertSellTransaction`,{orderId:orderRes.id, scenarioId:strategy.id, element:bar, operation:operation, MA:strategy.params.MA, NumAzioni:numShare });
+      }
+   }
     catch(error) {
       logger.error(`[aggiungiTransazione] Errore durante inserimento nella tabella transazioni ${error.message}`);
       return null;
@@ -279,6 +382,40 @@ class LiveMarketListener {
     return ('OK');
   }
 
+  async SELL(strategy, bar){
+    let orderRes;
+    try {
+
+        logger.trace(`[SELL] Apro ordine con id ${strategy.id+'-'+uuidv4()}`);
+        orderRes = await placeOrder(            this.alpacaAPIServer,
+                                                process.env.APCA_API_KEY_ID,
+                                                process.env.APCA_API_SECRET_KEY,
+                                                strategy.idSymbol, 
+                                                strategy.numAzioniBuy, 
+                                                'sell', 
+                                                strategy.params.sell.type,         
+                                                strategy.params.sell.time_in_force,            
+                                                Math.ceil((parseFloat(strategy.params.sell.limit_price) +1)  * bar.c),             
+                                                Math.ceil((parseFloat(strategy.params.sell.stop_price) + 1) * bar.c),
+                                                strategy.params.sell.trail_price,
+                                                strategy.params.sell.extended_hours,
+                                                bar.env === "TEST"?  
+                                                    strategy.id+'-TEST-'+uuidv4().replace(/-/g, '').slice(0, 12) : 
+                                                    strategy.id+'-'+uuidv4()
+                                                // v.1.2 Rimuovo l'ordine braket e gestisco manualmente dal
+                                                // momento che sembra non affidabile.
+                                                //"bracket",
+                                                //talke_profit,
+                                                //stop_loss
+                                              );            
+    }
+    catch (error) {
+        logger.error(`[BUY] Errore durante richiesta apertura ordine ad Alpaca ${error.message} ${this.alpacaAPIServer}`);
+        return null;
+    }
+    return orderRes;
+  }
+
   async BUY(strategy, evalResult, bar){
     let orderRes;
     try {
@@ -287,20 +424,22 @@ class LiveMarketListener {
         const stop_loss= {
           "stop_price": Math.floor((1 - parseFloat(strategy.params.SL)) * bar.c)
         };
-        logger.trace(`[BUY] Apro ordine con id ${strategy.id+'-'+uuidv4()}`);
+        logger.trace(`[BUY] Apro ordine con id ${strategy.id+'-'+uuidv4()} limit price ${strategy.params.buy.limit_price +1} * ${bar.c} = ${Math.ceil((parseFloat(strategy.params.buy.limit_price) +1) * bar.c)}`);
         orderRes = await placeOrder(            this.alpacaAPIServer,
-                                                this.settings['APCA-API-KEY-ID'],
-                                                this.settings['APCA-API-SECRET-KEY'],
-                                                strategy.symbol, 
+                                                process.env.APCA_API_KEY_ID,
+                                                process.env.APCA_API_SECRET_KEY,
+                                                strategy.idSymbol, 
                                                 numShare, 
                                                 'buy', 
                                                 strategy.params.buy.type,         
                                                 strategy.params.buy.time_in_force,            
-                                                Math.ceil(strategy.params.buy.limit_price  * bar.c),             
+                                                Math.ceil((parseFloat(strategy.params.buy.limit_price) +1) * bar.c),             
                                                 strategy.params.buy.stop_price,
                                                 strategy.params.buy.trail_price,
                                                 strategy.params.buy.extended_hours,
-                                                strategy.id+'-'+uuidv4()
+                                                bar.env === "TEST"?  
+                                                    strategy.id+'-TEST-'+uuidv4().replace(/-/g, '').slice(0, 12) : 
+                                                    strategy.id+'-'+uuidv4()
                                                 // v.1.2 Rimuovo l'ordine braket e gestisco manualmente dal
                                                 // momento che sembra non affidabile.
                                                 //"bracket",
@@ -318,40 +457,84 @@ class LiveMarketListener {
 
   async handleTradeSignal(signal, strategy, bar) {
     logger.trace(`[handleTradeSignal] Ricevuto segnale ${signal.action} su strategia ${JSON.stringify(strategy)} con bar ${JSON.stringify(bar)}`);
-    let orderRes, rc;
+    let orderRes, rc, evalResult;
 
-      const evalResult = await this.richiestaCapitale(bar, strategy);
-      if(!evalResult)
-        return;
-
-      if(signal.action === 'BUY')
+    // Nel caso si segnale BUY
+      if(signal.action === 'BUY') {
+        evalResult = await this.richiestaCapitale(bar, strategy);
+        if(!evalResult)
+          return;
         orderRes = await this.BUY(strategy, evalResult, bar);
-      if (!orderRes) {
-        logger.error(`[BUY] BUY operation failed`);
-        throw new Error('BUY operation failed');
+        this.orderActive.push(bar.S);
+
+        if (!orderRes) {
+          logger.error(`[handleTradeSignal] BUY operation failed`);
+          throw new Error('BUY operation failed');
+        }
+      } 
+      // Nel caso di segnale SELL
+      else {
+        // Verifico se c'e' gia un ordine immesso o se il flag this.sellOrderPlaced=true (ordine immesso ma non)
+        // ancora preso in carico da Alpaca.
+        this.alpacaAPIServer = this.settings[`ALPACA-`+process.env.ENV_ORDERS+`-BASE`]+'/v2/orders';
+        logger.trace(`[handleTradeSignal] variabile alpacaAPIServer ${this.alpacaAPIServer}`);
+        logger.trace(`[handleTradeSignal] Verifico se esiste gia un ordine SELL prima di reinserirlo ...`);
+        let orders=[];
+        try { 
+            const res = await axios.get(`${this.alpacaAPIServer}`, {
+                headers: {
+                    'APCA-API-KEY-ID': process.env.APCA_API_KEY_ID, 
+                    'APCA-API-SECRET-KEY': process.env.APCA_API_SECRET_KEY,
+                    'Content-Type': 'application/json'
+                }
+            });
+            orders=res.data;
+        } catch (error) {
+            logger.error(`[handleTradeSignal] Errore recupero ordini da Alpaca ${error.message}`);
+            return null;
+        }
+        // Data e ora correnti
+        const now = new Date();
+        //const createdAt = new Date(order.created_at);
+        logger.trace(`[handleTradeSignal] orders: ${JSON.stringify(orders)}`)
+        let exists = orders.some( o => o.symbol === bar.S && 
+                                    Number(o.qty) === Number(strategy.numAzioniBuy) &&
+                                    o.side === 'sell' &&
+                                    o.status === 'new');
+
+        logger.error(`[handleTradeSignal] Numero ordini trovati ${exists}`);
+
+        if(!exists)  // Non ho ancora immesso ordine, lo immetto ora.
+          orderRes = await this.SELL(strategy, bar);
+        else {
+          logger.warning(`[handleTradeSignal] Ordine sell gia immesso interrompo flusso`);
+          return;
+        }
       }
+        
+
 
       rc = await this.addOrdertoOrderTable(orderRes);
       if (!rc) {
-        logger.error(`[BUY] addOrdertoOrderTable operation failed`);
+        logger.error(`[handleTradeSignal] addOrdertoOrderTable operation failed`);
         throw new Error('addOrdertoOrderTable operation failed');
       }
 
       rc = await this.aggiungiTransazione(strategy, evalResult,bar,orderRes);
       if (!rc) {
-        logger.error(`[BUY] Aggiunta Transazione operation failed`);
+        logger.error(`[handleTradeSignal] Aggiunta Transazione operation failed`);
         throw new Error('Aggiunta Transazione operation failed');
       }
 
       rc = await this.aggiornaCapitaliImpegnati(evalResult,bar, strategy);
       if (!rc) {
-        logger.error(`[BUY] Aggiornamento capitale impegnato operation failed`);
+        logger.error(`[handleTradeSignal] Aggiornamento capitale impegnato operation failed`);
         throw new Error('Aggiornamento capitale impegnato operation failed');
       }
 
       rc = await this.invioComunicazione(signal, strategy, orderRes,bar, evalResult);
       if (!rc) {
-        logger.error(`[BUY] Invio comunicazione operation failed`);
+        logger.error(`[handleTradeSignal] Invio comunicazione operation failed`);
         throw new Error('Invio comunicazione operation failed');
       }
 
@@ -359,12 +542,12 @@ class LiveMarketListener {
 
   pause() {
     this.active = false;
-    logger.warning(`[handleTradeSignal] Ricevuto comando PAUSE`);
+    logger.warning(`[pause] Ricevuto comando PAUSE`);
   }
 
   resume() {
     this.active = true;
-    logger.warning(`[handleTradeSignal] Ricevuto comando RESUME`);
+    logger.warning(`[resume] Ricevuto comando RESUME`);
   }
 
   getInfo() {
@@ -372,7 +555,8 @@ class LiveMarketListener {
       module: MODULE_NAME,
       version: MODULE_VERSION,
       paused: !this.active,
-      subscribedSymbols: Object.keys(this.symbolStrategyMap)
+      subscribedSymbols: Object.keys(this.symbolStrategyMap),
+      activeOrders : this.orderActive
     };
   }
 }

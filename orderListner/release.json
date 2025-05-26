@@ -1,6 +1,7 @@
 {
     "lastUpdate" : "16/05/2025",
-    "note" : [  "Aggiunto file fillCommon come libreria in comune tra handler fill and partial fill",
-                "Modificata gestione messaggio trade_updates con messaggio proveniente da rete Alpaca"
+    "note" : [  "v.1.1 Aggiunto file fillCommon come libreria in comune tra handler fill and partial fill",
+                "v.1.1 Modificata gestione messaggio trade_updates con messaggio proveniente da rete Alpaca",
+                "v.1.2 Modifica lettura API KEY e SECRET Alpaca da variabili d'ambiente"
             ]
 }

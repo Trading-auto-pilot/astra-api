@@ -3,7 +3,7 @@ const createLogger = require('../../shared/logger');
 const StrategyUtils = require('../../shared/strategyUtils');
 
 const MODULE_NAME = 'SMA';
-const MODULE_VERSION = '1.0';
+const MODULE_VERSION = '1.1';
 const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL);
 const utils = new StrategyUtils();
 
@@ -12,7 +12,6 @@ class SMA {
     this.lastOp = null;
     this.comprato = null;
     this.capitaleInvestito = 0;
-    //this.strategyUtilsURL = process.env.STRATEGYUTIL_URL || 'http://strategy-utils:3007';
     this.dbManagerURL = process.env.DBMANAGER_URL || 'http://dbmanager:3002';
 
     this.registerBot();

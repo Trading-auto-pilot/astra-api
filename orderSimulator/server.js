@@ -1,4 +1,5 @@
 const express = require('express');
+const redis = require('redis');
 const http = require('http');
 const OrderSimulator = require('./orderSimulator');
 const createLogger = require('../shared/logger');
@@ -43,9 +44,39 @@ app.post('/send', (req, res) => {
   }
 });
 
+app.get('/v2/orders', async (req, res) => {
+  try {
+    const result = await simulator.getOrders();
+    res.status(200).json(result.data);
+  } catch (err) {
+    logger.error(`[orders] ${err.message}`);
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.post('/v2/orders', async (req, res) => {
   try {
     const result = await simulator.acceptOrder(req.body);
+    res.status(200).json(result);
+  } catch (err) {
+    logger.error(`[orders] ${err.message}`);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/v2/account', async (req, res) => {
+  try {
+    const result = await simulator.getAccount();
+    res.status(200).json(result);
+  } catch (err) {
+    logger.error(`[orders] ${err.message}`);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/v2/positions', async (req, res) => {
+  try {
+    const result = await simulator.getPositions();
     res.status(200).json(result);
   } catch (err) {
     logger.error(`[orders] ${err.message}`);
@@ -64,7 +95,33 @@ app.get('/health', (req, res) => {
 
 // Avvio server
 const PORT = process.env.PORT || 3004;
-server.listen(PORT, () => {
-  simulator.loadSettings();
+server.listen(PORT, async () => {
+  await simulator.loadSettings();
+  // Mi connetto al websocket delle candele per sincronizzare orologio locale.
+  simulator.connectToMarketWebSocketForClock();
   logger.info(`Server OrderSimulator avviato sulla porta ${PORT}`);
 });
+
+
+// Configurazione REDIS
+// Redis Pub/Sub Integration
+(async () => {
+  const subscriber = redis.createClient({ url: process.env.REDIS_URL || 'redis://redis:6379' });
+  subscriber.on('error', (err) => console.error('❌ Redis error:', err));
+
+  await subscriber.connect();
+  console.log('✅ Connesso a Redis per Pub/Sub');
+
+  await subscriber.subscribe('commands', async (message) => {
+    console.log(`📩 Ricevuto su 'commands':`, message);
+    try {
+      const parsed = JSON.parse(message);
+      if (parsed.action === 'loadSettings') {
+        await simulator.loadSettings();
+        console.log('✔️  Eseguito comando:', parsed.action);
+      }
+    } catch (err) {
+      console.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
+    }
+  });
+})();

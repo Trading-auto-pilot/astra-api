@@ -26,6 +26,7 @@ services:
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_PORT : ${MYSQL_PORT}
+      MYSQL_HOST : ${MYSQL_HOST}
     ports:
       - "3306:3306"
     networks:
@@ -37,6 +38,26 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - trading-net
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   dbmanager:
     image: expovin/dbmanager:${DBMANAGER_VERSION}
@@ -81,8 +102,13 @@ services:
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
       - LOG_LEVEL=${LOG_LEVEL}
+      - REDIS_URL=redis://redis:6379
+      - APCA_API_KEY_ID=${APCA_API_KEY_ID}
+      - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
     depends_on:
       dbmanager:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3006/health"]
@@ -105,10 +131,13 @@ services:
     depends_on:
       dbmanager:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
       - LOG_LEVEL=${LOG_LEVEL}
       - BACKTESTMODE=false
+      - REDIS_URL=redis://redis:6379
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3008/health"]
       interval: 10s
@@ -129,41 +158,21 @@ services:
     depends_on:
       dbmanager:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV_ORDERS=${ENV_ORDERS}
+      - REDIS_URL=redis://redis:6379
+      - APCA_API_KEY_ID=${APCA_API_KEY_ID}
+      - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3009/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
-
-  # strategyutils:
-  #   image: expovin/strategyutils:${STRATEGYUTILS_VERSION}
-  #   container_name: strategyutils
-  #   build:
-  #     context: .
-  #     dockerfile: strategyUtils/Dockerfile
-  #   restart: unless-stopped
-  #   ports:
-  #     - "3007:3007"
-  #   networks:
-  #     - trading-net
-  #   environment:
-  #     - CACHEMANAGER_URL=http://cachemanager:3006
-  #     - LOG_LEVEL=${LOG_LEVEL}
-  #   depends_on:
-  #     cachemanager:
-  #       condition: service_healthy
-  #     dbmanager:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:3007/health"]
-  #     interval: 10s
-  #     timeout: 10s
-  #     retries: 5
 
   livemarketlistener:
     image: expovin/livemarketlistener:${LIVEMARKETLISTENER_VERSION}
@@ -181,14 +190,16 @@ services:
         condition: service_healthy
       dbmanager:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       sma:
+        condition: service_healthy
+      sltp:
         condition: service_healthy
       capitalmanager:
         condition: service_healthy
       alertingservice:
         condition: service_healthy
-      # strategyutils:
-      #   condition: service_healthy
       marketsimulator:
         condition: service_healthy
       ordersimulator:
@@ -196,12 +207,16 @@ services:
     environment:
       - LOG_LEVEL=${LOG_LEVEL}
       - DBMANAGER_URL=http://dbmanager:3002
+      - REDIS_URL=redis://redis:6379
       - ENV_MARKET=${ENV_MARKET}
       - ENV_ORDERS=${ENV_ORDERS}
       - FEED=${ALPACA_MARKET_FEED}
       - SMA_URL=http://sma:3010
+      - SLTP_URL=http://sltp:3011
       - CAPITAL_MANAGER_URL=http://capitalmanager:3009
       - ALERTINGMANAGER_URL=http://alertingservice:3008
+      - APCA_API_KEY_ID=${APCA_API_KEY_ID}
+      - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
 
   orderlistner:
     image: expovin/orderlistner:${ORDERLISTNER_VERSION}
@@ -219,6 +234,8 @@ services:
         condition: service_healthy
       dbmanager:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       alertingservice:
         condition: service_healthy
       marketsimulator:
@@ -229,8 +246,12 @@ services:
       - LOG_LEVEL=${LOG_LEVEL}
       - DBMANAGER_URL=http://dbmanager:3002
       - ENV_TRADING=${ENV_TRADING}
+      - ENV_ORDERS=${ENV_ORDERS}
       - ALERTINGMANAGER_URL=http://alertingservice:3008
-
+      - LIVEMARKETMANAGER_URL=http://livemarketlistener:3012
+      - REDIS_URL=redis://redis:6379
+      - APCA_API_KEY_ID=${APCA_API_KEY_ID}
+      - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
 
 
   sma:
@@ -247,8 +268,11 @@ services:
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
       - LOG_LEVEL=${LOG_LEVEL}
+      - REDIS_URL=redis://redis:6379
     depends_on:
       dbmanager:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3010/health"]
@@ -256,6 +280,34 @@ services:
       timeout: 10s
       retries: 5
 
+  sltp:
+    image: expovin/sltp:${SLTP_VERSION}
+    container_name: sltp
+    build:
+      context: .
+      dockerfile: strategies/sltp/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3011:3011"
+    networks:
+      - trading-net
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+      - LOG_LEVEL=${LOG_LEVEL}
+      - ENV_ORDERS=${ENV_ORDERS}
+      - REDIS_URL=redis://redis:6379
+      - APCA_API_KEY_ID=${APCA_API_KEY_ID}
+      - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
+    depends_on:
+      dbmanager:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3011/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
 
 
   # Sezione docker per la simulazione
@@ -297,6 +349,7 @@ services:
     environment:
       - LOG_LEVEL=${LOG_LEVEL}
       - DBMANAGER_URL=http://dbmanager:3002
+      - REDIS_URL=redis://redis:6379
     depends_on:
       dbmanager:
         condition: service_healthy
@@ -308,6 +361,7 @@ services:
 
 volumes:
   mysql_data:
+  redis-data:
   shared_cache_data:
     external: true
 

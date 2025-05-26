@@ -1,5 +1,6 @@
 // server.js
 const express = require('express');
+const redis = require('redis');
 const AlertingService = require('./alertingService');
 require('dotenv').config();
 
@@ -9,6 +10,33 @@ const port = process.env.PORT || 3008;
 app.use(express.json());
 
 const alerting = new AlertingService();
+
+
+// Configurazione REDIS
+// Redis Pub/Sub Integration
+(async () => {
+  const subscriber = redis.createClient({ url: process.env.REDIS_URL || 'redis://redis:6379' });
+  subscriber.on('error', (err) => console.error('❌ Redis error:', err));
+
+  await subscriber.connect();
+  console.log('✅ Connesso a Redis per Pub/Sub');
+
+  await subscriber.subscribe('commands', async (message) => {
+    console.log(`📩 Ricevuto su 'commands':`, message);
+    try {
+      const parsed = JSON.parse(message);
+      if (parsed.action === 'loadSettings') {
+        alerting.loadSettings();
+        console.log('✔️  Eseguito comando:', parsed.action);
+      }
+    } catch (err) {
+      console.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
+    }
+  });
+})();
+
+
+
 
 // Endpoint salute
 app.get('/health', (req, res) => {
@@ -43,7 +71,7 @@ app.post('/email/send', async (req, res) => {
 
   try {
     const result = await alerting.sendEmail(req.body);
-    res.json({ status: 'inviato', id: result.messageId });
+    res.json({ status: 'inviato', result: JSON.stringify(result) });
   } catch (err) {
     res.status(500).json({ error: 'Errore invio email', message: err.message });
   }

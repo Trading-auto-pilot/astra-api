@@ -1,4 +1,5 @@
 {
-    "lastUpdate" : "08/05/2025 2025",
-    "note" : ["MarketSimulator : First version test in PAPER environment"]
+    "lastUpdate" : "23/05/2025 2025",
+    "note" : ["v.1.1 MarketSimulator : First version test in PAPER environment",
+                "v.1.2 Aggiunta gestione con REDIS per gestione centralizzata esecuzione comandi"]
 }

@@ -1,0 +1,14 @@
+{
+  "name": "trading-system-tests",
+  "version": "1.0.0",
+  "description": "Test E2E per microservizi trading-system",
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  }
+}
