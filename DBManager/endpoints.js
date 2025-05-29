@@ -5,15 +5,16 @@ const path = require('path');
 const createLogger = require('../shared/logger');
 require('dotenv').config({ path: '../.env' });
 
-const DBManager = require('./dbManager');
-const dbManager = new DBManager();
+// const DBManager = require('./dbManager');
+// const dbManager = new DBManager();
+const dbManager = require('./modules');
 
 const app = express();
 const port = process.env.PORT || 3002;
 
 // 🌍 Costanti di modulo
 const MODULE_NAME = 'DBManager_RESTServer';
-const MODULE_VERSION = '1.0';
+const MODULE_VERSION = '2.0';
 const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
 
 app.use(cors());

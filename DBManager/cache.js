@@ -18,5 +18,14 @@ module.exports = {
   },
   del: async (key) => {
     await client.del(key);
+  },
+  expire: async (key, ttl) => {
+    await client.expire(key, ttl);
+  },
+  keys: async (pattern = '*') => {
+    return await client.keys(pattern);
+  },
+  getRaw: async (key) => {
+    return await client.get(key); // stringa JSON grezza
   }
 };

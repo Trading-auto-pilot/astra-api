@@ -13,7 +13,7 @@ module.exports = (dbManager) => {
     if (data) return res.json(data);
 
     try {
-      const data = await dbManager.getAccountAsJson();
+      const data = await dbManager.simul_getAccountAsJson();
       await cache.set(cacheKey, data);
       res.json(data);
     } catch (error) {
@@ -23,7 +23,7 @@ module.exports = (dbManager) => {
 
   router.put('/account', async (req, res) => {
     try {
-      const data = await dbManager.updateAccount(req.body);
+      const data = await dbManager.simul_updateAccount(req.body);
       await cache.del('simul_account:all');
       res.json(data);
     } catch (error) {
@@ -37,7 +37,7 @@ module.exports = (dbManager) => {
     let data = await cache.get(cacheKey);
     if (data) return res.json(data);
     try {
-      const data = await dbManager.getAllPositionsAsJson();
+      const data = await dbManager.simul_getAllPositionsAsJson();
       await cache.set(cacheKey, data);
       res.json(data);
     } catch (error) {
@@ -52,7 +52,7 @@ module.exports = (dbManager) => {
     try {
       let data = await cache.get(cacheKey);
       if (!data) {
-        data = await dbManager.getAllPositionsAsJson();
+        data = await dbManager.simul_getAllPositionsAsJson();
         await cache.set(cacheKey, data);
       }
 
@@ -68,7 +68,7 @@ module.exports = (dbManager) => {
 
   router.post('/positions', async (req, res) => {
     try {
-      const data = await dbManager.insertPosition(req.body);
+      const data = await dbManager.simul_insertPosition(req.body);
       await cache.del('simul_position:all');
       res.json(data);
     } catch (error) {
@@ -78,7 +78,7 @@ module.exports = (dbManager) => {
 
   router.put('/positions', async (req, res) => {
     try {
-      const data = await dbManager.updatePosition(req.body);
+      const data = await dbManager.simul_updatePosition(req.body);
       await cache.del('simul_position:all');
       res.json(data);
     } catch (error) {
@@ -88,7 +88,7 @@ module.exports = (dbManager) => {
 
   router.delete('/positions/:symbol', async (req, res) => {
     try {
-      const data = await dbManager.closePosition(req.params.symbol);
+      const data = await dbManager.simul_closePosition(req.params.symbol);
       await cache.del('simul_position:all');
       res.json(data);
     } catch (error) {
@@ -104,7 +104,7 @@ module.exports = (dbManager) => {
     if (data) return res.json(data);
 
     try {
-      const data = await dbManager.getAllOrdersAsJson();
+      const data = await dbManager.simul_getAllOrdersAsJson();
       await cache.set(cacheKey, data);
       res.json(data);
     } catch (error) {
@@ -114,7 +114,7 @@ module.exports = (dbManager) => {
 
   router.put('/orders', async (req, res) => {
     try {
-      const data = await dbManager.updateSimulOrder(req.body);
+      const data = await dbManager.simul_updateOrder(req.body);
       await cache.del('orders:all');
       res.json(data);
     } catch (error) {
@@ -124,7 +124,7 @@ module.exports = (dbManager) => {
 
   router.post('/orders', async (req, res) => {
     try {
-      const data = await dbManager.insertSimulatedOrder(req.body);
+      const data = await dbManager.simul_insertOrder(req.body);
       await cache.del('orders:all');
       res.json(data);
     } catch (error) {
