@@ -1,5 +1,5 @@
 {
-  "watch": ["server.js", "smtp.js"],
+  "watch": ["server.js", "sltp.js"],
   "ignore": ["*.test.js", "node_modules","Dockerfile","README.md","release.json"],
   "exec": "node server.js"
 }

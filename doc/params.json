@@ -1,8 +1,8 @@
 {
-    "TP":0.1, 
-    "SL":-0.005, 
-    "TF":"15Min", 
-    "MA":25,
+    "TP":0.1,                       
+    "SL":-0.005,                    
+    "TF":"15Min",                   
+    "MA":25,                        
     "buy" : {
         "type":"limit", 
         "limit_price":0.005,
@@ -11,6 +11,7 @@
         "trail_price":null,
         "extended_hours":false
     }, "sell":{
+        "exitMode" : "close",
         "type":"limit",
         "time_in_force":"gtc",
         "limit_price":0.005,
@@ -19,3 +20,25 @@
         "extended_hours":null
     }
 }
+
+TP : Take profit, espresso in decimale. Viene sommato a 1 e moltiplicato al prezzo di acquisto (0.1 = 10%)
+SL : Stop Loss, espresso in decimale con il segno. Viene sommato a 1 e moltiplicato per il prezzo di acquisto (-0.005 = perdita del 0.5%)
+TF : Time Frame in minuti della candela, viene usato come richiesta a chache manager per il backtest
+MA : Moving Average espresso in giorni usato per segnale di ingresso/uscita
+
+buy & sell
+------
+type : market | limit | stop | stop_imit | trailing_stop
+        Tipo di ordine d'acquisto. https://docs.alpaca.markets/reference/postorder
+
+limit_price : day | gtg | opg | cls | ioc | fok
+        Time for the order to remain valid https://docs.alpaca.markets/reference/postorder
+
+stop_price | trail_price : Linked to type stop_imit or trailing_stop
+
+extended_hours : If true, order will be eligible to execute in premarket/afterhours.
+
+exitMode : close | order
+        Not linked to Alpaca. 
+            close > Close all positions for a specific symbol with DELETE /v2/positions at market price
+            order > Insert a SELL order with details

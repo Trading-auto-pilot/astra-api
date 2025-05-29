@@ -25,8 +25,8 @@ async function loadSettings() {
   const settings = {};
   for (const key of keys) {
     try {
-      const res = await axios.get(`${dbManagerBaseUrl}/getSetting/${key}`);
-      settings[key] = res.data.value;
+      const res = await axios.get(`${dbManagerBaseUrl}/settings/${key}`);
+      settings[key] = res.data;
       logger.trace(`[loadSetting] Setting variavile ${key} : ${settings[key]}`);
     } catch (err) {
         console.error(`[SETTINGS] Errore nel recupero della chiave '${key}': ${err.message}`);

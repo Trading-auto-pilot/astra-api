@@ -13,6 +13,7 @@ class OrderListener {
     this.ws = null;
     this.settings = {};
     this.dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
+    this.liveMarketListnerUrl = process.env.LIVEMARKETMANAGER_URL || 'http://localhost:3012';
     this.timeout = 10000;
     this.AlpacaEnv=null;
   }
@@ -46,14 +47,15 @@ class OrderListener {
       'ALPACA-PAPER-BASE',
       'ALPACA-LIVE-BASE',
       'ALPACA-LOCAL-BASE',
+      'ALPACA-DEV-BASE',
       'ALPACA-API-TIMEOUT'
     ];
 
     for (const key of keys) {
       try {
-        const res = await axios.get(`${this.dbManagerUrl}/getSetting/${key}`);
-        this.settings[key] = res.data.value;
-        logger.trace(`[loadSettings] ${key} = ${res.data.value}`);
+        const res = await axios.get(`${this.dbManagerUrl}/settings/${key}`);
+        this.settings[key] = res.data;
+        logger.trace(`[loadSettings] ${key} = ${res.data}`);
       } catch (err) {
         logger.error(`[loadSettings] Errore nel recupero di ${key}: ${err.message}`);
         throw err;
@@ -69,70 +71,80 @@ class OrderListener {
     this.timeout = parseInt(this.settings['ALPACA-API-TIMEOUT']) || 10000;
   }
 
-  connect() {
-    const wsUrl = this.settings['ALPACA-'+process.env.ENV_TRADING+'-TRADING'];
-    logger.info(`[${MODULE_NAME}][connect] Connessione al WebSocket: ${wsUrl}`);
+connect(retry = true) {
+  const RECONNECT_DELAY_MS = 5000;
+  const wsUrl = this.settings['ALPACA-' + process.env.ENV_TRADING + '-TRADING'];
 
-    this.ws = new WebSocket(wsUrl);
+  logger.info(`[${MODULE_NAME}][connect] Connessione al WebSocket: ${wsUrl}`);
 
-    this.ws.on('open', () => {
-      logger.info(`[${MODULE_NAME}][connect] WebSocket connesso. Autenticazione in corso...`);
+  this.ws = new WebSocket(wsUrl);
 
-      this.ws.send(JSON.stringify({
-        action: 'auth',
-        data: {
-          key_id: process.env.APCA_API_KEY_ID,
-          secret_key: process.env.APCA_API_SECRET_KEY
-        }
-      }));
-    });
+  this.ws.on('open', () => {
+    logger.info(`[${MODULE_NAME}][connect] WebSocket connesso. Autenticazione in corso...`);
 
-    this.ws.on('message', async (raw) => {
-      let msg;
-      try {
-        msg = JSON.parse(raw);
-        logger.trace(`[message] messaggio ricevuto ${JSON.stringify(msg)}`)
-      } catch (err) {
-        logger.warning(`[message] JSON malformato: ${raw}`);
-        return;
+    this.ws.send(JSON.stringify({
+      action: 'auth',
+      data: {
+        key_id: process.env.APCA_API_KEY_ID,
+        secret_key: process.env.APCA_API_SECRET_KEY
       }
-      //for (const msg of messages) {
-        if (msg.stream === 'authorization' && msg.data.status === 'authorized' ) {
-          logger.info(`Autenticazione riuscita : ${msg.data.status}`);
-          this.ws.send(JSON.stringify({
-            action: "listen",
-            data: {
-              streams: ["trade_updates"]
-            }
-          }));
-          return;
-        }
+    }));
+  });
 
-        if (msg.stream === 'listening') {
-          logger.info(`In ascolto sugli eventi`);
-          return;
-        }
+  this.ws.on('message', async (raw) => {
+    let msg;
+    try {
+      msg = JSON.parse(raw);
+      logger.trace(`[message] ricevuto: ${JSON.stringify(msg)}`);
+    } catch (err) {
+      logger.warning(`[message] JSON malformato: ${raw}`);
+      return;
+    }
 
-        if (msg.stream === 'trade_updates') {
-          logger.trace(JSON.stringify(msg.data, null, 2));
+    if (msg.stream === 'authorization' && msg.data.status === 'authorized') {
+      logger.info(`[auth] Autenticazione riuscita`);
+      this.ws.send(JSON.stringify({
+        action: 'listen',
+        data: { streams: ['trade_updates'] }
+      }));
+      return;
+    }
 
-          // Invio messaggio al router
-          routeEvent(msg.data.event, msg.data, this.AlpacaEnv);
-        }   else {
-          logger.warning('[connect] Altri tipi di eventi:', JSON.stringify(msg));
-        }
-      //}
+    if (msg.stream === 'listening') {
+      logger.info(`[connect] In ascolto sugli eventi`);
+      return;
+    }
 
-    });
+    if (msg.stream === 'trade_updates') {
+      logger.trace(`[update] Evento trade: ${JSON.stringify(msg.data, null, 2)}`);
+      // Processo il messaggio
+      routeEvent(msg.data.event, msg.data, this.AlpacaEnv);
+      // Nel caso sia un messaggio relativo a una chiusura di una posizione DELETE positions, lo giro al liveMarketListner
+      //await axios.post(`${this.liveMarketListnerUrl}/addOrdertoOrderTable`,msg.data.order); 
 
-    this.ws.on('error', (err) => {
-      logger.error(`[connect] Errore WebSocket: ${err.message}`);
-    });
+      // Richiamo aggiornaCapitaliImpegnati di LiveMarketListner 
+    } else {
+      logger.warning(`[connect] Evento sconosciuto: ${JSON.stringify(msg)}`);
+    }
+  });
 
-    this.ws.on('close', () => {
-      logger.warning(`[connect] WebSocket chiuso.`);
-    });
-  }
+  this.ws.on('error', (err) => {
+    logger.error(`[connect] Errore WebSocket: ${err.message}`);
+    // chiude forzatamente in caso di errore persistente
+    if (this.ws.readyState !== WebSocket.CLOSED && this.ws.readyState !== WebSocket.CLOSING) {
+      this.ws.terminate?.();
+    }
+  });
+
+  this.ws.on('close', () => {
+    logger.warning(`[connect] WebSocket chiuso.`);
+    if (retry) {
+      logger.info(`[connect] Tentativo di riconnessione in ${RECONNECT_DELAY_MS / 1000}s...`);
+      setTimeout(() => this.connect(true), RECONNECT_DELAY_MS);
+    }
+  });
+}
+
 
   getInfo() {
     return {

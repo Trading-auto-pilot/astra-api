@@ -30,7 +30,7 @@ getSMAInfo() {
   // 🔁 Registra il bot nel DB se non esiste, altrimenti aggiorna la data
 async registerBot() {
     try {
-      await axios.post(`${this.dbManagerURL}/bot/registra`, {
+      await axios.post(`${this.dbManagerURL}/bot`, {
         name: MODULE_NAME,
         ver: MODULE_VERSION
       });
@@ -97,7 +97,7 @@ async loadLastPosition(scenarioId) {
 
     try {
         prezzo = parseFloat(candle.c);
-        await this.loadLastPosition(scenarioId);
+        //await this.loadLastPosition(scenarioId);
     } 
     catch (err) {
         logger.error(`[processCandle] Errore nel recupero loadLastPosition:`, err.message);
@@ -127,15 +127,15 @@ async loadLastPosition(scenarioId) {
     if (this.comprato) {
       const profit = (prezzo - this.comprato) / this.comprato;
 
-      if (profit <= -SL) {
-        return {
-          action: 'SELL',
-          prezzo,
-          mediaMobile,
-          motivo: 'SL',
-          profitLoss: profit
-        };
-      }
+      // if (profit <= -SL) {
+      //   return {
+      //     action: 'SELL',
+      //     prezzo,
+      //     mediaMobile,
+      //     motivo: 'SL',
+      //     profitLoss: profit
+      //   };
+      // }
 
       if (profit >= TP) {
         return {

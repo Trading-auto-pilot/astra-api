@@ -78,6 +78,11 @@ app.post('/resume', (req, res) => {
   res.json({ status: 'resumed' });
 });
 
+app.post('/addOrdertoOrderTable', (req, res) => {
+  marketListener.addOrdertoOrderTable(req.body);
+  res.json({ status: 'resumed' });
+});
+
 app.put('/orderActive/remove', (req, res) => {
   const { symbol } = req.body;
 
@@ -99,4 +104,13 @@ app.put('/orderActive/remove', (req, res) => {
 
 app.listen(port, () => {
   console.log(`[LiveMarketListener] Server REST attivo su porta ${port}`);
+});
+
+// 👇 Aggiungi questo blocco
+process.on('SIGTERM', () => {
+  logger.info('[server] Terminazione ricevuta. Chiusura server...');
+  server.close(() => {
+    logger.info('[server] Server chiuso correttamente.');
+    process.exit(0);
+  });
 });

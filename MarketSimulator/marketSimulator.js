@@ -1,5 +1,6 @@
 const WebSocket = require('ws');
 const axios = require('axios');
+const { publishCommand } = require('../shared/redisPublisher');
 const createLogger = require('../shared/logger');
 
 const MODULE_NAME = 'MarketSimulator';
@@ -27,7 +28,7 @@ class MarketSimulator {
     logger.info(`[loadSettings] Caricamento configurazione da DBManager...`);
     const keys = ['STREAM-SIMULATION-DELAY'];
     for (const key of keys) {
-      const res = await axios.get(`${this.dbManagerUrl}/getSetting/${key}`);
+      const res = await axios.get(`${this.dbManagerUrl}/setting/${key}`);
       this.settings[key] = res.data.value;
       logger.trace(`[loadSettings] ${key} = ${res.data.value}`);
     }
@@ -164,16 +165,18 @@ class MarketSimulator {
   }
 
 async  updatePositionFromCandle(candle) {
-  const symbol = candle.symbol;
-  const close = parseFloat(candle.c);
+  const symbol = candle[0].S;
+  const close = parseFloat(candle[0].c);
 
+  logger.trace(`[updatePositionFromCandle] Aggiorno posizioni aperte con candela ${JSON.stringify(candle)}`);
   if (!symbol || isNaN(close)) {
     logger.warning('[updatePositionFromCandle] Candela non valida o incompleta');
     return { updated: false, reason: 'symbol o close mancanti' };
   }
 
-  const allPositions = await dbManagerUrl.getAllPositionsAsJson();
-  const position = allPositions.find(pos => pos.symbol === symbol);
+  const allPositions = await axios.get(`${this.dbManagerUrl}/simul/positions`);
+
+  const position = allPositions.data.find(pos => pos.symbol === symbol);
 
   if (!position) {
     logger.info(`[updatePositionFromCandle] Nessuna posizione attiva per ${symbol}`);
@@ -192,20 +195,29 @@ async  updatePositionFromCandle(candle) {
   const unrealized_intraday_plpc = lastday_price !== 0 ? (close - lastday_price) / lastday_price : 0;
   const change_today = unrealized_intraday_plpc;
 
+  logger.trace(`[updatePositionFromCandle] qty:${qty} close:${close} market_value:${market_value} unrealized_pl:${unrealized_pl} unrealized_plpc:${unrealized_plpc}`);
+
   const updatedFields = {
+    position_id: position.position_id,
     asset_id: position.asset_id,
     symbol: position.symbol,
-    current_price: close.toFixed(2),
-    market_value: market_value.toFixed(2),
-    unrealized_pl: unrealized_pl.toFixed(2),
-    unrealized_plpc: unrealized_plpc.toFixed(6),
-    unrealized_intraday_pl: unrealized_intraday_pl.toFixed(2),
-    unrealized_intraday_plpc: unrealized_intraday_plpc.toFixed(6),
-    change_today: change_today.toFixed(6)
+    current_price: parseFloat(close.toFixed(2)),
+    market_value: parseFloat(market_value.toFixed(2)),
+    unrealized_pl: parseFloat(unrealized_pl.toFixed(2)),
+    unrealized_plpc: parseFloat(unrealized_plpc.toFixed(6)),
+    unrealized_intraday_pl: parseFloat(unrealized_intraday_pl.toFixed(2)),
+    unrealized_intraday_plpc: parseFloat(unrealized_intraday_plpc.toFixed(6)),
+    change_today: parseFloat(change_today.toFixed(6))
   };
 
-  await dbManagerUrl.updatePosition(updatedFields);
+  logger.trace(`[updatePositionFromCandle] updatedFields:${JSON.stringify(updatedFields)}`);
+
+  
+  await axios.put(`${this.dbManagerUrl}/simul/positions`,updatedFields);
   logger.info(`[updatePositionFromCandle] Posizione ${symbol} aggiornata con candela`);
+  
+  // Inviare messaggio si websocket channel command : loadActivePosition
+  await publishCommand({ action: 'loadActivePosition' });
 
   return { updated: true, symbol, updatedFields };
 }

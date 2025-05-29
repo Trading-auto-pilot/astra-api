@@ -15,8 +15,8 @@ module.exports = async (data,event_type,AlpacaEnv) => {
 
   // Recupero scenario id
   try {
-    logger.trace(`[NEW] Recupero ScenarioId con  ${dbManagerUrl}/getScenarioIdByOrderId/${data.order.id}`);
-    retData = await axios.get(`${dbManagerUrl}/getScenarioIdByOrderId/${data.order.id}`);
+    logger.trace(`[NEW] Recupero ScenarioId con  ${dbManagerUrl}/transactions/scenarioIdByOrderId/${data.order.id}`);
+    retData = await axios.get(`${dbManagerUrl}/transactions/scenarioIdByOrderId/${data.order.id}`);
   }
   catch (error) {
     logger.error(`[NEW] Errore durante il recupero della strategy id ${error.message}`);
@@ -42,8 +42,8 @@ logger.trace(`[NEW] Strategy details : ${JSON.stringify(myStrategy)}`)
       retData.data.operation = 'BUY NEW';
     else
       retData.data.operation = 'SELL NEW';
-    logger.trace(`[NEW] Aggiorno tabella transazioni ${dbManagerUrl}/updateTransaction ${JSON.stringify(retData.data)}`);
-    const rc = await axios.post(`${dbManagerUrl}/updateTransaction`, retData.data);
+    logger.trace(`[NEW] Aggiorno tabella transazioni PUT ${dbManagerUrl}/transactions ${JSON.stringify(retData.data)}`);
+    const rc = await axios.put(`${dbManagerUrl}/transactions`, retData.data);
     logger.log(`[NEW] Aggiornata tabella transazioni ${JSON.stringify(rc.data)}`);
 
   } catch (error) {
@@ -53,8 +53,8 @@ logger.trace(`[NEW] Strategy details : ${JSON.stringify(myStrategy)}`)
 
   // Aggiorno la tabella Ordini
   try{
-    logger.trace(`[NEW] Aggiorno Tabella Ordini ${dbManagerUrl}/updateOrder`);
-    const ret = await axios.post(`${dbManagerUrl}/updateOrder`, data.order);
+    logger.trace(`[NEW] Aggiorno Tabella Ordini PUT${dbManagerUrl}/orders`);
+    const ret = await axios.put(`${dbManagerUrl}/orders`, data.order);
   } catch (error) {
     logger.trace(`[NEW] Errore nell'aggiornamento della tabella Ordini ${error.message}`);
     return null;

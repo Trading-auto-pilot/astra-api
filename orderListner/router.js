@@ -1,5 +1,6 @@
 const redis = require('redis');
 const axios = require('axios');
+const { publishCommand } = require('../shared/redisPublisher');
 const newOrder = require('./handlers/new');
 const fill = require('./handlers/fill');
 const canceled = require('./handlers/cancelled');
@@ -12,15 +13,15 @@ const MODULE_NAME = 'OrderListener Router';
 const MODULE_VERSION = '1.0';
 const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL);
 const dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
-const redisUrl = process.env.REDIS_URL || 'redis://redis:6379'
+//const redisUrl = process.env.REDIS_URL || 'redis://redis:6379'
 const liveMarketlsnrUrl = process.env.LIVEMARKETMANAGER_URL || 'http://localhost:3012';
 
-let publisher = null;
+//let publisher = null;
 
-(async () => {
-  publisher = redis.createClient({ url: redisUrl });
-  await publisher.connect();
-})();
+// (async () => {
+//   publisher = redis.createClient({ url: redisUrl });
+//   await publisher.connect();
+// })();
 
 
 const eventHandlers = {
@@ -68,19 +69,20 @@ async function routeEvent(eventType, data, AlpacaEnv) {
     data.order[updateDateFild[eventType]]= now.toISOString().slice(0, 19).replace('T', ' ');
     logger.trace(`Campo data da aggiornare ${updateDateFild[eventType]} =  ${data.order[updateDateFild[eventType]]}`);
     try{
-      logger.trace(`[FILL] Aggiorno la tabella Ordini ${dbManagerUrl}/updateOrder con body ${JSON.stringify(data.order)}`);
-      await axios.post(`${dbManagerUrl}/updateOrder`, data.order);
+      logger.trace(`[ROUTER] Aggiorno la tabella Ordini PUT ${dbManagerUrl}/orders con body ${JSON.stringify(data.order)}`);
+      await axios.put(`${dbManagerUrl}/orders`, data.order);
     } catch (error) {
-      logger.error(`[FILL] Errore durante update tabella ordini ${error.message}`);
+      logger.error(`[ROUTER] Errore durante update tabella ordini ${error.message}`);
       return null;
     }
 
     // Forzo il ricarico degli ordini in tutte le strategie
-    publisher.publish('commands',JSON.stringify({ "action" : "loadActiveOrders"}));
+    await publishCommand({ action: 'loadActiveOrders' });
+    //publisher.publish('commands',JSON.stringify({ "action" : "loadActiveOrders"}));
 
     //Rimuovo i simbols dagli ordini attivi 
     if (eventType !== 'new') {
-      await axios.post(`${liveMarketlsnrUrl}/orderActive/remove`, {
+      await axios.put(`${liveMarketlsnrUrl}/orderActive/remove`, {
         symbol: data.order.symbol
       });
     }

@@ -3,15 +3,15 @@ const { v4: uuidv4 } = require('uuid');
 const MODULE_NAME = 'fillOrders';
 const MODULE_VERSION = '1.0';
 const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
-
+ 
 class fiilOrders {
-    constructor(caller, filledOrder, transazioni, strategia, ordine, cache, openOrders) {
+    constructor(caller, filledOrder, transazioni, strategia, cache, openOrders) {
         this.caller = caller;
         this.transazioni = transazioni;
         this.strategia = strategia;
         this.cache=cache;
         this.filledOrder=filledOrder;
-        this.ordine = ordine;
+        //this.ordine = ordine;
         this.openOrders = openOrders;
 
         this.transactionUpdate = transazioni;
@@ -29,17 +29,18 @@ class fiilOrders {
     updateKPIs (){
         // Caso Acquisto
         if(this.filledOrder.order.side == "buy"){
-            logger.trace(`[BUY] this.openOrders : ${this.openOrders} this.filledOrder : ${JSON.stringify(this.filledOrder)} this.ordine: ${JSON.stringify(this.ordine)} `);
+            logger.trace(`[BUY] this.openOrders : ${this.openOrders} this.filledOrder : ${JSON.stringify(this.filledOrder)}`);
             // Aggiorno prezzo medio acquisto
             this.strategiaUpdate.AvgBuy = (parseFloat(this.strategiaUpdate.AvgBuy)*Number(this.strategia.numAzioniBuy) +   parseFloat(this.filledOrder.order.filled_avg_price) * parseFloat(this.filledOrder.order.filled_qty)) / (Number(this.strategia.numAzioniBuy)+ parseFloat(this.filledOrder.order.filled_qty));
             // Aggiorno numero azioni acquistate
             this.strategiaUpdate.numAzioniBuy +=  Number(this.filledOrder.order.filled_qty);
             // Aggiorno Capitale Investito
+
             this.strategiaUpdate.CapitaleInvestito += parseFloat(this.filledOrder.order.filled_qty) * parseFloat(this.filledOrder.order.filled_avg_price);          // Aggiorno il capitale investito
             this.strategiaUpdate.CapitaleResiduo += parseFloat(this.filledOrder.order.filled_qty) * parseFloat(this.filledOrder.order.filled_avg_price);            // Aggiorno capitale residuo
             this.transactionUpdate.operation='BUY'
             if(Number(this.openOrders) === 0 && this.caller === "fill")
-                // Se e' l'unico ordine aperto e viene ftto fill completo mi aspetto che OpenOrder vada a zero o quasi. Porebbe
+                // Se e' l'unico ordine aperto e viene fatto fill completo mi aspetto che OpenOrder vada a zero o quasi. Porebbe
                 // esserci una piccola differenza tra il prezzo dell'ordine e quello di acquisto che potrebbe far non azzerare OpenOrders
                 this.strategiaUpdate.OpenOrders = 0;                     // OpenOrders viene decrementato Da verificare fill o partial fill
             else

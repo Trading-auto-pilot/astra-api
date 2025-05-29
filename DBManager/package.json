@@ -7,8 +7,10 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
+    "cors": "^2.8.5",
     "dotenv": "^16.0.3",
     "express": "^4.21.2",
-    "mysql2": "^3.4.0"
+    "mysql2": "^3.4.0",
+    "uuid": "^11.1.0"
   }
 }

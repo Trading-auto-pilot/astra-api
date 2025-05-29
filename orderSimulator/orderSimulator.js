@@ -2,6 +2,7 @@
 const axios = require('axios');
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
+const { publishCommand } = require('../shared/redisPublisher');
 const createLogger = require('../shared/logger');
 
 const MODULE_NAME = 'OrderSimulator';
@@ -30,9 +31,9 @@ class OrderSimulator {
 
     for (const key of keys) {
       try {
-        const res = await axios.get(`${this.dbManagerUrl}/getSetting/${key}`);
-        this.settings[key] = res.data.value;
-        logger.trace(`[loadSettings] Impostato ${key} = ${res.data.value}`);
+        const res = await axios.get(`${this.dbManagerUrl}/settings/${key}`);
+        this.settings[key] = res.data;
+        logger.trace(`[loadSettings] Impostato ${key} = ${res.data}`);
       } catch (err) {
         logger.error(`[loadSettings] Errore su ${key}: ${err.message}`);
       }
@@ -88,7 +89,13 @@ class OrderSimulator {
     this.sendPayloadToClients(newMessage);
   }
 
-  async sendFill(orderPayload) {
+  async sendFill(orderPayload,fillPrice) {
+
+    let order = orderPayload;
+    order.filled_qty = orderPayload.qty;
+    order["filled_avg_price"]=fillPrice;
+
+    logger.trace(`[sendFill] New Order ${JSON.stringify(order)}`);
 
     const FillMessage = {
         "stream":"trade_updates",
@@ -97,7 +104,7 @@ class OrderSimulator {
             "event_id": "01JVSKESVEQERFRR4F0B8V34EH",
             "event": "fill",
             "timestamp": orderPayload.created_at,
-            "order": orderPayload,
+            "order": order,
             "execution_id": uuidv4()
           } 
     }
@@ -279,9 +286,6 @@ class OrderSimulator {
     });
   }
 
-
-
-
   async startSimulation() {
     logger.info('[startSimulation] Simulazione avviata');
     // Placeholder - future implementation (e.g. broadcast simulated order statuses)
@@ -311,7 +315,91 @@ async  getAccount() {
     return res.data;
   } catch (error) {
     logger.error(`[getAccount] Errore nel recupero account: ${error.message}`);
-    throw new Error('Impossibile recuperare lo stato simulato dell’account');
+    throw new Error('Impossibile recuperare lo stato simulato dell’account : '+error.message);
+  }
+}
+
+
+buildTradeUpdateFromClose(res) {
+  if (!res?.success || !Array.isArray(res.positions)) {
+    throw new Error('[buildTradeUpdateFromClose] Risposta non valida');
+  }
+
+  const updates = [];
+
+  for (const pos of res.positions) {
+    const now = new Date().toISOString();
+
+    const fakeOrderId = uuidv4();
+    const filledQty = parseFloat(pos.qty);
+    const fillPrice = parseFloat(pos.current_price).toFixed(2);
+
+    const tradeUpdate = {
+      stream: 'trade_updates',
+      data: {
+        event: 'fill',
+        execution_id: uuidv4(),
+        price: fillPrice,
+        position_qty: '0',
+        timestamp: now,
+        order: {
+          id: fakeOrderId,
+          client_order_id: uuidv4(),
+          created_at: now,
+          updated_at: now,
+          submitted_at: now,
+          filled_at: now,
+          expired_at: null,
+          canceled_at: null,
+          failed_at: null,
+          replaced_at: null,
+          replaced_by: null,
+          replaces: null,
+          asset_id: pos.asset_id,
+          symbol: pos.symbol,
+          asset_class: pos.asset_class || 'us_equity',
+          notional: null,
+          qty: filledQty,
+          filled_qty: filledQty,
+          filled_avg_price: fillPrice,
+          order_class: '',
+          order_type: 'market',
+          type: 'market',
+          side: pos.side || 'sell',
+          time_in_force: 'day',
+          limit_price: null,
+          stop_price: null,
+          status: 'filled',
+          extended_hours: false,
+          legs: null,
+          trail_percent: null,
+          trail_price: null,
+          hwm: null,
+          subtag: null,
+          source: 'simulator',
+          position_intent: 'sell_to_close'
+        }
+      }
+    };
+
+    updates.push(tradeUpdate);
+  }
+
+  return updates;
+}
+
+async  closePosition(symbol) {
+  try {
+    const res = await axios.delete(`${this.dbManagerUrl}/simul/positions/${symbol}`);
+    const FillMessage = this.buildTradeUpdateFromClose(res.data);
+    logger.trace(`[closePosition] Messaggio da inviare su webSocket ${JSON.stringify(FillMessage)}`);
+    FillMessage.forEach(msg => this.sendPayloadToClients(msg))
+    
+    return res.data.positions[0];
+    
+  } catch (error) {
+    logger.error(`[closePosition] Errore nella chiusura della posizione: ${error.message}`);
+    throw new Error('Errore nella chiusura della posizione :'+error.message);
   }
 }
 
@@ -320,8 +408,8 @@ async  getPositions() {
     const res = await axios.get(`${this.dbManagerUrl}/simul/positions`);
     return res.data;
   } catch (error) {
-    logger.error(`[getAccount] Errore nel recupero account: ${error.message}`);
-    throw new Error('Impossibile recuperare lo stato simulato dell’account');
+    logger.error(`[getPositions] Errore nel recupero della posizione: ${error.message}`);
+    throw new Error('Impossibile recuperare la posizione : '+error.message);
   }
 }
 
@@ -363,6 +451,7 @@ async  processCandle(candle) {
       const now = new Date(this.sharedClock).toISOString();
 
       logger.trace(`[processCandle] Ordine attivo ${JSON.stringify(order)} processato, aggiorno ordine DB`);
+
       // Aggiorna ordine nel DB
       await axios.put(`${this.dbManagerUrl}/simul/orders`, {
         id: order.id,
@@ -372,6 +461,8 @@ async  processCandle(candle) {
         filled_at: now,
         updated_at: now
       });
+      // Inviare messaggio si websocket channel command : loadActiveOrders
+      await publishCommand({ action: 'loadActiveOrders' });
 
       const newPosition = {
         asset_id: order.asset_id,
@@ -379,10 +470,10 @@ async  processCandle(candle) {
         exchange: null,
         asset_class: order.asset_class,
         qty: order.qty,
-        avg_entry_price: order.filled_avg_price,
+        avg_entry_price: fillPrice,
         side:order.side,
         market_value:order.filled_avg_price,
-        cost_basis:0,
+        cost_basis:fillPrice * order.qty,
         unrealized_pl:0,
         unrealized_plpc:0,
         unrealized_intraday_pl:0,
@@ -393,16 +484,27 @@ async  processCandle(candle) {
         qty_available:order.qty
       };
 
+      // Attenzione, se la posizione gia esiste in DB va aggiunto la quantita' acquistata e modificato avg_price
       logger.trace(`[processCandle] Inserisco nuova posizione a DB ${JSON.stringify(newPosition)}`);
-      // Aggiorna ordine nel DB
+      // Inserisci posizione nel DB
       await axios.post(`${this.dbManagerUrl}/simul/positions`, newPosition); 
+
+      // // Inviare messaggio si websocket channel command : loadActivePosition
+      await publishCommand({ action: 'loadActivePosition' });
 
       // Remove the symbol from the list of Active orders
       await axios.put(`${this.liveMarketManager}/orderActive/remove`, {symbol : order.symbol}); 
+
+      // Decrementa cach su Alpaca
+      const res = await axios.get(`${this.dbManagerUrl}/simul/account`);
+      let account = res.data;
+      logger.trace(`[processCandle] Recuperato cash account da decrementare ${account.cash} decremento di una quantita ${fillPrice * qty}`);
+      account.cash -= fillPrice * qty;
+      await axios.put(`${this.dbManagerUrl}/simul/account`, account); 
       
       // Invio messaggio fill su websocket
       logger.trace(`[processCandle] Invio messaggio FILL su websocket ${JSON.stringify(order)}`);
-      this.sendFill(order);
+      this.sendFill(order,fillPrice);
     }
   } catch (err) {
     logger.error(`[processCandle] Errore: ${err.message}`);

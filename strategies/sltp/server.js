@@ -14,7 +14,8 @@ const sltp = new SLTP();
 const commands = {
   registerBot: () => sltp.registerBot(),
   loadActiveOrders: () =>  sltp.loadActiveOrders(),
-  loadSettings: () => sltp.loadSettings()
+  loadSettings: () => sltp.loadSettings(),
+  loadActivePosition: () => sltp.loadActivePosition()
 };
 // Configurazione REDIS
 // Redis Pub/Sub Integration

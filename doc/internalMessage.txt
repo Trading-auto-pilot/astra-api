@@ -2,5 +2,5 @@ Messaggi interni su Redis
 
 Channel commands
 {
-    "action" : "registerBot | loadActiveOrders | loadSettings"
+    "action" : "registerBot | loadActiveOrders | loadSettings | loadActivePosition"
 }

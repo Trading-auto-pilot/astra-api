@@ -73,7 +73,7 @@ async function loadSettings() {
   const settings = {};
   for (const key of keys) {
     try {
-      const res = await axios.get(`${dbManagerBaseUrl}/getSetting/${key}`);
+      const res = await axios.get(`${dbManagerBaseUrl}/settings/${key}`);
       settings[key] = res.data.value;
       logger.trace(`[loadSetting] Setting variavile ${key} : ${settings[key]}`);
     } catch (err) {

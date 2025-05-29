@@ -5,6 +5,7 @@
     "main": "strategyUtils.js",
     "type": "commonjs",
     "dependencies": {
-      "axios": "^1.6.7"
+      "axios": "^1.6.7",
+      "redis": "^4.6.7"
     }
   }

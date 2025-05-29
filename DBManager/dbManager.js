@@ -1,4 +1,5 @@
 // shared/dbManager.js
+const { v4: uuidv4 } = require('uuid');
 const mysql = require('mysql2/promise');
 const createLogger = require('../shared/logger');
 
@@ -84,26 +85,26 @@ class DBManager {
   
 
   // Inserisce uno scenario di strategia nella tabella strategy_runs
-  async insertScenario(strategyParams, strategy) {
-    const connection = await this.getDbConnection();
-    const params_json = { TF: strategyParams.tf, MA: strategyParams.period, SL: strategyParams.SL, TP: strategyParams.TP };
-    try {
-      await connection.query(`
-        INSERT INTO strategy_runs 
-        (id, strategy, symbol, start_date, end_date, capital, status, started_at, params_json) 
-        VALUES (?, ?, ?, ?, ?, ?, 'running', NOW(), ?)
-      `, [
-        strategyParams.id, strategy, strategyParams.symbol,
-        strategyParams.startDate, strategyParams.endDate,
-        strategyParams.capitaleIniziale, JSON.stringify(params_json)
-      ]);
-    } catch (err) {
-      logger.error(`[insertScenario] Errore insert:`, err.message);
-      throw err;
-    } finally {
-      await connection.end();
-    }
-  }
+  // async insertScenario(strategyParams, strategy) {
+  //   const connection = await this.getDbConnection();
+  //   const params_json = { TF: strategyParams.tf, MA: strategyParams.period, SL: strategyParams.SL, TP: strategyParams.TP };
+  //   try {
+  //     await connection.query(`
+  //       INSERT INTO strategy_runs 
+  //       (id, strategy, symbol, start_date, end_date, capital, status, started_at, params_json) 
+  //       VALUES (?, ?, ?, ?, ?, ?, 'running', NOW(), ?)
+  //     `, [
+  //       strategyParams.id, strategy, strategyParams.symbol,
+  //       strategyParams.startDate, strategyParams.endDate,
+  //       strategyParams.capitaleIniziale, JSON.stringify(params_json)
+  //     ]);
+  //   } catch (err) {
+  //     logger.error(`[insertScenario] Errore insert:`, err.message);
+  //     throw err;
+  //   } finally {
+  //     await connection.end();
+  //   }
+  // }
 
   // Aggiorna lo scenario a fine strategia
   async updateScenarioResult(strategyParams, minDay, maxDay, capitaleFinale, profitto, efficienza) {
@@ -125,7 +126,10 @@ class DBManager {
   }
 
   // Inserisce una transazione BUY
-  async insertBuyTransaction(scenarioId, element, capitaleInvestito, prezzo, operation = 'BUY', MA, orderId, NumAzioni) {
+  async insertBuyTransaction(body) {
+
+    const {scenarioId, element, capitaleInvestito, prezzo, operation = 'BUY', MA, orderId, NumAzioni} = body;
+
     const connection = await this.getDbConnection();
     try {
       await connection.query(`
@@ -142,14 +146,14 @@ class DBManager {
   }
 
   // Inserisce una transazione SELL
-  async insertSellTransaction(scenarioId, element, state, result) {
+  async insertSellTransaction(scenarioId, element, result) {
     const connection = await this.getDbConnection();
     try {
       await connection.query(`
         INSERT INTO transazioni 
-        (ScenarioID, operationDate, operation, Price, capitale, exit_reason, profitLoss, days)
-        VALUES (?, ?, 'SELL', ?, ?, ?, ?, ?)`,
-        [scenarioId, this.formatDateForMySQL(element.t), result.prezzo, state.capitaleLibero, result.motivo, result.profitLoss, result.days]);
+        (ScenarioID, operationDate, operation, Price, capitale, profitLoss, NumAzioni, PLPerc)
+        VALUES (?, ?, 'SELL', ?, ?, ?, ?, ?, ?)`,
+        [scenarioId, this.formatDateForMySQL(element.t), result.prezzo, state.capitaleLibero, result.current_price, result.market_value, result.unrealized_pl, result.qty, result.unrealized_plpc]);
     } catch (err) {
       logger.error(`[insertSellTransaction] Errore insert:`, err.message);
       throw err;
@@ -160,6 +164,7 @@ class DBManager {
 
     // Restituisce l'ordine con orderId
     async getOrder(orderId) {  
+      logger.trace(`[insertSellTransaction] Recupero ordine: ${orderId}`);
       const connection = await this.getDbConnection();
       try {
         const [rows] = await connection.query(`
@@ -459,7 +464,7 @@ async resolveSymbolIdByName(name) {
     }
   }
 
-  // Inserisce un ordine nella tabella orders
+  // Inserisce un ordine nella tabella orders 
   async insertOrder(orderData) {
 
     const order=orderData;
@@ -540,7 +545,10 @@ async getTotalActiveCapital() {
 }
 
 // Aggiorna capitaleInvestito e OpenOrders per una strategia specifica, solo se forniti
-async updateStrategyCapitalAndOrders(id, capitaleInvestito, openOrders) {
+async updateStrategyCapitalAndOrders(body) {
+
+  const {id, capitaleInvestito, openOrders} = body;
+
   const connection = await this.getDbConnection();
 
   try {
@@ -613,7 +621,10 @@ async getTransaction(orderId) {
 
 
 // Verifico quanti ordini aperti appartengono a StrategyId
-async  countTransactionsByStrategyAndOrders(scenarioId, orderIds) {
+async  countTransactionsByStrategyAndOrders(body) {
+
+  const { scenarioId, orderIds } = body;
+  console.log("[countTransactionsByStrategyAndOrders] verifica per scenarioId : "+scenarioId+" e orderIds + "+JSON.stringify(orderIds));
   const connection = await this.getDbConnection();
   try {
     const [rows] = await connection.execute(
@@ -755,52 +766,110 @@ async  getAccountAsJson() {
 async insertPosition(position) {
   const connection = await this.getDbConnection();
 
-  const sql = `
-    INSERT INTO Simul.Positions (
-      asset_id,
-      symbol,
-      exchange,
-      asset_class,
-      qty,
-      avg_entry_price,
-      side,
-      market_value,
-      cost_basis,
-      unrealized_pl,
-      unrealized_plpc,
-      unrealized_intraday_pl,
-      unrealized_intraday_plpc,
-      current_price,
-      lastday_price,
-      change_today,
-      qty_available
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `;
-
-  const values = [
-    position.asset_id,
-    position.symbol,
-    position.exchange || null,
-    position.asset_class || null,
-    parseFloat(position.qty),
-    parseFloat(position.avg_entry_price),
-    position.side,
-    parseFloat(position.market_value),
-    parseFloat(position.cost_basis),
-    parseFloat(position.unrealized_pl),
-    parseFloat(position.unrealized_plpc),
-    parseFloat(position.unrealized_intraday_pl),
-    parseFloat(position.unrealized_intraday_plpc),
-    parseFloat(position.current_price),
-    parseFloat(position.lastday_price),
-    parseFloat(position.change_today),
-    parseFloat(position.qty_available)
-  ];
-
   try {
-    await connection.execute(sql, values);
-    logger.info(`[insertPosition] Posizione ${position.symbol} inserita con successo`);
-    return { success: true, symbol: position.symbol };
+    // 1. Verifica se esiste già una posizione aperta per lo stesso symbol
+    const [rows] = await connection.execute(
+      'SELECT * FROM Simul.Positions WHERE symbol = ? AND softDel != 1 LIMIT 1',
+      [position.symbol]
+    );
+
+    const newQty = parseFloat(position.qty);
+    const newAvg = parseFloat(position.avg_entry_price);
+
+    if (rows.length === 0) {
+      // 🔹 Non esiste: esegui INSERT normale
+      const sql = `
+        INSERT INTO Simul.Positions (
+          position_id,
+          asset_id,
+          symbol,
+          exchange,
+          asset_class,
+          qty,
+          avg_entry_price,
+          side,
+          market_value,
+          cost_basis,
+          unrealized_pl,
+          unrealized_plpc,
+          unrealized_intraday_pl,
+          unrealized_intraday_plpc,
+          current_price,
+          lastday_price,
+          change_today,
+          qty_available
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+
+      const values = [
+        uuidv4(),
+        position.asset_id,
+        position.symbol,
+        position.exchange || null,
+        position.asset_class || null,
+        newQty,
+        newAvg,
+        position.side,
+        newQty * newAvg,
+        newQty * newAvg,
+        parseFloat(position.unrealized_pl),
+        parseFloat(position.unrealized_plpc),
+        parseFloat(position.unrealized_intraday_pl),
+        parseFloat(position.unrealized_intraday_plpc),
+        parseFloat(position.current_price),
+        parseFloat(position.lastday_price),
+        parseFloat(position.change_today),
+        parseFloat(position.qty_available)
+      ];
+
+      await connection.execute(sql, values);
+      logger.info(`[insertPosition] Nuova posizione ${position.symbol} inserita con successo`);
+      return { success: true, inserted: true, symbol: position.symbol };
+    } else {
+      // 🔹 Posizione già esistente: aggiorna
+
+      const existing = rows[0];
+      const existingQty = parseFloat(existing.qty);
+      const existingAvg = parseFloat(existing.avg_entry_price);
+
+      const totalQty = existingQty + newQty;
+      const weightedAvg = ((existingQty * existingAvg) + (newQty * newAvg)) / totalQty;
+
+      await connection.execute(
+        `UPDATE Simul.Positions
+         SET qty = ?, 
+             avg_entry_price = ?, 
+             market_value = ?, 
+             cost_basis = ?, 
+             unrealized_pl = ?, 
+             unrealized_plpc = ?, 
+             unrealized_intraday_pl = ?, 
+             unrealized_intraday_plpc = ?, 
+             current_price = ?, 
+             lastday_price = ?, 
+             change_today = ?, 
+             qty_available = ?
+         WHERE position_id = ?`,
+        [
+          totalQty,
+          weightedAvg,
+          parseFloat(position.market_value),
+          parseFloat(position.cost_basis),
+          parseFloat(position.unrealized_pl),
+          parseFloat(position.unrealized_plpc),
+          parseFloat(position.unrealized_intraday_pl),
+          parseFloat(position.unrealized_intraday_plpc),
+          parseFloat(position.current_price),
+          parseFloat(position.lastday_price),
+          parseFloat(position.change_today),
+          parseFloat(position.qty_available),
+          existing.position_id
+        ]
+      );
+
+      logger.info(`[insertPosition] Posizione ${position.symbol} aggiornata (qty: ${existingQty} → ${totalQty})`);
+      return { success: true, inserted: false, symbol: position.symbol };
+    }
   } catch (error) {
     logger.error(`[insertPosition] Errore: ${error.message}`);
     return { success: false, error: error.message };
@@ -809,14 +878,15 @@ async insertPosition(position) {
   }
 }
 
+
 async  updatePosition(positionUpdate) {
-  if (!positionUpdate.asset_id || !positionUpdate.symbol) {
-    logger.error('[updatePosition] id o symbol mancante');
+  if (!positionUpdate.position_id ) {
+    logger.error('[updatePosition] position_id mancante');
     return { success: false, error: 'Chiavi primarie mancanti' };
   }
 
   const fields = Object.keys(positionUpdate).filter(
-    key => key !== 'asset_id' && key !== 'symbol' && positionUpdate[key] !== undefined
+    key => key !== 'position_id' && positionUpdate[key] !== undefined
   );
 
   if (fields.length === 0) {
@@ -842,12 +912,12 @@ async  updatePosition(positionUpdate) {
   const sql = `
     UPDATE Simul.Positions
     SET ${setClause}
-    WHERE asset_id = ? AND symbol = ?
+    WHERE position_id = ?
   `;
 
   try {
     const connection = await this.getDbConnection();
-    await connection.execute(sql, [...values, positionUpdate.asset_id, positionUpdate.symbol]);
+    await connection.execute(sql, [...values, positionUpdate.position_id]);
     await connection.end();
 
     logger.info(`[updatePosition] Posizione ${positionUpdate.symbol} aggiornata`);
@@ -866,6 +936,7 @@ async getAllPositionsAsJson() {
     const [rows] = await connection.execute('SELECT * FROM Simul.Positions where softDel=0');
 
     const positions = rows.map(row => ({
+      position_id: row.position_id,
       asset_id: row.asset_id,
       symbol: row.symbol,
       exchange: row.exchange,
@@ -894,6 +965,49 @@ async getAllPositionsAsJson() {
     await connection.end();
   }
 }
+
+async  closePosition(symbol) {
+  const connection = await this.getDbConnection();
+  logger.trace(`[closePosition] Chiudo posizioni ${symbol}`);
+
+  try {
+    // 1. Recupera tutte le posizioni attive per il symbol
+    const [positions] = await connection.execute(
+      'SELECT market_value FROM Simul.Positions WHERE symbol = ? AND softDel != 1',
+      [symbol]
+    );
+
+    if (positions.length === 0) {
+      logger.warning(`[closePosition] Nessuna posizione attiva trovata per ${symbol}`);
+      return { success: false, reason: 'Nessuna posizione attiva trovata' };
+    }
+
+    // 2. Calcola la somma totale del capitale da rilasciare
+    const totalReleased = positions.reduce((acc, pos) => acc + parseFloat(pos.market_value || 0), 0);
+    logger.trace(`[closePosition] Somma totale capitale rilasciata ${totalReleased}`);
+
+    // 3. Soft-delete su tutte le posizioni
+    await connection.execute(
+      'UPDATE Simul.Positions SET softDel = 1 WHERE symbol = ? AND softDel != 1',
+      [symbol]
+    );
+
+    // 4. Incrementa il cash sull'account (singolo account attivo)
+    await connection.execute(
+      'UPDATE Simul.Account SET cash = cash + ? WHERE id IS NOT NULL LIMIT 1',
+      [totalReleased]
+    );
+
+    logger.info(`[closePosition] ${positions.length} posizioni chiuse per ${symbol}. Cash incrementato di ${totalReleased.toFixed(2)}`);
+    return { success: true, symbol, released: totalReleased, positions: positions};
+  } catch (error) {
+    logger.error(`[closePosition] Errore: ${error.message}`);
+    return { success: false, error: error.message };
+  } finally {
+    await connection.end();
+  }
+}
+
 
 async  getAllOrdersAsJson() {
   const connection = await this.getDbConnection();

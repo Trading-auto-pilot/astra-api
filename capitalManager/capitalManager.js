@@ -51,9 +51,9 @@ class CapitalManager {
   }
 
   async getStrategyDetaisl(strategyId) {
-    logger.log(`[getStrategyDetaisl] Recupero dettagli della strategia : ${this.dbManagerUrl}/getStrategyCapitalAndOrders/${strategyId}`);
+    logger.log(`[getStrategyDetaisl] Recupero dettagli della strategia : ${this.dbManagerUrl}/strategies/capitalAndOrder/${strategyId}`);
     try {
-      const res = await axios.get(`${this.dbManagerUrl}/getStrategyCapitalAndOrders/${strategyId}`);
+      const res = await axios.get(`${this.dbManagerUrl}/strategies/capitalAndOrder/${strategyId}`);
       logger.log(`[getStrategyDetaisl] Recuperato  : ${JSON.stringify(res.data)}`);
       return (res.data[0]);
     } catch (err) {

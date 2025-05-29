@@ -82,6 +82,16 @@ app.get('/v2/positions', async (req, res) => {
     logger.error(`[orders] ${err.message}`);
     res.status(400).json({ error: err.message });
   }
+});   
+
+app.delete('/v2/positions/:symbol', async (req, res) => {
+  try {
+    const result = await simulator.closePosition(req.params.symbol);
+    res.status(200).json(result);
+  } catch (err) {
+    logger.error(`[orders] ${err.message}`);
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // Endpoint di healthcheck

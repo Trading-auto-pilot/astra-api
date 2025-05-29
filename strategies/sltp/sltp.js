@@ -27,15 +27,16 @@ class SLTP {
     async loadSettings() {
         logger.info(`[loadSetting] Lettura setting da repository...`);
         const keys = [
-        'ALPACA-API-TIMEOUT',
-        'ALPACA-PAPER-BASE',
-        'ALPACA-LOCAL-BASE',
-        'ALPACA-LIVE-BASE'
+            'ALPACA-API-TIMEOUT',
+            'ALPACA-PAPER-BASE',
+            'ALPACA-LOCAL-BASE',
+            'ALPACA-LIVE-BASE',
+            'ALPACA-DEV-BASE'
         ];
 
         for (const key of keys) {
-            const res = await axios.get(`${this.dbManagerUrl}/getSetting/${key}`);
-            this.settings[key] = res.data.value;
+            const res = await axios.get(`${this.dbManagerUrl}/settings/${key}`);
+            this.settings[key] = res.data;
             logger.trace(`[loadSetting] Setting variavile ${key} : ${this.settings[key]}`);
         }
         logger.info(`[loadSetting] Lettura setting da repository...`);
@@ -44,7 +45,7 @@ class SLTP {
   // 🔁 Registra il bot nel DB se non esiste, altrimenti aggiorna la data
     async registerBot() {
         try {
-        await axios.post(`${this.dbManagerUrl}/bot/registra`, {
+        await axios.post(`${this.dbManagerUrl}/bots`, {
             name: MODULE_NAME,
             ver: MODULE_VERSION
         });
@@ -54,9 +55,9 @@ class SLTP {
         }
     }
 
-    async loadActiveOrders (){
+    async loadActivePosition (){
         this.alpacaAPIServer = this.settings[`ALPACA-`+process.env.ENV_ORDERS+`-BASE`]+'/v2/positions';
-        logger.trace(`[loadActiveOrders] variabile alpacaAPIServer ${this.alpacaAPIServer}`);
+        logger.trace(`[loadActivePosition] variabile alpacaAPIServer ${this.alpacaAPIServer}`);
         try {
             const res = await axios.get(`${this.alpacaAPIServer}`, {
                 headers: {
@@ -67,7 +68,7 @@ class SLTP {
             });
             this.positions = res.data;
         } catch (error) {
-            logger.error(`[loadActiveOrders] Errore recupero posizioni aperte da Alpaca ${error.message}`);
+            logger.error(`[loadActivePosition] Errore recupero posizioni aperte da Alpaca ${error.message}`);
             return null;
         }
     }
@@ -81,9 +82,7 @@ class SLTP {
 
         // Qui carico tutte le posizioni aperte da Alpaca
          // Ma devo considerare di rileggerle ogni volta che un ordine viene accettato.
-        this.loadActiveOrders();
-
-
+        await this.loadActivePosition();
 
         // Log delle variabili definite nell'istanza
         for (const key of Object.keys(this)) {
@@ -100,41 +99,56 @@ class SLTP {
         this.registerBot();
     }
 
-    async processCandle(bar, StrategyParams){
-        // Confronto la candela arrivata
-        // Filtro tra le varie posizioni aperte 
+async processCandle(bar, StrategyParams) {
+  const position = this.positions.find(p => p.symbol === bar.s);
 
-        const position = this.positions.find(p => p.symbol === bar.s);
-        logger.trace(`[processCandle] positions: ${JSON.stringify(this.positions)}  position:${JSON.stringify(position)} bar:${JSON.stringify(bar)}`)
-        logger.trace(`[processCandle] unrealized_plpc: ${parseFloat(position.unrealized_plpc)}  TP:${parseFloat(StrategyParams.params.TP)}`)
-        if(parseFloat(position.unrealized_plpc) >= parseFloat(StrategyParams.params.TP)){
-            logger.log(`[processCandle] Triggerato TP Posizione ${position.unrealized_plpc}`)
-            return ({
-                        action: 'SELL',
-                        trigger: 'TP',
-                        PL: position.unrealized_plpc,
-                        position: position
-                    })
-        }
+  logger.trace(`[processCandle] bar: ${JSON.stringify(bar)}`);
+  logger.trace(`[processCandle] posizione trovata: ${position ? position.symbol : 'Nessuna'}`);
 
-        
-        if(parseFloat(position.unrealized_plpc) < parseFloat(StrategyParams.params.SL)) {
-            logger.log(`[processCandle] Triggerato SL Posizione ${position.unrealized_plpc}`)
-            return ({
-                        action: 'SELL',
-                        trigger: 'SL',
-                        PL: position.unrealized_plpc,
-                        position: position
-                    })
-        }
+  if (!position) {
+    logger.trace(`[processCandle] Nessuna posizione attiva per ${bar.s}, ritorno HOLD`);
+    return {
+      action: 'HOLD',
+      reason: 'no_active_position',
+      symbol: bar.s
+    };
+  }
 
-        logger.log(`[processCandle] Posizione in HOLD ${position.unrealized_plpc}`)
-            return ({
-                        action: 'HOLD',
-                        SL: StrategyParams.params.SL,
-                        TP: StrategyParams.params.TP,
-                        current: position.unrealized_plpc
-                    })
-    }
+  const plpc = parseFloat(position.unrealized_plpc);
+  const tp = parseFloat(StrategyParams.params.TP);
+  const sl = parseFloat(StrategyParams.params.SL);
+
+  logger.trace(`[processCandle] unrealized_plpc: ${plpc} | TP: ${tp} | SL: ${sl}`);
+
+  if (plpc >= tp) {
+    logger.log(`[processCandle] 🟢 Triggerato TP per ${position.symbol}: ${plpc}`);
+    return {
+      action: 'SELL',
+      trigger: 'TP',
+      PL: plpc,
+      position
+    };
+  }
+
+  if (plpc < sl) {
+    logger.log(`[processCandle] 🔴 Triggerato SL per ${position.symbol}: ${plpc}`);
+    return {
+      action: 'SELL',
+      trigger: 'SL',
+      PL: plpc,
+      position
+    };
+  }
+
+  logger.log(`[processCandle] 🟡 HOLD per ${position.symbol} | P&L: ${plpc} | TP: ${tp} | SL: ${sl}`);
+  return {
+    action: 'HOLD',
+    SL: sl,
+    TP: tp,
+    current: plpc,
+    position
+  };
+}
+
 }
 module.exports = SLTP;

@@ -23,8 +23,8 @@ class AlertingService {
     for (const key of keys) {
         logger.trace(`[loadSetting] loop chiave ${key}`);
         try {
-          logger.trace(`[loadSetting] Chiamo url ${dbManagerUrl}/getSetting/${key}`);
-          const res = await axios.get(`${dbManagerUrl}/getSetting/${key}`);
+          logger.trace(`[loadSetting] Chiamo url ${dbManagerUrl}/settings/${key}`);
+          const res = await axios.get(`${dbManagerUrl}/settings/${key}`);
           settings[key] = res.data.value;
           logger.trace(`[loadSetting] Setting variavile ${key} : ${settings[key]}`);
         } catch (err) {

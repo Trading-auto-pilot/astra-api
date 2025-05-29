@@ -9,7 +9,7 @@ const MODULE_NAME = 'LiveMarketListener';
 const MODULE_VERSION = '1.2';
 
 const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
-const isLocal = process.env.ENV_NAME === 'LOCAL';
+const isLocal = process.env.ENV_NAME === 'DEV';
 
 class LiveMarketListener {
   constructor() {
@@ -51,9 +51,9 @@ class LiveMarketListener {
 
   async getActiveOrders(){
     let res;
-    logger.info(`[getActiveOrders] Recupero gli ordini da  ${this.alpacaAPIServer}`);
+    logger.info(`[getActiveOrders] Recupero gli ordini da  ${this.alpacaAPIServer}/v2/orders`);
     try {
-      res = await axios.get(`${this.alpacaAPIServer}`);
+      res = await axios.get(`${this.alpacaAPIServer}/v2/orders`);
       const orders = Array.isArray(res.data) ? res.data : [];
 
       this.orderActive = [
@@ -88,12 +88,12 @@ class LiveMarketListener {
     ];
 
     for (const key of keys) {
-      const res = await axios.get(`${this.dbManagerUrl}/getSetting/${key}`);
-      this.settings[key] = res.data.value;
+      const res = await axios.get(`${this.dbManagerUrl}/settings/${key}`);
+      this.settings[key] = res.data;
       logger.trace(`[loadSetting] Setting variavile ${key} : ${this.settings[key]}`);
     }
-    this.alpacaAPIServer = this.settings[`ALPACA-`+process.env.ENV_ORDERS+`-BASE`]+'/v2/orders';
-    logger.trace(`[loadSetting] variabile alpacaAPIServer ${this.alpacaAPIServer}`);
+    this.alpacaAPIServer = this.settings[`ALPACA-`+process.env.ENV_ORDERS+`-BASE`];
+    logger.trace(`[loadSetting] variabile alpacaAPIServer ${this.alpacaAPIServer}/v2/orders`);
   }
 
   updateOrderActive(symbolsToRemove) {
@@ -128,63 +128,87 @@ class LiveMarketListener {
 
   async getActiveBots(){
     logger.info(`[getActiveBots] Recupero i Bot attivi da repository...`);
-    logger.log(`[loadActiveStrategies] mi connetto al server ${this.dbManagerUrl}/getActiveBots`);
-    const res = await axios.get(`${this.dbManagerUrl}/getActiveBots`);
+    logger.log(`[getActiveBots] mi connetto al server ${this.dbManagerUrl}/bots`);
+    const res = await axios.get(`${this.dbManagerUrl}/bots`);
     this.bots = res.data;
+    for (const bot of this.bots) {
+        logger.trace(`[getActiveBots] Recuperato bot : ${bot.name}`)
+    }
   }
 
-  connect() {
-    logger.info(`[connect] Connessione in corso...`);
-    const baseUrl = this.settings['ALPACA-'+process.env.ENV_MARKET+'-MARKET'];
-    const wsUrl = `${baseUrl}/${process.env.FEED}`;
-    logger.log(`[connect] Mi connetto a url : ${wsUrl}`);
+connect(retry = true) {
+  const RECONNECT_DELAY_MS = 5000;
 
-    this.ws = new WebSocket(wsUrl);
-
-    this.ws.on('open', () => {
-      logger.info(`[connect] WebSocket connesso. Autenticazione in corso...`);
-      this.ws.send(JSON.stringify({
-        action: 'auth',
-        key: process.env.APCA_API_KEY_ID,
-        secret: process.env.APCA_API_SECRET_KEY
-      }));
-    });
-
-    this.ws.on('message', async (data) => {
-        logger.trace(`[connect] messaggio ricevuto ${data}`);
-        const messages = JSON.parse(data);
-        for (const msg of messages) {
-            if (msg.T === 'success' && msg.msg === 'authenticated') {
-                logger.info('Autenticato. Passo alla sottoscrizione dei simboli');
-                
-                const symbols = Object.keys(this.symbolStrategyMap);
-                logger.info(`[connect] Sottoscritto ai simboli: ${JSON.stringify(symbols)}`);
-                this.ws.send(JSON.stringify({
-                    action: 'subscribe',
-                    bars: symbols
-                }));
-                logger.info(`[connect] Sottoscritto ai simboli: ${symbols.join(', ')}`);
-            }
-
-            if (msg.T === 'b' && !this.orderActive.includes(msg.S)) {
-              await this.processBar(msg);
-            }
-            else {
-              logger.trace(`[connect] Candela non processata per ordine gia attivo`);
-            }
-        }
-    });
-
-    this.ws.on('close', () => {
-      logger.warning(`[connect] Connessione WebSocket chiusa.`);
-    });
-
-    this.ws.on('error', (err) => {
-      logger.error(`[connect] Errore WebSocket ${wsUrl}: ${err.message}`);
-    });
+  if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    logger.info('[connect] WebSocket già connesso, nessuna azione.');
+    return;
   }
+
+  logger.info(`[connect] Connessione in corso...`);
+  const baseUrl = this.settings['ALPACA-' + process.env.ENV_MARKET + '-MARKET'];
+  const wsUrl = `${baseUrl}/${process.env.FEED}`;
+  logger.log(`[connect] Mi connetto a url : ${wsUrl}`);
+
+  this.ws = new WebSocket(wsUrl);
+
+  this.ws.on('open', () => {
+    logger.info(`[connect] WebSocket connesso. Autenticazione in corso...`);
+    this.ws.send(JSON.stringify({
+      action: 'auth',
+      key: process.env.APCA_API_KEY_ID,
+      secret: process.env.APCA_API_SECRET_KEY
+    }));
+  });
+
+  this.ws.on('message', async (data) => {
+    logger.trace(`[connect] messaggio ricevuto ${data}`);
+
+    let messages;
+    try {
+      messages = JSON.parse(data);
+    } catch (err) {
+      logger.error('[connect] Errore parsing JSON:', err.message);
+      return;
+    }
+
+    for (const msg of messages) {
+      if (msg.T === 'success' && msg.msg === 'authenticated') {
+        logger.info('Autenticato. Passo alla sottoscrizione dei simboli');
+        const symbols = Object.keys(this.symbolStrategyMap);
+        this.ws.send(JSON.stringify({ action: 'subscribe', bars: symbols }));
+        logger.info(`[connect] Sottoscritto ai simboli: ${symbols.join(', ')}`);
+      }
+
+      if (msg.T === 'b' && !this.orderActive.includes(msg.S)) {
+        await this.processBar(msg);
+      } else {
+        logger.trace(`[connect] Candela non processata per ordine già attivo`);
+      }
+    }
+  });
+
+  this.ws.on('close', () => {
+    logger.warning('[connect] Connessione WebSocket chiusa.');
+    if (retry) {
+      logger.info(`[connect] Nuovo tentativo di connessione in ${RECONNECT_DELAY_MS / 1000}s...`);
+      setTimeout(() => this.connect(), RECONNECT_DELAY_MS);
+    }
+  });
+
+  this.ws.on('error', (err) => {
+    logger.error(`[connect] Errore WebSocket ${wsUrl}: ${err.message}`);
+    // Optional: forza chiusura se errore grave
+    if (this.ws.readyState !== WebSocket.CLOSED && this.ws.readyState !== WebSocket.CLOSING) {
+      this.ws.terminate?.();
+    }
+  });
+}
+
 
   async processBar(bar) {
+    // Read the params for active strategies
+    await this.loadActiveStrategies();
+
     logger.log(`[processBar] Recupero strategie attive...`);
     logger.log(`[processBar] Avviato con bar : ${JSON.stringify(bar)}`);
     const symbol = bar.S;
@@ -208,7 +232,7 @@ class LiveMarketListener {
         // Se non ho comprato azioni valuto acquisto
         let url;
         if(strategy.numAzioniBuy === 0){
-          logger.log(`[processBar] Non ho azioni per questa strategia, valuto solo acquisto`);
+          logger.log(`[processBar] Non ho azioni per questa strategia, valuto solo acquisto.`);
           // Trova il bot con quel nome
           const bot = this.bots.find(b => b.name === strategy.idBotIn);
 
@@ -218,6 +242,7 @@ class LiveMarketListener {
             urlObj.hostname = 'localhost';
             botUrl = urlObj.toString();
           }
+
 
           if (botUrl) {
             logger.log(`[processBar] Utilizzo url per bot ${strategy.idBotIn} url ${botUrl}`)
@@ -230,9 +255,16 @@ class LiveMarketListener {
         } 
         // Altrimenti valuto vendita
         else {
-          logger.log(`[processBar] Esistono ${strategy.numAzioniBuy} azioni per questa strategia, valuto solo vendita`);
+          logger.log(`[processBar] Esistono ${strategy.numAzioniBuy} azioni per questa strategia, valuto solo vendita. isLocal : ${isLocal} ENV_NAME : ${process.env.ENV_NAME}`);
           // Trova il bot con quel nome
           const bot = this.bots.find(b => b.name === strategy.idBotOut);
+
+          let botUrl = bot?.url;
+          if (isLocal && botUrl) {
+            const urlObj = new URL(botUrl);
+            urlObj.hostname = 'localhost';
+            botUrl = urlObj.toString();
+          }
 
           if (bot) {
             logger.log(`[processBar] Utilizzo url per bot ${strategy.idBotOut} url ${bot.url}`)
@@ -240,7 +272,7 @@ class LiveMarketListener {
             logger.error(`Bot ${strategy.idBotOut} non trovato. strategy ${strategy.idBotOut} bots  ${JSON.stringify(this.bots)}`);
           }
           
-          url = `${bot.url}/processCandle`;
+          url = new URL('/processCandle', botUrl).toString();
         }
 
         try {
@@ -321,33 +353,50 @@ class LiveMarketListener {
     return ('OK');
   }
 
-  async aggiungiTransazione(strategy, evalResult,bar,orderRes){
+  async aggiungiTransazioneClose(strategy, evalResult,bar,orderRes){
+
+    logger.trace(`[aggiungiTransazioneClose] strategy : ${JSON.stringify(strategy)}`);
+    logger.trace(`[aggiungiTransazioneClose] evalResult : ${JSON.stringify(evalResult)}`);
+    logger.trace(`[aggiungiTransazioneClose] bar : ${JSON.stringify(bar)}`);
+    logger.trace(`[aggiungiTransazioneClose] orderRes : ${JSON.stringify(orderRes)}`);
+
+    try {
+      logger.trace(`[aggiungiTransazioneClose] Aggiungo record a tabella SELL alla transazioni ${this.dbManagerUrl}/insertSellTransaction ${strategy.id} ${JSON.stringify(bar)} ${orderRes.market_value} ${bar.c} "SELL" ${strategy.params.MA} null ${orderRes.qty}`);
+      await axios.post(`${this.dbManagerUrl}/insertSellTransaction`,{scenarioId:strategy.id, element:bar, orderRes });
+    } catch(error) {
+      logger.error(`[aggiungiTransazioneClose] Errore durante inserimento nella tabella transazioni ${error.message}`);
+      return null;
+    }
+  }
+
+
+  async aggiungiTransazioneOrder(strategy, evalResult,bar,orderRes){
     let numShare, speso, operation;
 
-    logger.trace(`[aggiungiTransazione] strategy : ${JSON.stringify(strategy)}`);
-    logger.trace(`[aggiungiTransazione] evalResult : ${JSON.stringify(evalResult)}`);
-    logger.trace(`[aggiungiTransazione] bar : ${JSON.stringify(bar)}`);
-    logger.trace(`[aggiungiTransazione] orderRes : ${JSON.stringify(orderRes)}`);
-    try{
+    logger.trace(`[aggiungiTransazioneOrder] strategy : ${JSON.stringify(strategy)}`);
+    logger.trace(`[aggiungiTransazioneOrder] evalResult : ${JSON.stringify(evalResult)}`);
+    logger.trace(`[aggiungiTransazioneOrder] bar : ${JSON.stringify(bar)}`);
+    logger.trace(`[aggiungiTransazioneOrder] orderRes : ${JSON.stringify(orderRes)}`);
 
+    try{
       //Aggiungo la transazione BUY nella tabella transazioni
       if(orderRes.side === 'buy'){
         numShare = Math.floor(evalResult.grantedAmount / bar.c);
         speso= numShare * ((parseFloat(strategy.params.buy.limit_price) +1) * bar.c);
         operation="BUY ORDER"
-        logger.trace(`[aggiungiTransazione] Aggiungo record BUY a tabella transazioni ${this.dbManagerUrl}/insertBuyTransaction ${strategy.id} ${JSON.stringify(bar)} ${speso} ${bar.c} ${operation}} ${strategy.params.MA} ${orderRes.id} ${numShare}`);
-        await axios.post(`${this.dbManagerUrl}/insertBuyTransaction`,{orderId:orderRes.id, scenarioId:strategy.id, element:bar, capitaleInvestito:speso, prezzo:bar.c, operation:operation, MA:strategy.params.MA, NumAzioni:numShare });
+        logger.trace(`[aggiungiTransazioneOrder] Aggiungo record BUY a tabella transazioni ${this.dbManagerUrl}/transactions/buy ${strategy.id} ${JSON.stringify(bar)} ${speso} ${bar.c} ${operation}} ${strategy.params.MA} ${orderRes.id} ${numShare}`);
+        await axios.post(`${this.dbManagerUrl}/transactions/buy`,{orderId:orderRes.id, scenarioId:strategy.id, element:bar, capitaleInvestito:speso, prezzo:bar.c, operation:operation, MA:strategy.params.MA, NumAzioni:numShare });
         //Aggiungo la transazione SELL nella tabella transazioni
       } else {
         numShare = orderRes.qty;
         speso=null;
         operation="SELL ORDER"
-      logger.trace(`[aggiungiTransazione] Aggiungo record a tabella SELL alla transazioni ${this.dbManagerUrl}/insertSellTransaction ${strategy.id} ${JSON.stringify(bar)} ${speso} ${bar.c} ${operation}} ${strategy.params.MA} ${orderRes.id} ${numShare}`);
-      await axios.post(`${this.dbManagerUrl}/insertSellTransaction`,{orderId:orderRes.id, scenarioId:strategy.id, element:bar, operation:operation, MA:strategy.params.MA, NumAzioni:numShare });
+      logger.trace(`[aggiungiTransazioneOrder] Aggiungo record a tabella SELL alla transazioni ${this.dbManagerUrl}/transactions/sell ${strategy.id} ${JSON.stringify(bar)} ${speso} ${bar.c} ${operation}} ${strategy.params.MA} ${orderRes.id} ${numShare}`);
+      await axios.post(`${this.dbManagerUrl}/transactions/sell`,{orderId:orderRes.id, scenarioId:strategy.id, element:bar, operation:operation, MA:strategy.params.MA, NumAzioni:numShare });
       }
    }
     catch(error) {
-      logger.error(`[aggiungiTransazione] Errore durante inserimento nella tabella transazioni ${error.message}`);
+      logger.error(`[aggiungiTransazioneOrder] Errore durante inserimento nella tabella transazioni ${error.message}`);
       return null;
     }
     return ('OK');
@@ -356,8 +405,9 @@ class LiveMarketListener {
   async aggiornaCapitaliImpegnati(evalResult,bar, strategy){
     try {
       //Aggiorno con il capitale impegnato per questo ordine
-      logger.trace(`[aggiornaCapitaliImpegnati] Aggiorno la tabella Strategies con i capitali utilizzati ${this.dbManagerUrl}/updateStrategyCapitalAndOrders`);
-      await axios.post(`${this.dbManagerUrl}/updateStrategyCapitalAndOrders`, {id :strategy.id, openOrders: Math.floor(evalResult.grantedAmount / bar.c) * bar.c});
+      logger.trace(`[aggiornaCapitaliImpegnati] Aggiorno la tabella Strategies con i capitali utilizzati PUT ${this.dbManagerUrl}/strategies/capitalAndOrder`);
+      const capitale = Math.floor(evalResult.grantedAmount / bar.c) * bar.c;
+      await axios.put(`${this.dbManagerUrl}/strategies/capitalAndOrder`, {id :strategy.id ,openOrders: capitale});
     }
     catch (error) {
         logger.error(`[aggiornaCapitaliImpegnati] Errore durante update capitale nella tabella strategies ${error.message}`);
@@ -382,10 +432,22 @@ class LiveMarketListener {
     return ('OK');
   }
 
+  async CLOSE_POSITIONS(strategy){
+    // Chiusura di tutte le posizioni di symbol
+    let orderRes;
+    try {
+      logger.trace(`[CLOSE_POSITIONS] Chiusura posizioni : DELETE ${this.alpacaAPIServer}/v2/positions/${strategy.idSymbol}`);
+      orderRes = await axios.delete(`${this.alpacaAPIServer}/v2/positions/${strategy.idSymbol}`);
+      return orderRes.data;
+    } catch (error) {
+        logger.error(`[CLOSE_POSITIONS] Errore durante la chiusura della posizione ${error.message} ${this.alpacaAPIServer}/v2/positions`);
+        return null;
+    }
+  }
+
   async SELL(strategy, bar){
     let orderRes;
     try {
-
         logger.trace(`[SELL] Apro ordine con id ${strategy.id+'-'+uuidv4()}`);
         orderRes = await placeOrder(            this.alpacaAPIServer,
                                                 process.env.APCA_API_KEY_ID,
@@ -410,7 +472,7 @@ class LiveMarketListener {
                                               );            
     }
     catch (error) {
-        logger.error(`[BUY] Errore durante richiesta apertura ordine ad Alpaca ${error.message} ${this.alpacaAPIServer}`);
+        logger.error(`[SELL] Errore durante richiesta apertura ordine ad Alpaca ${error.message} ${this.alpacaAPIServer}/v2/positions`);
         return null;
     }
     return orderRes;
@@ -425,7 +487,7 @@ class LiveMarketListener {
           "stop_price": Math.floor((1 - parseFloat(strategy.params.SL)) * bar.c)
         };
         logger.trace(`[BUY] Apro ordine con id ${strategy.id+'-'+uuidv4()} limit price ${strategy.params.buy.limit_price +1} * ${bar.c} = ${Math.ceil((parseFloat(strategy.params.buy.limit_price) +1) * bar.c)}`);
-        orderRes = await placeOrder(            this.alpacaAPIServer,
+        orderRes = await placeOrder(            this.alpacaAPIServer+'/v2/orders',
                                                 process.env.APCA_API_KEY_ID,
                                                 process.env.APCA_API_SECRET_KEY,
                                                 strategy.idSymbol, 
@@ -448,7 +510,7 @@ class LiveMarketListener {
                                               );            
     }
     catch (error) {
-        logger.error(`[BUY] Errore durante richiesta apertura ordine ad Alpaca ${error.message} ${this.alpacaAPIServer}`);
+        logger.error(`[BUY] Errore durante richiesta apertura ordine ad Alpaca ${error.message} ${this.alpacaAPIServer}/v2/orders`);
         return null;
     }
 
@@ -476,12 +538,13 @@ class LiveMarketListener {
       else {
         // Verifico se c'e' gia un ordine immesso o se il flag this.sellOrderPlaced=true (ordine immesso ma non)
         // ancora preso in carico da Alpaca.
-        this.alpacaAPIServer = this.settings[`ALPACA-`+process.env.ENV_ORDERS+`-BASE`]+'/v2/orders';
-        logger.trace(`[handleTradeSignal] variabile alpacaAPIServer ${this.alpacaAPIServer}`);
+        this.alpacaAPIServer = this.settings[`ALPACA-`+process.env.ENV_ORDERS+`-BASE`];
+        logger.trace(`[handleTradeSignal] variabile alpacaAPIServer ${this.alpacaAPIServer}/v2/orders`);
+
         logger.trace(`[handleTradeSignal] Verifico se esiste gia un ordine SELL prima di reinserirlo ...`);
         let orders=[];
         try { 
-            const res = await axios.get(`${this.alpacaAPIServer}`, {
+            const res = await axios.get(`${this.alpacaAPIServer}/v2/orders`, {
                 headers: {
                     'APCA-API-KEY-ID': process.env.APCA_API_KEY_ID, 
                     'APCA-API-SECRET-KEY': process.env.APCA_API_SECRET_KEY,
@@ -504,33 +567,48 @@ class LiveMarketListener {
 
         logger.error(`[handleTradeSignal] Numero ordini trovati ${exists}`);
 
-        if(!exists)  // Non ho ancora immesso ordine, lo immetto ora.
-          orderRes = await this.SELL(strategy, bar);
+        if(!exists) { // Non ho ancora immesso ordine, lo immetto ora.
+          orderRes = strategy.params.sell.exitMode === "order" ? await this.SELL(strategy, bar) : await this.CLOSE_POSITIONS(strategy) ;
+          logger.trace(`[handleTradeSignal] ExitMode ${strategy.params.sell.exitMode} orderRes da chiusura posizioni : ${JSON.stringify(orderRes)} `);
+        }
         else {
           logger.warning(`[handleTradeSignal] Ordine sell gia immesso interrompo flusso`);
           return;
         }
       }
-        
 
+      if(strategy.params.sell.exitMode === "close" && signal.action === 'SELL') {
 
-      rc = await this.addOrdertoOrderTable(orderRes);
-      if (!rc) {
-        logger.error(`[handleTradeSignal] addOrdertoOrderTable operation failed`);
-        throw new Error('addOrdertoOrderTable operation failed');
+        logger.trace(`[handleTradeSignal] Messaggio di ritorno dalla chiusura posizioni : ${JSON.stringify(orderRes)}`);
+
+        rc = await this.aggiungiTransazioneClose(strategy, evalResult,bar,orderRes);
+        if (!rc) {
+          logger.error(`[handleTradeSignal] Aggiunta Transazione operation failed`);
+          throw new Error('Aggiunta Transazione operation failed');
+        }
+
+      } 
+        // Nel caso in cui la vendita sia stata fatta con la chiusura delle posizioni
+      else {
+
+        // rc = await this.addOrdertoOrderTable(orderRes);
+        // if (!rc) {
+        //   logger.error(`[handleTradeSignal] addOrdertoOrderTable operation failed`);
+        //   throw new Error('addOrdertoOrderTable operation failed');
+        // }
+        rc = await this.aggiungiTransazioneOrder(strategy, evalResult,bar,orderRes);
+        if (!rc) {
+          logger.error(`[handleTradeSignal] Aggiunta Transazione operation failed`);
+          throw new Error('Aggiunta Transazione operation failed');
+        }
+
+        rc = await this.aggiornaCapitaliImpegnati(evalResult,bar, strategy);
+        if (!rc) {
+          logger.error(`[handleTradeSignal] Aggiornamento capitale impegnato operation failed`);
+          throw new Error('Aggiornamento capitale impegnato operation failed');
+        }
       }
 
-      rc = await this.aggiungiTransazione(strategy, evalResult,bar,orderRes);
-      if (!rc) {
-        logger.error(`[handleTradeSignal] Aggiunta Transazione operation failed`);
-        throw new Error('Aggiunta Transazione operation failed');
-      }
-
-      rc = await this.aggiornaCapitaliImpegnati(evalResult,bar, strategy);
-      if (!rc) {
-        logger.error(`[handleTradeSignal] Aggiornamento capitale impegnato operation failed`);
-        throw new Error('Aggiornamento capitale impegnato operation failed');
-      }
 
       rc = await this.invioComunicazione(signal, strategy, orderRes,bar, evalResult);
       if (!rc) {
