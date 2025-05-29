@@ -33,7 +33,7 @@ class OrderListener {
         }
     }
 
-    await this.loadSettings();
+    await this.loadSettings(); 
     this.connect();
   }
 

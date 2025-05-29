@@ -75,16 +75,5 @@ module.exports = (dbManager) => {
     }
   });
 
-
-
-  router.get('/scenarioIdByOrderId/:order_id', async (req, res) => {
-    try {
-      const result = await dbManager.getScenarioIdByOrderId(req.params.order_id);
-      res.json(result);
-    } catch (err) {
-      res.status(500).json({ error: 'Errore durante il recupero delle scenario id' });
-    }
-  });
-
   return router;
 };

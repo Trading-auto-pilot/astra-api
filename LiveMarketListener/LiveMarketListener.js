@@ -70,7 +70,7 @@ class LiveMarketListener {
 
   logger.info(`[getActiveOrders] Recuperato ordini attivi ${JSON.stringify(this.orderActive)}`);
 
-  }
+  } 
 
   async loadSettings() {
     logger.info(`[loadSetting] Lettura setting da repository...`);

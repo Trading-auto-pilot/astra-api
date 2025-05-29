@@ -30,13 +30,13 @@ getSMAInfo() {
   // 🔁 Registra il bot nel DB se non esiste, altrimenti aggiorna la data
 async registerBot() {
     try {
-      await axios.post(`${this.dbManagerURL}/bot`, {
+      await axios.post(`${this.dbManagerURL}/bots`, {
         name: MODULE_NAME,
         ver: MODULE_VERSION
       });
       logger.info(`[registerBot] Bot registrato`);
     } catch (err) {
-        logger.error(`[registerBot][registerBot] Errore: ${err.message}`);
+        logger.error(`[registerBot] Errore: ${err.message}`);
     }
   }
 
