@@ -49,7 +49,7 @@ async function updateStrategies(update) {
     await conn.execute(sql, [...values, update.id]);
     logger.info(`[updateStrategies] Strategia ${update.id} aggiornata`);
     logger.info(`[updateStrategies] Invio messaggio ${update}`);
-    await publishCommand(update,'strategies_update' );
+    await publishCommand(update,'strategies:update' );
     return { success: true, id: update.id };
   } catch (error) {
     logger.error(`[updateStrategies] Errore: ${error.message}`);

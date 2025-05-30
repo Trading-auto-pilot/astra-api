@@ -15,7 +15,7 @@ async function insertBuyTransaction(body) {
       [scenarioId, operation, formatDateForMySQL(element.t), prezzo, capitaleInvestito, MA, orderId, NumAzioni]
     );
     logger.trace(`[insertBuyTransaction] Spedizione messaggio su canale transaction_update: ${JSON.stringify(body)}`);
-    await publishCommand(body,'transaction_update' );
+    await publishCommand(body,'transactions:update' );
 
   } catch (err) {
     logger.error(`[insertBuyTransaction] Errore insert:`, err.message);

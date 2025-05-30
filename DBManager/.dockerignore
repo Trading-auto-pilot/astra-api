@@ -1,0 +1,24 @@
+# Evita di copiare dipendenze locali
+node_modules
+npm-debug.log
+
+# File temporanei o locali
+.DS_Store
+.env
+.env.local
+
+# Git e editor
+.git
+.gitignore
+.vscode
+.idea
+
+# Build temporanei o output
+*.log
+*.tmp
+.cache/
+
+# Configurazioni dev
+nodemon.json
+README.md
+release.js
