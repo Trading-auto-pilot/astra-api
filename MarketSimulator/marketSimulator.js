@@ -3,9 +3,11 @@ const axios = require('axios');
 const { publishCommand } = require('../shared/redisPublisher');
 const createLogger = require('../shared/logger');
 
+const MICROSERVICE = "MarketSimulator"
 const MODULE_NAME = 'MarketSimulator';
 const MODULE_VERSION = '1.0';
-const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'log');
+
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
 class MarketSimulator {
   constructor() {
@@ -25,12 +27,12 @@ class MarketSimulator {
   }
 
   async loadSettings() {
-    logger.info(`[loadSettings] Caricamento configurazione da DBManager...`);
+    logger.info(`[loadSettings] Caricamento configurazione da CacheManager...`);
     const keys = ['STREAM-SIMULATION-DELAY'];
     for (const key of keys) {
-      const res = await axios.get(`${this.dbManagerUrl}/setting/${key}`);
-      this.settings[key] = res.data.value;
-      logger.trace(`[loadSettings] ${key} = ${res.data.value}`);
+      const res = await axios.get(`${this.dbManagerUrl}/settings/${key}`);
+      this.settings[key] = res.data;
+      logger.trace(`[loadSettings] ${key} = ${res.data}`);
     }
 
     for (const [key, value] of Object.entries(process.env)) {
@@ -88,7 +90,7 @@ class MarketSimulator {
 
     });
   }
-
+ 
   async startSimulation(startDate, endDate, tf = '15Min') {
 
     for (const ws of this.wsClients) {
@@ -101,6 +103,7 @@ class MarketSimulator {
             logger.log(`[startSimulation] Simulazione per ${symbol} da ${startDate} a ${endDate} con TF ${tf}`);
             await this.loadSettings();
         
+            console.log(`Chiamo : ${this.cacheManagerUrl}/candles`)
             const res = await axios.get(`${this.cacheManagerUrl}/candles`, {
               params: {
                 symbol,
@@ -112,11 +115,11 @@ class MarketSimulator {
         
             const candles = res.data;
             if (!Array.isArray(candles) || candles.length === 0) {
-              logger.warning(`[startSimulation] Nessuna candela trovata`);
+              logger.warning(`[startSimulation] Nessuna candela trovata per ${symbol}`);
               return;
             }
         
-            const delay = parseInt(this.settings['STREAM-SIMULATION-DELAY']) * 1000 || 1000;
+            const delay = parseInt(this.settings['STREAM-SIMULATION-DELAY']) * 50 || 500;
             let index = 0;
         
             this.interval = setInterval(() => {
@@ -124,21 +127,15 @@ class MarketSimulator {
                 logger.info(`[startSimulation] Fine simulazione`);
                 clearInterval(this.interval);
                 return;
-              }
-        
-              // Aggiorno posizioni 
-              const ret = updatePositionFromCandle({ T: 'b', ...candle });
+              } 
+              
 
               const candle = candles[index++];
-              const payload = JSON.stringify({ T: 'b', ...candle });
+              candle['S'] = symbol;
+              candle["T"] = "b"; 
+              this.broadcastMessage([candle]);
         
-              this.wsClients.forEach(client => {
-                if (client.readyState === WebSocket.OPEN) {
-                  client.send(payload);
-                }
-              });
-        
-              logger.trace(`[startSimulation] Inviata candela: ${payload}`);
+              logger.trace(`[startSimulation] Inviata candela: ${JSON.stringify(candle)}`);
             }, delay);
         }
     }
@@ -173,10 +170,10 @@ async  updatePositionFromCandle(candle) {
     logger.warning('[updatePositionFromCandle] Candela non valida o incompleta');
     return { updated: false, reason: 'symbol o close mancanti' };
   }
-
   const allPositions = await axios.get(`${this.dbManagerUrl}/simul/positions`);
-
   const position = allPositions.data.find(pos => pos.symbol === symbol);
+  logger.trace(`[updatePositionFromCandle] Simbolo da cercare ${symbol}  Posizioni attive trovate | ${JSON.stringify(position)}`);
+  
 
   if (!position) {
     logger.info(`[updatePositionFromCandle] Nessuna posizione attiva per ${symbol}`);
@@ -190,7 +187,7 @@ async  updatePositionFromCandle(candle) {
 
   const market_value = qty * close;
   const unrealized_pl = (close - avg_entry_price) * qty;
-  const unrealized_plpc = cost_basis !== 0 ? unrealized_pl / cost_basis : 0;
+  const unrealized_plpc =  (close / avg_entry_price) -1 ; //cost_basis !== 0 ? unrealized_pl / cost_basis : 0;
   const unrealized_intraday_pl = (close - lastday_price) * qty;
   const unrealized_intraday_plpc = lastday_price !== 0 ? (close - lastday_price) / lastday_price : 0;
   const change_today = unrealized_intraday_plpc;
@@ -201,16 +198,17 @@ async  updatePositionFromCandle(candle) {
     position_id: position.position_id,
     asset_id: position.asset_id,
     symbol: position.symbol,
-    current_price: parseFloat(close.toFixed(2)),
-    market_value: parseFloat(market_value.toFixed(2)),
-    unrealized_pl: parseFloat(unrealized_pl.toFixed(2)),
-    unrealized_plpc: parseFloat(unrealized_plpc.toFixed(6)),
-    unrealized_intraday_pl: parseFloat(unrealized_intraday_pl.toFixed(2)),
-    unrealized_intraday_plpc: parseFloat(unrealized_intraday_plpc.toFixed(6)),
-    change_today: parseFloat(change_today.toFixed(6))
+    qty:0,
+    avg_entry_price:avg_entry_price,
+    current_price: parseFloat(close),
+    market_value: parseFloat(market_value),
+    unrealized_pl: parseFloat(unrealized_pl),
+    unrealized_plpc: parseFloat(unrealized_plpc),
+    unrealized_intraday_pl: parseFloat(unrealized_intraday_pl),
+    unrealized_intraday_plpc: parseFloat(unrealized_intraday_plpc),
+    change_today: parseFloat(change_today)
   };
-
-  logger.trace(`[updatePositionFromCandle] updatedFields:${JSON.stringify(updatedFields)}`);
+  logger.trace(`[updatePositionFromCandle] updatedFields PUT ${this.dbManagerUrl}/simul/positions  |${JSON.stringify(updatedFields)}`);
 
   
   await axios.put(`${this.dbManagerUrl}/simul/positions`,updatedFields);
@@ -218,6 +216,7 @@ async  updatePositionFromCandle(candle) {
   
   // Inviare messaggio si websocket channel command : loadActivePosition
   await publishCommand({ action: 'loadActivePosition' });
+  await publishCommand(updatedFields,"simulPositions:update");
 
   return { updated: true, symbol, updatedFields };
 }

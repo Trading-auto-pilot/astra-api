@@ -1,12 +1,18 @@
 // modules/simul_orders.js
 
 const { getDbConnection, formatDateForMySQL, safe } = require('./core');
-const logger = require('../../shared/logger')('SimulOrders');
+const createLogger = require('../../shared/logger');
+
+const MICROSERVICE = 'DBManager';
+const MODULE_NAME = 'simulOrder';
+const MODULE_VERSION = '2.0';
+
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
 async function simul_getAllOrdersAsJson() {
   const connection = await getDbConnection();
   try {
-    const [rows] = await connection.execute('SELECT * FROM Simul.Orders');
+    const [rows] = await connection.execute('SELECT * FROM Simul.Orders where status="accepted"');
     return rows.map(row => ({
       id: row.id,
       client_order_id: row.client_order_id,
@@ -47,11 +53,12 @@ async function simul_getAllOrdersAsJson() {
     logger.error(`[simul_getAllOrdersAsJson] Errore: ${error.message}`);
     throw error;
   } finally {
-    await connection.end();
+      connection.release();
   }
 }
 
 async function simul_updateOrder(orderUpdate) {
+  const connection = await getDbConnection();
   if (!orderUpdate.id) {
     logger.error('[simul_updateOrder] ID mancante');
     return { success: false, error: 'Campo id obbligatorio' };
@@ -62,7 +69,7 @@ async function simul_updateOrder(orderUpdate) {
   );
 
   if (fields.length === 0) {
-    logger.warn('[simul_updateOrder] Nessun campo da aggiornare');
+    logger.warning('[simul_updateOrder] Nessun campo da aggiornare');
     return { success: false, error: 'Nessun campo da aggiornare' };
   }
 
@@ -79,14 +86,15 @@ async function simul_updateOrder(orderUpdate) {
   const sql = `UPDATE Simul.Orders SET ${setClause} WHERE id = ?`;
 
   try {
-    const connection = await getDbConnection();
+    
     await connection.execute(sql, [...values, orderUpdate.id]);
-    await connection.end();
     logger.info(`[simul_updateOrder] Ordine ${orderUpdate.id} aggiornato`);
     return { success: true };
   } catch (error) {
     logger.error(`[simul_updateOrder] Errore: ${error.message}`);
-    return { success: false, error: error.message };
+    throw error;
+  } finally {
+      connection.release();
   }
 }
 
@@ -149,12 +157,27 @@ async function simul_insertOrder(order) {
     logger.error(`[simul_insertOrder] Errore inserimento ordine: ${err.message}`);
     throw err;
   } finally {
-    await connection.end();
+      connection.release();
+  }
+}
+
+async function simul_deleteAllOrders() {
+  const connection = await getDbConnection();
+  try {
+    await connection.execute('DELETE FROM Simul.Orders');
+    logger.info('[simul_deleteAllOrders] Tutti gli ordini eliminati');
+    return { success: true };
+  } catch (err) {
+    logger.error('[simul_deleteAllOrders] Errore:', err.message);
+    throw err;
+  } finally {
+    connection.release(); // Fondamentale se usi un pool
   }
 }
 
 module.exports = {
   simul_getAllOrdersAsJson,
   simul_updateOrder,
-  simul_insertOrder
+  simul_insertOrder,
+  simul_deleteAllOrders
 };

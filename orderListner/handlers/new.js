@@ -3,19 +3,21 @@
 module.exports = async (data,event_type,AlpacaEnv) => {
   const axios = require('axios');
   const createLogger = require('../../shared/logger');
-  const MODULE_NAME = 'OrderListener New';
+  const MICROSERVICE = 'OrderListner'
+  const MODULE_NAME = 'NEW';
   const MODULE_VERSION = '1.0';
-  const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL);
-  logger.trace('[NEW] New Order:', JSON.stringify(data));
+  const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
+
+  logger.trace('[NEW] New Order |', JSON.stringify(data));
 
   const dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
   const alertingUrl = process.env.ALERTINGMANAGER_URL || 'http://localhost:3008';
   let retData, myStrategy;
 
   // Recupero scenario id
+  logger.trace(`[NEW] Recupero ScenarioId con  ${dbManagerUrl}/transactions/scenarioIdByOrderId/${data.order.id}`);
   try {
-    logger.trace(`[NEW] Recupero ScenarioId con  ${dbManagerUrl}/transactions/scenarioIdByOrderId/${data.order.id}`);
     retData = await axios.get(`${dbManagerUrl}/transactions/scenarioIdByOrderId/${data.order.id}`);
   }
   catch (error) {
@@ -24,8 +26,8 @@ module.exports = async (data,event_type,AlpacaEnv) => {
   }
   
     // Recupero i dettagli della strategia da modificare
-try {
     logger.trace(`[NEW] Recupero i dettagli della strategia da modificare ${dbManagerUrl}/strategies`);
+try {
     const strategyDetails = await axios.get(`${dbManagerUrl}/strategies`);
     myStrategy = strategyDetails.data.filter( s => s.id === Number(retData.data.ScenarioID));
 } catch (error) {
@@ -33,19 +35,17 @@ try {
     return null;
 }
 
-logger.trace(`[NEW] Strategy details : ${JSON.stringify(myStrategy)}`)
+logger.trace(`[NEW] Strategy details | ${JSON.stringify(myStrategy)}`)
   // Aggiorno la tabella transazioni
+  const now = new Date();
+  retData.data.operationDate = now.toISOString().slice(0, 19).replace('T', ' ');
+  if(data.order.side === 'buy') 
+    retData.data.operation = 'BUY NEW';
+  else
+    retData.data.operation = 'SELL NEW';
+  logger.trace(`[NEW] Aggiorno tabella transazioni PUT ${dbManagerUrl}/transactions/${retData.data.id} | ${JSON.stringify(retData.data)}`);
   try{
-    const now = new Date();
-    retData.data.operationDate = now.toISOString().slice(0, 19).replace('T', ' ');
-    if(data.order.side === 'buy') 
-      retData.data.operation = 'BUY NEW';
-    else
-      retData.data.operation = 'SELL NEW';
-    logger.trace(`[NEW] Aggiorno tabella transazioni PUT ${dbManagerUrl}/transactions ${JSON.stringify(retData.data)}`);
-    const rc = await axios.put(`${dbManagerUrl}/transactions`, retData.data);
-    logger.log(`[NEW] Aggiornata tabella transazioni ${JSON.stringify(rc.data)}`);
-
+    const rc = await axios.put(`${dbManagerUrl}/transactions/${retData.data.id}`, retData.data);
   } catch (error) {
     logger.error(`[NEW] Errore durante aggiornamento tabella transazioni ${error.message}`);
     return null;
@@ -53,8 +53,8 @@ logger.trace(`[NEW] Strategy details : ${JSON.stringify(myStrategy)}`)
 
   // Aggiorno la tabella Ordini
   try{
-    logger.trace(`[NEW] Aggiorno Tabella Ordini PUT${dbManagerUrl}/orders`);
-    const ret = await axios.put(`${dbManagerUrl}/orders`, data.order);
+    logger.trace(`[NEW] Aggiorno Tabella Ordini PUT ${dbManagerUrl}/orders/${data.order.id}`);
+    const ret = await axios.put(`${dbManagerUrl}/orders/${data.order.id}`, data.order);
   } catch (error) {
     logger.trace(`[NEW] Errore nell'aggiornamento della tabella Ordini ${error.message}`);
     return null;

@@ -16,7 +16,8 @@ module.exports = (dbManager) => {
       await cache.set(cacheKey, data);
       res.json(result);
     } catch (error) {
-      res.status(500).json({ error: 'Errore durante la lettura dei bot' });
+      console.error('[GET /bots] Errore:', err.message);
+      res.status(500).json({ error: 'Errore durante la lettura dei bot', module:'[GET /bots]' });
     }
   });
 
@@ -26,7 +27,8 @@ module.exports = (dbManager) => {
       await cache.del('bots:all');
       res.json(result);
     } catch (error) {
-      res.status(500).json({ error: 'Errore durante la lettura dei bot' });
+      console.error('[POST /bots] Errore:', err.message);
+      res.status(500).json({ error: 'Errore durante la registrazione dei bot', module:'[POST /bots]' });
     }
   });
 

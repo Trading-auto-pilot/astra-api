@@ -6,6 +6,10 @@
                 "v.1.2 Richiama il Bot di Acquisto o Vendita dinamicamente leggendolo dalla tabella strategies",
                 "v.1.2 Modifica prelievo API KEY e SECRET Alpaca da variabili d'ambiente",
                 "v.1.2 Integrazione con REDIT per ricaricare ambiente",
-                "v.1.2 Sostituzione dell'ordine SELL con una chiusura della posizione"
+                "v.1.2 Sostituzione dell'ordine SELL con una chiusura della posizione",
+                "v 2.0",
+                "----------------------",
+                "Refactoring completo dividendo LiveMarketListener in sottomoduli con domini specifici. La logica di processamento ora ",
+                "valuta prima una SELL e poi la BUY"
             ]
 }

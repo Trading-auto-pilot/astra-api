@@ -1,7 +1,13 @@
 // modules/strategy_stats.js
 
 const { getDbConnection } = require('./core');
-const logger = require('../../shared/logger')('StrategyStats');
+const createLogger = require('../../shared/logger');
+
+const MICROSERVICE = 'DBManager';
+const MODULE_NAME = 'strategiesStats';
+const MODULE_VERSION = '2.0';
+
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
 function parseParamsInRows(rows) {
   return rows.map(row => {
@@ -9,7 +15,7 @@ function parseParamsInRows(rows) {
       try {
         row.params = JSON.parse(row.params);
       } catch (err) {
-        logger.warn(`[parseParamsInRows] Errore nel parsing JSON per ID ${row.id}: ${err.message}`);
+        logger.warning(`[parseParamsInRows] Errore nel parsing JSON per ID ${row.id}: ${err.message}`);
       }
     }
     return row;
@@ -29,7 +35,7 @@ async function getTotalActiveCapital() {
     logger.error(`[getTotalActiveCapital] Errore SELECT:`, err.message);
     throw err;
   } finally {
-    await connection.end();
+      connection.release();
   }
 }
 
@@ -63,7 +69,7 @@ async function updateStrategyCapitalAndOrders({ id, capitaleInvestito, openOrder
     logger.error(`[updateStrategyCapitalAndOrders] Errore UPDATE:`, err.message);
     throw err;
   } finally {
-    await connection.end();
+      connection.release();
   }
 }
 
@@ -86,7 +92,7 @@ async function getStrategyCapitalAndOrders(id) {
     }));
 
     if (filtered.length === 0) {
-      logger.warn(`[getStrategyCapitalAndOrders] Nessuna strategia trovata con id: ${id}`);
+      logger.warning(`[getStrategyCapitalAndOrders] Nessuna strategia trovata con id: ${id}`);
       throw new Error(`Nessuna strategia trovata con id: ${id}`);
     }
 
@@ -95,7 +101,7 @@ async function getStrategyCapitalAndOrders(id) {
     logger.error(`[getStrategyCapitalAndOrders] Errore SELECT:`, err.message);
     throw err;
   } finally {
-    await connection.end();
+      connection.release();
   }
 }
 

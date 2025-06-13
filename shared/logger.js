@@ -1,42 +1,99 @@
-// shared/logger.js
+const axios = require('axios');
 const levels = ['trace', 'log', 'info', 'warning', 'error'];
-//const currentLevel = process.env.LOG_LEVEL || 'info';
-
+const dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
+const enableDbLog = process.env.ENABLE_DB_LOG === 'true';
 // ANSI color codes
 const COLORS = {
-  trace: '\x1b[35m', // magenta
-  log: '\x1b[36m',   // cyan
-  info: '\x1b[32m',  // green
-  error: '\x1b[31m', // red
+  trace: '\x1b[35m',
+  log: '\x1b[36m',
+  info: '\x1b[32m',
+  error: '\x1b[31m',
   warning: '\x1b[33m',
-  reset: '\x1b[0m'   // reset color
+  reset: '\x1b[0m'
 };
 
 // Funzione per generare timestamp
-function getTimestamp() {
+function getTimestamp() { 
   const now = new Date();
-  return now.toISOString().replace('T', ' ').replace('Z', '');
+  const date = now.toISOString().replace('T', ' ').replace('Z', '');
+  const millis = String(now.getMilliseconds());//.padStart(3, '0');
+  return `${date}`; //.${millis}`;
 }
 
+// Coda per log asincroni
+let logQueue = [];
 
-function createLogger(moduleName = '', level='info' ) {
+// Simulazione flush asincrono (puoi sostituire con DB)
+setInterval(async () => {
+  if (!enableDbLog || logQueue.length === 0) return;
+
+  const batch = logQueue;
+  logQueue = [];
+
+  try {
+    await axios.post(`${dbManagerUrl}/logs`, batch);
+  } catch (err) {
+    // Se fallisce, re-inserisci i log in testa alla coda
+    logQueue = [...batch, ...logQueue];
+    console.error('[logger] Failed to send logs:', err.message);
+  }
+}, 100);
+
+
+function createLogger(microservice = '', moduleName = '', moduleVersion = '', level = 'info') {
   const currentIndex = levels.indexOf(level);
-  return {
-    trace: (...args) => {
-      if (currentIndex <= 0) console.log(`${COLORS.trace}[${getTimestamp()}][${moduleName}][TRACE]`, ...args, COLORS.reset);
-    },
-    log: (...args) => {
-      if (currentIndex <= 1) console.log(`${COLORS.log}[${getTimestamp()}][${moduleName}][LOG]`, ...args, COLORS.reset);
-    },
-    info: (...args) => {
-      if (currentIndex <= 2) console.log(`${COLORS.info}[${getTimestamp()}][${moduleName}][INFO]`, ...args, COLORS.reset);
-    },
-    warning: (...args) => {
-      if (currentIndex <= 3) console.warn(`${COLORS.warning}[${getTimestamp()}][${moduleName}][WARNING]`, ...args, COLORS.reset);
-    },
-    error: (...args) => {
-      if (currentIndex <= 3) console.error(`${COLORS.error}[${getTimestamp()}][${moduleName}][ERROR]`, ...args, COLORS.reset);
+
+
+  const logToConsoleAndQueue = (levelKey, color, ...args) => {
+    const timestamp = getTimestamp();
+    const prefix = `[${timestamp}][${microservice}][${moduleName}][${moduleVersion}][${levelKey.toUpperCase()}]`;
+    const fullMessage = args.join(' ');
+
+    // stampa su console
+    const output = `${color}${prefix} ${fullMessage}${COLORS.reset}`;
+    if (levelKey === 'error') console.error(output);
+    else if (levelKey === 'warning') console.warn(output);
+    else console.log(output);
+
+  // estrae il nome funzione (obbligatorio)
+    const funcMatch = fullMessage.match(/^\s*\[([^\]]+)\]\s*/);
+    const functionName = funcMatch ? funcMatch[1] : null;
+    let message = fullMessage.replace(/^\[[^\]]+\]\s*/, '');
+
+      // estrae JSON finale opzionale dopo pipe |
+    let jsonDetails = null;
+    const pipeIndex = message.lastIndexOf('|');
+    if (pipeIndex !== -1) {
+      const maybeJson = message.slice(pipeIndex + 1).trim();
+      message = message.slice(0, pipeIndex).trim();
+      try {
+        jsonDetails = JSON.parse(maybeJson);
+      } catch (_) {
+        // ignora se non è JSON valido
+      }
     }
+
+    // enqueue per scrittura asincrona
+    logQueue.push({
+      timestamp,
+      level: levelKey,
+      functionName,
+      message: message,
+      jsonDetails,
+      microservice,
+      moduleName,
+      moduleVersion
+    });
+  };
+
+
+
+  return {
+    trace: (...args) => currentIndex <= 0 && logToConsoleAndQueue('trace', COLORS.trace, ...args),
+    log: (...args) => currentIndex <= 1 && logToConsoleAndQueue('log', COLORS.log, ...args),
+    info: (...args) => currentIndex <= 2 && logToConsoleAndQueue('info', COLORS.info, ...args),
+    warning: (...args) => currentIndex <= 3 && logToConsoleAndQueue('warning', COLORS.warning, ...args),
+    error: (...args) => currentIndex <= 4 && logToConsoleAndQueue('error', COLORS.error, ...args)
   };
 }
 

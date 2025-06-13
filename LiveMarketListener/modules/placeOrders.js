@@ -1,6 +1,6 @@
 const axios = require('axios');
 const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 async function placeOrder(url, apiKey, apiSecret, symbol, qty, side, type = 'limit', time_in_force = 'gtc', limit_price = null, stop_price = null,trail_price = null, extended_hours = false, client_order_id, order_class, take_profit, stop_loss) {
 
@@ -66,9 +66,6 @@ async function placeOrder(url, apiKey, apiSecret, symbol, qty, side, type = 'lim
         if (stop_price) {
             body.stop_price = stop_price;
         }
-        
-
-        console.log(body);
 
         const response = await axios.post(
         url,

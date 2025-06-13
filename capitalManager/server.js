@@ -29,7 +29,7 @@ async function loadSettings() {
       settings[key] = res.data;
       logger.trace(`[loadSetting] Setting variavile ${key} : ${settings[key]}`);
     } catch (err) {
-        console.error(`[SETTINGS] Errore nel recupero della chiave '${key}': ${err.message}`);
+        logger.error(`[SETTINGS] Errore nel recupero della chiave '${key}': ${err.message}`);
       throw err;
     }
   }
@@ -57,7 +57,6 @@ app.get('/info', (req, res) => {
 app.get('/getAvailableCapital', async (req, res) => {
     try {
         const account = await capitalManager.getAvailableCapital();
-        console.log(account);
       
         res.json({
             cash: parseFloat(account.cash),
@@ -67,7 +66,7 @@ app.get('/getAvailableCapital', async (req, res) => {
             timestamp: new Date().toISOString()
         });
         } catch (err) {
-          console.error(`[${MODULE_NAME}][getAvailableCapital] Errore:`, err.message);
+          logger.error(`[${MODULE_NAME}][getAvailableCapital] Errore:`, err.message);
           res.status(500).json({ error: 'Errore nel recupero del capitale disponibile', message: err.message });
         }
 });
@@ -85,7 +84,7 @@ app.get('/evaluate/:strategyId', async (req, res) => {
     const result = await capitalManager.evaluateAllocation(strategyId);
     res.json(result);
   } catch (err) {
-    console.error(`[capitalManager][evaluateAllocation] Errore:`, err.message);
+    logger.error(`[capitalManager][evaluateAllocation] Errore:`, err.message);
     res.status(500).json({ error: 'Errore durante la valutazione allocazione', message: err.message });
   }
 });
@@ -101,32 +100,32 @@ app.get('/evaluate/:strategyId', async (req, res) => {
       })
 
       const subscriber = redis.createClient({ url: process.env.REDIS_URL || 'redis://redis:6379' });
-      subscriber.on('error', (err) => console.error('❌ Redis error:', err));
+      subscriber.on('error', (err) => logger.error('❌ Redis error:', err));
 
       await subscriber.connect();
-      console.log('✅ Connesso a Redis per Pub/Sub');
+      logger.info('✅ Connesso a Redis per Pub/Sub');
 
       await subscriber.subscribe('commands', async (message) => {
-        console.log(`📩 Ricevuto su 'commands':`, message);
+        logger.log(`📩 Ricevuto su 'commands':`, message);
         try {
           const parsed = JSON.parse(message);
           if (parsed.action === 'loadSettings') {
             await loadSettings();
-            console.log('✔️  Eseguito comando:', parsed.action);
+            logger.trace('✔️  Eseguito comando:', parsed.action);
           }
         } catch (err) {
-          console.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
+          logger.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
         }
       });
       
       app.listen(port, () => {
-        console.log(`[capital-manager] Server avviato sulla porta ${port}`);
+        logger.info(`[capital-manager] Server avviato sulla porta ${port}`);
       });
 
 
 
     } catch (err) {
-      console.error(`[capital-manager][startup] Errore avvio: ${err.message}`);
+      logger.error(`[capital-manager][startup] Errore avvio: ${err.message}`);
       process.exit(1);
     }
   })();

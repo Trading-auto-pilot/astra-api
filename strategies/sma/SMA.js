@@ -1,10 +1,11 @@
 const axios = require('axios');
 const createLogger = require('../../shared/logger');
 const StrategyUtils = require('../../shared/strategyUtils');
-
+const Alpaca = require('../../shared/Alpaca');
+const MICROSERVICE = 'STRATEGIES';
 const MODULE_NAME = 'SMA';
 const MODULE_VERSION = '1.1';
-const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL);
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 const utils = new StrategyUtils();
 
 class SMA {
@@ -13,6 +14,7 @@ class SMA {
     this.comprato = null;
     this.capitaleInvestito = 0;
     this.dbManagerURL = process.env.DBMANAGER_URL || 'http://dbmanager:3002';
+    this.AlpacaApi = new Alpaca();
 
     this.registerBot();
   }
@@ -93,7 +95,7 @@ async loadLastPosition(scenarioId) {
     logger.log(`[processCandle] Funzione richiamata con parametri : ${JSON.stringify(candle)} ${scenarioId} ${symbol}`);
     const {SL, TP, MA, TF} = params;
     let mediaMobile , prezzo;
-    
+     
 
     try {
         prezzo = parseFloat(candle.c);
@@ -119,6 +121,7 @@ async loadLastPosition(scenarioId) {
         action: 'BUY',
         prezzo,
         mediaMobile,
+        bot: MODULE_NAME,
         motivo: 'Prezzo sopra media mobile'
       };
     }
@@ -127,22 +130,13 @@ async loadLastPosition(scenarioId) {
     if (this.comprato) {
       const profit = (prezzo - this.comprato) / this.comprato;
 
-      // if (profit <= -SL) {
-      //   return {
-      //     action: 'SELL',
-      //     prezzo,
-      //     mediaMobile,
-      //     motivo: 'SL',
-      //     profitLoss: profit
-      //   };
-      // }
-
       if (profit >= TP) {
         return {
           action: 'SELL',
           prezzo,
           mediaMobile,
           motivo: 'TP',
+          bot: MODULE_NAME,
           profitLoss: profit
         };
       }
@@ -152,6 +146,7 @@ async loadLastPosition(scenarioId) {
     return {
       action: 'HOLD',
       prezzo,
+      bot: MODULE_NAME,
       mediaMobile
     };
   }

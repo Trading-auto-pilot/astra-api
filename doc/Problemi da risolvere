@@ -1,0 +1,7 @@
+Problemi da risolvere:
+  1. SIMULATORE : a fronte di un acquisto fare update se posizione gia esistente
+  2. SIMULATORE : Rimuovere posizione quando chiusa (No soft delete)
+  3. ORDER LISTENER: Rimuovere posizione quando chiusa
+  4. CAPITAL MANAGER: Rivedere il calcolo del capitale
+  5. Se c'e un ordine e una posizione attiva la posizione non viene gestita
+

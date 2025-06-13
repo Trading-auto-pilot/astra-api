@@ -5,9 +5,11 @@ const { v4: uuidv4 } = require('uuid');
 const { publishCommand } = require('../shared/redisPublisher');
 const createLogger = require('../shared/logger');
 
+const MICROSERVICE= "OrderSimulator";
 const MODULE_NAME = 'OrderSimulator';
 const MODULE_VERSION = '1.2';
-const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL);
+
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
 class OrderSimulator {
   constructor() {
@@ -17,8 +19,8 @@ class OrderSimulator {
     this.liveMarketManager = process.env.LIVEMARKETMANAGER_URL || 'http://localhost:3012';
     this.wsServer = null;
     this.sharedClock=null;
-  }
-
+  } 
+ 
   async loadSettings() {
     logger.info('[loadSettings] Lettura configurazione da DBManager...');
     const keys = [
@@ -77,10 +79,10 @@ class OrderSimulator {
     const newMessage = {
         "stream":"trade_updates",
         "data":{
-                "at": orderPayload.created_at,
+                "at": this.sharedClock,
                 "event_id": "01JVSKESVEQERFRR4F0B8V34EH",
                 "event": "new",
-                "timestamp": orderPayload.created_at,
+                "timestamp": this.sharedClock,
                 "order": orderPayload,
                 "execution_id": uuidv4()
             } 
@@ -100,10 +102,10 @@ class OrderSimulator {
     const FillMessage = {
         "stream":"trade_updates",
         "data":{
-            "at": orderPayload.created_at,
+            "at": this.sharedClock,
             "event_id": "01JVSKESVEQERFRR4F0B8V34EH",
             "event": "fill",
-            "timestamp": orderPayload.created_at,
+            "timestamp": this.sharedClock,
             "order": order,
             "execution_id": uuidv4()
           } 
@@ -191,7 +193,7 @@ class OrderSimulator {
     // Invio il Messaggio new
     setTimeout(() => {
       this.sendNew(simulatedResponse);
-    }, 300); // 3000 ms = 3 secondi
+    }, 100); // 3000 ms = 3 secondi
 
     return simulatedResponse;
   }
@@ -270,9 +272,9 @@ class OrderSimulator {
           logger.info('Autenticato.');
         }
 
-        if (msg.T === 'b' && msg.t) {
+        if (msg.T === 'b' && msg.t) { 
           logger.trace(`[connectToMarketWebSocketForClock] messaggio ricevuto ${data}`);
-          this.processCandle(msg);
+          this.processCandle(msg); 
         }
       }
     });
@@ -298,16 +300,20 @@ class OrderSimulator {
 
   async sendPayloadToClients(payload) {
     const msg = typeof payload === 'string' ? payload : JSON.stringify(payload);
-    logger.info(`[sendPayloadToClients] Messaggio da inviare su ws ${msg} Client Connessi ${this.wsClients.length}`);
+    logger.info(`[sendPayloadToClients] Client Connessi ${this.wsClients.length} Messaggio da inviare su ws | ${msg}`);
+
     this.wsClients.forEach(ws => {
-      if (ws.readyState === WebSocket.OPEN && ws.isAuthenticated) {
-        ws.send(msg);
-        logger.trace(`[sendPayloadToClients] Inviato payload: ${msg}`);
-      } else {
-        logger.error(`[sendPayloadToClients] Errore nell'invio del messaggio su ws: ${msg} readyState ${ws.readyState === WebSocket.OPEN} authenticated ${ws.isAuthenticated}`);
-      }
+      setTimeout(() => {
+        if (ws.readyState === WebSocket.OPEN && ws.isAuthenticated) {
+          ws.send(msg);
+          logger.trace(`[sendPayloadToClients] Inviato payload: ${msg}`);
+        } else {
+          logger.error(`[sendPayloadToClients] Errore nell'invio del messaggio su ws: ${msg} readyState ${ws.readyState === WebSocket.OPEN} authenticated ${ws.isAuthenticated}`);
+        }
+      }, 30);
     });
   }
+
 
 async  getAccount() {
   try {
@@ -341,14 +347,14 @@ buildTradeUpdateFromClose(res) {
         execution_id: uuidv4(),
         price: fillPrice,
         position_qty: '0',
-        timestamp: now,
+        timestamp: this.sharedClock,
         order: {
           id: fakeOrderId,
           client_order_id: uuidv4(),
-          created_at: now,
-          updated_at: now,
-          submitted_at: now,
-          filled_at: now,
+          created_at: this.sharedClock,
+          updated_at: this.sharedClock,
+          submitted_at: this.sharedClock,
+          filled_at: this.sharedClock,
           expired_at: null,
           canceled_at: null,
           failed_at: null,
@@ -365,7 +371,7 @@ buildTradeUpdateFromClose(res) {
           order_class: '',
           order_type: 'market',
           type: 'market',
-          side: pos.side || 'sell',
+          side: 'sell',
           time_in_force: 'day',
           limit_price: null,
           stop_price: null,
@@ -402,7 +408,7 @@ async  closePosition(symbol) {
     throw new Error('Errore nella chiusura della posizione :'+error.message);
   }
 }
-
+ 
 async  getPositions() {
   try {
     const res = await axios.get(`${this.dbManagerUrl}/simul/positions`);
@@ -424,7 +430,7 @@ async getOrders(){
 }
 
 async  processCandle(candle) {
-  this.sharedClock = candle.t;
+  this.sharedClock = candle.t; 
 
   try {
     logger.trace(`[processCandle] Recupero ordini attivi da : ${this.dbManagerUrl}/simul/orders`);
@@ -472,7 +478,7 @@ async  processCandle(candle) {
         qty: order.qty,
         avg_entry_price: fillPrice,
         side:order.side,
-        market_value:order.filled_avg_price,
+        market_value:candle.c * order.qty,
         cost_basis:fillPrice * order.qty,
         unrealized_pl:0,
         unrealized_plpc:0,
@@ -495,7 +501,7 @@ async  processCandle(candle) {
       // Remove the symbol from the list of Active orders
       await axios.put(`${this.liveMarketManager}/orderActive/remove`, {symbol : order.symbol}); 
 
-      // Decrementa cach su Alpaca
+      // Decrementa cache su Alpaca
       const res = await axios.get(`${this.dbManagerUrl}/simul/account`);
       let account = res.data;
       logger.trace(`[processCandle] Recuperato cash account da decrementare ${account.cash} decremento di una quantita ${fillPrice * qty}`);

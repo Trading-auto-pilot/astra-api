@@ -3,6 +3,7 @@ const WebSocket = require('ws');
 const axios = require('axios');
 const routeEvent = require('./router');
 const createLogger = require('../shared/logger');
+const Alpaca = require('../shared/Alpaca');
 
 const MODULE_NAME = 'OrderListener';
 const MODULE_VERSION = '1.2';
@@ -16,10 +17,12 @@ class OrderListener {
     this.liveMarketListnerUrl = process.env.LIVEMARKETMANAGER_URL || 'http://localhost:3012';
     this.timeout = 10000;
     this.AlpacaEnv=null;
+    this.AlpacaApi = new Alpaca();
   }
-
+   
   async init() {
     logger.info(`[init] Inizializzazione...`);
+    await this.AlpacaApi.init();
 
     if (this.isPaper === null) {
         logger.warninging(`[init] ENVIRONMENT non valido o mancante: "${this.env}". Valori accettati: PAPER, LIVE`);
@@ -118,7 +121,7 @@ connect(retry = true) {
     if (msg.stream === 'trade_updates') {
       logger.trace(`[update] Evento trade: ${JSON.stringify(msg.data, null, 2)}`);
       // Processo il messaggio
-      routeEvent(msg.data.event, msg.data, this.AlpacaEnv);
+      routeEvent(msg.data.event, msg.data, this.AlpacaEnv, this.AlpacaApi);
       // Nel caso sia un messaggio relativo a una chiusura di una posizione DELETE positions, lo giro al liveMarketListner
       //await axios.post(`${this.liveMarketListnerUrl}/addOrdertoOrderTable`,msg.data.order); 
 

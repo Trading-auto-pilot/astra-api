@@ -4,6 +4,8 @@ const redis = require('redis');
 const dotenv = require('dotenv');
 const SLTP = require('./sltp');
 
+const REDIS_POSITIONS_KEY = 'alpaca:positions';
+
 dotenv.config();
 const app = express();
 app.use(express.json());
@@ -11,12 +13,12 @@ app.use(express.json());
 const port = process.env.PORT || 3011;
 const sltp = new SLTP();
 
-const commands = {
-  registerBot: () => sltp.registerBot(),
-  loadActiveOrders: () =>  sltp.loadActiveOrders(),
-  loadSettings: () => sltp.loadSettings(),
-  loadActivePosition: () => sltp.loadActivePosition()
-};
+// const commands = {
+//   registerBot: sltp.registerBot.bind(sltp),
+//   //loadActiveOrders:  sltp.loadActiveOrders.bind(sltp),
+//   loadSettings:  sltp.loadSettings.bind(sltp),
+//   loadActivePosition: sltp.loadActivePosition.bind(sltp)
+// };
 // Configurazione REDIS
 // Redis Pub/Sub Integration
 (async () => {
@@ -26,20 +28,35 @@ const commands = {
   await subscriber.connect();
   console.log('✅ Connesso a Redis per Pub/Sub');
 
-  await subscriber.subscribe('commands', async (message) => {
-    console.log(`📩 Ricevuto su 'commands':`, message);
+  // await subscriber.subscribe('commands', async (message) => {
+  //   console.log(`📩 Ricevuto su 'commands':`, message);
+  //   try {
+  //     const parsed = JSON.parse(message);
+  //       if (typeof commands[parsed.action] === 'function') {
+  //         await commands[parsed.action]();
+  //         console.log('✔️  Elaborazione completata', parsed.action);
+  //       } else {
+  //         console.error('❌ Comando non valido o mancante:', parsed.action);
+  //       }
+  //   } catch (err) {
+  //     console.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
+  //   }
+  // });
+
+  await subscriber.subscribe(REDIS_POSITIONS_KEY, async (message) => {
+    console.log(`📩 Ricevuto su ${REDIS_POSITIONS_KEY}: `, message);
     try {
       const parsed = JSON.parse(message);
-        if (typeof commands[parsed.action] === 'function') {
-          await commands[parsed.action]();
-          console.log('✔️  Elaborazione completata', parsed.action);
+        if (parsed.type === 'positions') {
+          sltp.setPositions(parsed.positions);
         } else {
-          console.error('❌ Comando non valido o mancante:', parsed.action);
+          sltp.getPositions();
         }
     } catch (err) {
       console.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
     }
   });
+
 })();
 
 
@@ -94,4 +111,12 @@ app.post('/processCandle', async (req, res) => {
 
 app.listen(port, () => {
   console.log(`[SLTP RESTServer] Server REST attivo su porta ${port}`);
+});
+
+process.on('SIGINT', () => {
+  console.log('[server] Terminazione SIGINT ricevuta (CTRL+C). Chiusura server...');
+  server.close(() => {
+    console.log('[server] Server chiuso correttamente.');
+    process.exit(0);
+  });
 });

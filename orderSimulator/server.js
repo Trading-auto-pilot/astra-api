@@ -6,10 +6,11 @@ const createLogger = require('../shared/logger');
 
 const app = express();
 app.use(express.json());
+const MICROSERVICE = 'OrderSimulator';
 const MODULE_NAME = 'OrderSimulator RESTServer';
 const MODULE_VERSION = '1.0';
 
-const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL);
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
 const server = http.createServer(app);
 const simulator = new OrderSimulator();
@@ -39,7 +40,7 @@ app.post('/send', (req, res) => {
     simulator.sendPayloadToClients(payload);
     res.status(200).json({ message: 'Payload inviato' });
   } catch (err) {
-    logger.error('Errore in /send', err.message);
+    logger.error('`[orders] POST /send', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -49,7 +50,7 @@ app.get('/v2/orders', async (req, res) => {
     const result = await simulator.getOrders();
     res.status(200).json(result.data);
   } catch (err) {
-    logger.error(`[orders] ${err.message}`);
+    logger.error(`[orders] GET /v2/account ${err.message}`);
     res.status(400).json({ error: err.message });
   }
 });
@@ -59,7 +60,7 @@ app.post('/v2/orders', async (req, res) => {
     const result = await simulator.acceptOrder(req.body);
     res.status(200).json(result);
   } catch (err) {
-    logger.error(`[orders] ${err.message}`);
+    logger.error(`[orders] POST /v2/account ${err.message}`);
     res.status(400).json({ error: err.message });
   }
 });
@@ -69,7 +70,7 @@ app.get('/v2/account', async (req, res) => {
     const result = await simulator.getAccount();
     res.status(200).json(result);
   } catch (err) {
-    logger.error(`[orders] ${err.message}`);
+    logger.error(`[orders] GET /v2/account ${err.message}`);
     res.status(400).json({ error: err.message });
   }
 });
@@ -79,7 +80,7 @@ app.get('/v2/positions', async (req, res) => {
     const result = await simulator.getPositions();
     res.status(200).json(result);
   } catch (err) {
-    logger.error(`[orders] ${err.message}`);
+    logger.error(`[orders] GET /v2/positions/:symbol ${err.message}`);
     res.status(400).json({ error: err.message });
   }
 });   
@@ -89,7 +90,7 @@ app.delete('/v2/positions/:symbol', async (req, res) => {
     const result = await simulator.closePosition(req.params.symbol);
     res.status(200).json(result);
   } catch (err) {
-    logger.error(`[orders] ${err.message}`);
+    logger.error(`[orders] DELETE /v2/positions/:symbol ${err.message}`);
     res.status(400).json({ error: err.message });
   }
 });
@@ -117,21 +118,21 @@ server.listen(PORT, async () => {
 // Redis Pub/Sub Integration
 (async () => {
   const subscriber = redis.createClient({ url: process.env.REDIS_URL || 'redis://redis:6379' });
-  subscriber.on('error', (err) => console.error('❌ Redis error:', err));
+  subscriber.on('error', (err) => logger.error('❌ Redis error:', err));
 
   await subscriber.connect();
-  console.log('✅ Connesso a Redis per Pub/Sub');
+  logger.info('✅ Connesso a Redis per Pub/Sub');
 
   await subscriber.subscribe('commands', async (message) => {
-    console.log(`📩 Ricevuto su 'commands':`, message);
+    logger.log(`📩 Ricevuto su 'commands':`, message);
     try {
       const parsed = JSON.parse(message);
       if (parsed.action === 'loadSettings') {
         await simulator.loadSettings();
-        console.log('✔️  Eseguito comando:', parsed.action);
+        logger.log('✔️  Eseguito comando:', parsed.action);
       }
     } catch (err) {
-      console.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
+      logger.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
     }
   });
 })();

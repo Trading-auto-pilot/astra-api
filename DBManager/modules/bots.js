@@ -1,7 +1,13 @@
 // modules/bots.js
 
 const { getDbConnection } = require('./core');
-const logger = require('../../shared/logger')('Bots');
+const createLogger = require('../../shared/logger');
+
+const MICROSERVICE = 'DBManager';
+const MODULE_NAME = 'bots';
+const MODULE_VERSION = '2.0';
+
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
 async function getActiveBots() {
   const connection = await getDbConnection();
@@ -12,7 +18,7 @@ async function getActiveBots() {
     logger.error('[getActiveBots] Errore durante il recupero dei bot attivi:', error);
     throw error;
   } finally {
-    await connection.end();
+      connection.release();
   }
 }
 
@@ -46,7 +52,7 @@ async function insertOrUpdateBotByNameVer(name, ver) {
     logger.error(`[insertOrUpdateBotByNameVer] Errore:`, err.message);
     throw err;
   } finally {
-    await connection.end();
+      connection.release();
   }
 }
 
@@ -59,8 +65,11 @@ async function resolveBotIdByName(name) {
     );
     if (rows.length > 0) return rows[0].id;
     throw new Error(`Bot con nome "${name}" non trovato`);
+  } catch(error) {
+    logger.error(`[resolveBotIdByName] Errore:`, error.message);
+    throw error;
   } finally {
-    await connection.end();
+      connection.release();
   }
 }
 

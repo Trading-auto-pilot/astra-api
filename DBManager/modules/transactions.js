@@ -1,18 +1,24 @@
 // modules/transactions.js
 
-const { getDbConnection, formatDateForMySQL } = require('./core');
-const logger = require('../../shared/logger')('Transactions');
+const { getDbConnection, formatDateForMySQL , safe} = require('./core');
+const createLogger = require('../../shared/logger');
 const { publishCommand } = require('../../shared/redisPublisher');
 
+const MICROSERVICE = 'DBManager';
+const MODULE_NAME = 'transactions';
+const MODULE_VERSION = '2.0';
+
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
+
 async function insertBuyTransaction(body) {
-  const { scenarioId, element, capitaleInvestito, prezzo, operation = 'BUY', MA, orderId, NumAzioni } = body;
+  const { ScenarioID, operationDate, capitale, Price, operation, MA, orderId, NumAzioni } = body;
   const connection = await getDbConnection();
   try {
     await connection.query(
       `INSERT INTO transazioni 
        (ScenarioID, operation, operationDate, Price, capitale, MA, orderId, NumAzioni)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [scenarioId, operation, formatDateForMySQL(element.t), prezzo, capitaleInvestito, MA, orderId, NumAzioni]
+      [ScenarioID, safe(operation), safe(formatDateForMySQL(operationDate)), safe(Price), safe(capitale), safe(MA), safe(orderId), safe(NumAzioni)]
     );
     logger.trace(`[insertBuyTransaction] Spedizione messaggio su canale transaction_update: ${JSON.stringify(body)}`);
     await publishCommand(body,'transactions:update' );
@@ -21,8 +27,9 @@ async function insertBuyTransaction(body) {
     logger.error(`[insertBuyTransaction] Errore insert:`, err.message);
     throw err;
   } finally {
-    await connection.end();
+      connection.release();
   }
+  return ({status:"success"});
 }
 
 async function insertSellTransaction(scenarioId, element, result, state) {
@@ -32,7 +39,7 @@ async function insertSellTransaction(scenarioId, element, result, state) {
       `INSERT INTO transazioni 
        (ScenarioID, operationDate, operation, Price, capitale, profitLoss, NumAzioni, PLPerc)
        VALUES (?, ?, 'SELL', ?, ?, ?, ?, ?)`,
-      [scenarioId, formatDateForMySQL(element.t), result.prezzo, state.capitaleLibero, result.current_price, result.market_value, result.unrealized_pl, result.qty, result.unrealized_plpc]
+      [scenarioId, safe(formatDateForMySQL(element.t)), safe(result.prezzo), safe(state.capitaleLibero), safe(result.current_price), safe(result.market_value), safe(result.unrealized_pl), safe(result.qty), safe(result.unrealized_plpc)]
     );
     logger.trace(`[insertSellTransaction] Spedizione messaggio su canale transaction_update: ${JSON.stringify({scenarioId, element, result, state})}`);
     await publishCommand({scenarioId, element, result, state},'transaction_update' );
@@ -40,7 +47,40 @@ async function insertSellTransaction(scenarioId, element, result, state) {
     logger.error(`[insertSellTransaction] Errore insert:`, err.message);
     throw err;
   } finally {
-    await connection.end();
+      connection.release();
+  }
+  return ({status:"success"});
+}
+
+async function updateTransaction(id, transaction) {
+  const fields = Object.keys(transaction);
+  if (fields.length === 0) return { success: false, error: 'No fields to update' };
+
+  const setClause = fields.map(f => `${f} = ?`).join(', ');
+
+  const values = fields.map(f => {
+    const val = transaction[f];
+    if (val === undefined) return null; 
+    if (f.toLowerCase().includes('date')) {
+      return safe(formatDateForMySQL(val));
+    }
+    return safe(val);
+  });
+
+  values.push(id);
+
+  const sql = `UPDATE transazioni SET ${setClause} WHERE id = ?`;
+  const conn = await getDbConnection();
+  try {
+    await conn.execute(sql, values);
+    logger.trace(`[updateTransaction] Spedizione messaggio su canale transaction_update: ${JSON.stringify(transaction)}`);
+    await publishCommand(transaction,'transactions:update' );
+    return { success: true };
+  } catch (err) {
+    console.error('[updateTransaction]', err.message);
+    throw err;
+  } finally {
+      conn.release();
   }
 }
 
@@ -59,7 +99,7 @@ async function getLastTransactionByScenario(scenarioId) {
     logger.error(`[getLastTransactionByScenario] Errore select:`, err.message);
     throw err;
   } finally {
-    await connection.end();
+     connection.release();
   }
 }
 
@@ -75,7 +115,7 @@ async function getTransaction(orderId) {
     logger.error('[getTransaction] Errore:', error.message);
     return [];
   } finally {
-    await connection.end();
+      connection.release();
   }
 }
 
@@ -91,7 +131,7 @@ async function getScenarioIdByOrderId(orderId) {
     logger.error(`[getScenarioIdByOrderId] Errore select:`, err.message);
     throw err;
   } finally {
-    await connection.end();
+      connection.release();
   }
 }
 
@@ -107,17 +147,35 @@ async function countTransactionsByStrategyAndOrders(body) {
     return rows[0].count;
   } catch (error) {
     logger.error('[countTransactionsByStrategyAndOrders] Errore:', error.message);
-    return 0;
+    throw err;
   } finally {
-    await connection.end();
+      connection.release();
+  }
+}
+
+async function deleteAllTransactions() {
+  const connection = await getDbConnection();
+  try {
+    await connection.execute('DELETE FROM Trading.transazioni');
+    logger.info('[deleteAllTransactions] Tutte le transazioni eliminate');
+    logger.trace(`[deleteAllTransactions] Spedizione messaggio su canale transaction_update`);
+    await publishCommand({command:"Delete All"},'transactions:update' );
+    return { success: true };
+  } catch (err) {
+    logger.error('[deleteAllTransactions] Errore:', err.message);
+    throw err;
+  } finally {
+    connection.release();
   }
 }
 
 module.exports = {
   insertBuyTransaction,
   insertSellTransaction,
+  updateTransaction,
   getLastTransactionByScenario,
   getTransaction,
   getScenarioIdByOrderId,
-  countTransactionsByStrategyAndOrders
+  countTransactionsByStrategyAndOrders,
+  deleteAllTransactions
 };

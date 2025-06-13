@@ -13,7 +13,8 @@ module.exports = () => {
       await cache.expire(key, parseInt(ttl));
       res.json({ success: true, key, ttl });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      console.error('[POST /cache/ttl] Errore: ', err.message);
+      res.status(500).json({ error: err.message, module : '[POST /cache/ttl]' });
     }
   });
 
@@ -26,7 +27,8 @@ module.exports = () => {
       await cache.del(key);
       res.json({ success: true, invalidated: key });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      console.error('[POST /cache/invalidate] Errore: ', err.message);
+      res.status(500).json({ error: err.message, module: '[POST /cache/invalidate]' });
     }
   });
 
@@ -46,7 +48,8 @@ module.exports = () => {
       );
       res.json({ keys: preview });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      console.error('[GET /cache] Errore: ', err.message);
+      res.status(500).json({ error: err.message, module:'[GET /cache]' });
     }
   });
 

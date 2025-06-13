@@ -7,9 +7,10 @@ const createLogger = require('../shared/logger');
 
 dotenv.config();
 
+const MICROSERVICE = 'MarketSimulator';
 const MODULE_NAME = 'MarketSimulator RESTServer';
 const MODULE_VERSION='1.2';
-const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'log');
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
 const app = express();
 app.use(express.json());
@@ -23,7 +24,7 @@ simulator.attachWebSocketServer(server);
 
 // Endpoint: Avvia la simulazione
 app.post('/start', async (req, res) => {
-  const { symbol, startDate, endDate, tf } = req.body;
+  const { startDate, endDate, tf } = req.body;
   if ( !startDate || !endDate) {
     return res.status(400).json({ error: 'startDate e endDate sono richiesti' });
   }
@@ -74,21 +75,21 @@ server.listen(port, () => {
 // Redis Pub/Sub Integration
 (async () => {
   const subscriber = redis.createClient({ url: process.env.REDIS_URL || 'redis://redis:6379' });
-  subscriber.on('error', (err) => console.error('❌ Redis error:', err));
+  subscriber.on('error', (err) => logger.error('❌ Redis error:', err));
 
   await subscriber.connect();
-  console.log('✅ Connesso a Redis per Pub/Sub');
+  logger.info('✅ Connesso a Redis per Pub/Sub');
 
   await subscriber.subscribe('commands', async (message) => {
-    console.log(`📩 Ricevuto su 'commands':`, message);
+    logger.log(`📩 Ricevuto su 'commands':`, message);
     try {
       const parsed = JSON.parse(message);
       if (parsed.action === 'loadSettings') {
         simulator.loadSettings();
-        console.log('✔️  Eseguito comando:', parsed.action);
+        logger.log('✔️  Eseguito comando:', parsed.action);
       }
     } catch (err) { 
-      console.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
+      logger.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
     }
   });
 })();

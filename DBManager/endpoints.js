@@ -13,9 +13,10 @@ const app = express();
 const port = process.env.PORT || 3002;
 
 // 🌍 Costanti di modulo
-const MODULE_NAME = 'DBManager_RESTServer';
+const MICROSERVICE = 'DBManager'
+const MODULE_NAME = 'RESTServer';
 const MODULE_VERSION = '2.0';
-const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
 app.use(cors());
 app.use(express.json());

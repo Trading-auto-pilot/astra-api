@@ -1,5 +1,6 @@
 {
-  "watch": ["server.js", "LiveMarketListener.js","placeOrder.js"],
-  "ignore": ["*.test.js", "node_modules","Dockerfile","README.md","release.json"],
+  "watch": ["server.js", "modules","../shared"],
+  "ignore": ["*.test.js", "node_modules", "Dockerfile", "README.md", "release.json"],
+  "ext": "js,json",
   "exec": "node server.js"
 }

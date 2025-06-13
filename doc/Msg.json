@@ -1,0 +1,79 @@
+
+JSON CHIUSURA POSIZIONE - DELETE /v2/positions 
+Ma anche il messaggio in arrivo di ws quando fieve fatto il fill del SALES
+{
+  "asset_id": "b0b6dd9d-8b9b-48a9-ba46-b9d54906e415",
+  "symbol": "MSFT",
+  "exchange": "NASDAQ",
+  "asset_class": "us_equity",
+  "qty": "100",
+  "avg_entry_price": "312.50",
+  "side": "long",
+  "market_value": "31500.00",
+  "cost_basis": "31250.00",
+  "unrealized_pl": "250.00",
+  "unrealized_plpc": "0.008",
+  "unrealized_intraday_pl": "100.00",
+  "unrealized_intraday_plpc": "0.0032",
+  "current_price": "315.00",
+  "lastday_price": "314.00",
+  "change_today": "0.0032",
+  "qty_available": "0"
+}
+
+
+Messaggio in arrivo da WS dopo aver fatto una DELETE /v2/positions 
+ma anche la risposta JSON quando immetto un ordine SELL con POST https://paper-api.alpaca.markets/v2/orders
+
+{
+  "stream": "trade_updates",
+  "data": {
+    "event": "fill",
+    "execution_id": "4ebf7f41-5cd1-4a3f-a232-cc128abb1f9d",
+    "order": {
+      "id": "17b3a5d2-6230-4f71-b56e-85ad62e3b15e",
+      "client_order_id": "bd8ddf5d-c643-4b35-a0f2-0fc47b382d59",
+      "created_at": "2025-05-28T10:15:00.123456Z",
+      "updated_at": "2025-05-28T10:15:01.234567Z",
+      "submitted_at": "2025-05-28T10:15:00.123456Z",
+      "filled_at": "2025-05-28T10:15:01.234567Z",
+      "expired_at": null,
+      "canceled_at": null,
+      "failed_at": null,
+      "replaced_at": null,
+      "replaced_by": null,
+      "replaces": null,
+      "asset_id": "b0b6dd9d-8b9b-48a9-ba46-b9d54906e415",
+      "symbol": "MSFT",
+      "asset_class": "us_equity",
+      "notional": null,
+      "qty": "50",
+      "filled_qty": "50",
+      "filled_avg_price": "415.72",
+      "order_class": "",
+      "order_type": "market",
+      "type": "market",
+      "side": "sell",
+      "time_in_force": "day",
+      "limit_price": null,
+      "stop_price": null,
+      "status": "filled",
+      "extended_hours": false,
+      "legs": null,
+      "trail_percent": null,
+      "trail_price": null,
+      "hwm": null,
+      "subtag": null,
+      "source": "position_close",
+      "expires_at": null
+    },
+    "position_qty": "0",
+    "price": "415.72",
+    "timestamp": "2025-05-28T10:15:01.234567Z"
+  }
+}
+
+
+
+/bots /orders /settings /strategies /symbols /transactions
+

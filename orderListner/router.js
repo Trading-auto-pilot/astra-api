@@ -9,9 +9,13 @@ const defaultHandler = require('./handlers/defaultHandler');
 const createLogger = require('../shared/logger');
 
 
-const MODULE_NAME = 'OrderListener Router';
+const MICROSERVICE= "OrderListener"
+const MODULE_NAME = 'Router';
 const MODULE_VERSION = '1.0';
-const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL);
+const REDIS_POSITIONS_KEY = 'alpaca:positions';
+const REDIS_ORDERS_KEY = 'alpaca:orders';
+
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 const dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
 //const redisUrl = process.env.REDIS_URL || 'redis://redis:6379'
 const liveMarketlsnrUrl = process.env.LIVEMARKETMANAGER_URL || 'http://localhost:3012';
@@ -52,12 +56,12 @@ const updateDateFild = {
 }
 
 
-async function routeEvent(eventType, data, AlpacaEnv) {
-  logger.trace(`Ricevuto evento ${eventType}:`, data);
+async function routeEvent(eventType, data, AlpacaEnv, AlpacaApi) {
+  logger.trace(`Ricevuto evento ${eventType} | ${JSON.stringify(data)}`);
   const handler = eventHandlers[eventType] || defaultHandler;
 
   if (typeof handler === 'function') {
-    await handler(data,eventType, AlpacaEnv);
+    await handler(data,eventType, AlpacaEnv, AlpacaApi);
   } else {
     logger.warning(`Nessun handler definito per il tipo di evento: ${eventType}`);
   }
@@ -69,22 +73,29 @@ async function routeEvent(eventType, data, AlpacaEnv) {
     data.order[updateDateFild[eventType]]= now.toISOString().slice(0, 19).replace('T', ' ');
     logger.trace(`Campo data da aggiornare ${updateDateFild[eventType]} =  ${data.order[updateDateFild[eventType]]}`);
     try{
-      logger.trace(`[ROUTER] Aggiorno la tabella Ordini PUT ${dbManagerUrl}/orders con body ${JSON.stringify(data.order)}`);
-      await axios.put(`${dbManagerUrl}/orders`, data.order);
+      logger.log(`[ROUTER] Aggiorno la tabella Ordini PUT ${dbManagerUrl}/orders/${data.order.id} con body ${JSON.stringify(data.order)}`);
+      await axios.put(`${dbManagerUrl}/orders/${data.order.id}`, data.order);
     } catch (error) {
       logger.error(`[ROUTER] Errore durante update tabella ordini ${error.message}`);
       return null;
     }
 
     // Forzo il ricarico degli ordini in tutte le strategie
-    await publishCommand({ action: 'loadActiveOrders' });
+    //await publishCommand({ action: 'loadActiveOrders' });
+
     //publisher.publish('commands',JSON.stringify({ "action" : "loadActiveOrders"}));
 
     //Rimuovo i simbols dagli ordini attivi 
-    if (eventType !== 'new') {
+    if (eventType !== 'new' && data.order.symbol) {
       await axios.put(`${liveMarketlsnrUrl}/orderActive/remove`, {
         symbol: data.order.symbol
       });
     }
+
+    await AlpacaApi.refreshCacheActiveOrders();
+    await AlpacaApi.refreshCacheActivePositions();
+    logger.trace(`[ROUTER] Invio messaggi su ${REDIS_POSITIONS_KEY} e ${REDIS_ORDERS_KEY} `);
+    await publishCommand({type:"orderEvent",event:data.order},REDIS_POSITIONS_KEY );
+    await publishCommand({type:"orderEvent",event:data.order},REDIS_ORDERS_KEY );
 }
 module.exports = routeEvent;

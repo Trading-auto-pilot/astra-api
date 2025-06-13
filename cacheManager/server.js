@@ -30,32 +30,32 @@ let cacheManager = null;
       });
 
       const subscriber = redis.createClient({ url: process.env.REDIS_URL || 'redis://redis:6379' });
-      subscriber.on('error', (err) => console.error('❌ Redis error:', err));
+      subscriber.on('error', (err) => logger.error('❌ Redis error:', err));
 
       await subscriber.connect();
-      console.log('✅ Connesso a Redis per Pub/Sub');
+      logger.info('✅ Connesso a Redis per Pub/Sub');
 
       await subscriber.subscribe('commands', async (message) => {
-        console.log(`📩 Ricevuto su 'commands':`, message);
+        logger.log(`📩 Ricevuto su 'commands':`, message);
         try {
           const parsed = JSON.parse(message);
           if (parsed.action === 'loadSettings') {
             await loadSettings();
-            console.log('✔️  Eseguito comando:', parsed.action);
+            logger.log('✔️  Eseguito comando:', parsed.action);
           }
         } catch (err) {
-          console.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
+          logger.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
         }
       });
 
       // Avvio del server REST
       try {
         app.listen(port, () => {
-          console.log(`[cacheManager] Server avviato sulla porta ${port}`);
+          logger.log(`[cacheManager] Server avviato sulla porta ${port}`);
         });
       } catch (err) {
-        console.error('[STARTUP] Errore nell\'inizializzazione del servizio:', err.message);
-        console.log(err);
+        logger.error('[STARTUP] Errore nell\'inizializzazione del servizio:', err.message);
+        logger.log(err);
         process.exit(1);
       }
     
@@ -77,7 +77,7 @@ async function loadSettings() {
       settings[key] = res.data.value;
       logger.trace(`[loadSetting] Setting variavile ${key} : ${settings[key]}`);
     } catch (err) {
-        console.error(`[SETTINGS] Errore nel recupero della chiave '${key}': ${err.message}`);
+        logger.error(`[SETTINGS] Errore nel recupero della chiave '${key}': ${err.message}`);
       throw err;
     }
   }
@@ -110,7 +110,7 @@ app.get('/candles', async (req, res) => {
     const candles = await cacheManager.retrieveCandles(symbol, startDate, endDate);
     res.json(candles);
   } catch (err) {
-    console.error(`[CACHE] Errore nel recupero candele: ${err.message}`);
+    logger.error(`[CACHE] Errore nel recupero candele: ${err.message}`);
     res.status(500).json({ error: 'Errore nel recupero delle candele' });
   }
 });

@@ -3,6 +3,9 @@
 module.exports = {
   ...require('./core'),
   ...require('./bots'),
+  ...require('./logs'),
+  ...require('./orders'),
+  ...require('./positions'),
   ...require('./strategies'),
   ...require('./symbols'),
   ...require('./simul_position'),

@@ -4,10 +4,11 @@ const axios = require('axios');
 const createLogger = require('../shared/logger');
 
 // Costanti globali di modulo
+const MICROSERVICE = 'CacheManager';
 const MODULE_NAME = 'CacheManager';
 const MODULE_VERSION = '1.1';
-const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
-
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
+ 
 class CacheManager {
   constructor(options) {
     this.cacheBasePath = options.cacheBasePath || './cache';

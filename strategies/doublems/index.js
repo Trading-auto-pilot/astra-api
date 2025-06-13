@@ -94,5 +94,5 @@ const crypto = require('crypto');
     await connection.query(`UPDATE strategy_runs SET status = 'failed', completed_at = NOW() WHERE id = ?`, [id]);
   }
 
-  await connection.end();
+  connection.release();
 })();

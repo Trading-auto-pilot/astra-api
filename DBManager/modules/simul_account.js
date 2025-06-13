@@ -1,9 +1,16 @@
 // modules/simul_account.js
 
 const { getDbConnection } = require('./core');
-const logger = require('../../shared/logger')('SimulAccount');
+const createLogger = require('../../shared/logger');
+
+const MICROSERVICE = 'DBManager';
+const MODULE_NAME = 'simulAccount';
+const MODULE_VERSION = '2.0';
+
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
 async function simul_updateAccount(accountUpdate) {
+  const connection = await getDbConnection();
   if (!accountUpdate.id) {
     logger.error('[simul_updateAccount] ID mancante');
     return { success: false, error: 'ID obbligatorio per aggiornare l\'account' };
@@ -14,7 +21,7 @@ async function simul_updateAccount(accountUpdate) {
   );
 
   if (fields.length === 0) {
-    logger.warn('[simul_updateAccount] Nessun campo da aggiornare');
+    logger.warning('[simul_updateAccount] Nessun campo da aggiornare');
     return { success: false, error: 'Nessun campo da aggiornare' };
   }
 
@@ -30,14 +37,14 @@ async function simul_updateAccount(accountUpdate) {
   const sql = `UPDATE Simul.Account SET ${setClause} WHERE id = ?`;
 
   try {
-    const connection = await getDbConnection();
     await connection.execute(sql, [...values, accountUpdate.id]);
-    await connection.end();
     logger.info(`[simul_updateAccount] Account ${accountUpdate.id} aggiornato`);
     return { success: true };
   } catch (error) {
     logger.error(`[simul_updateAccount] Errore: ${error.message}`);
-    return { success: false, error: error.message };
+    throw error;
+  } finally {
+      connection.release();
   }
 }
 
@@ -80,7 +87,7 @@ async function simul_getAccountAsJson() {
     logger.error(`[simul_getAccountAsJson] Errore durante la lettura: ${error.message}`);
     throw error;
   } finally {
-    await connection.end();
+      connection.release();
   }
 }
 

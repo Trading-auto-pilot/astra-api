@@ -3,6 +3,8 @@ const redis = require('redis');
 const SMA = require('./SMA');
 require('dotenv').config();
 
+const REDIS_POSITIONS_KEY = 'alpaca:positions';
+
 const app = express();
 const port = process.env.PORT || 3010;
 
@@ -19,18 +21,33 @@ app.use(express.json());
   await subscriber.connect();
   console.log('✅ Connesso a Redis per Pub/Sub');
 
-  await subscriber.subscribe('commands', async (message) => {
-    console.log(`📩 Ricevuto su 'commands':`, message);
+  // await subscriber.subscribe('commands', async (message) => {
+  //   console.log(`📩 Ricevuto su 'commands':`, message);
+  //   try {
+  //     const parsed = JSON.parse(message);
+  //     if (parsed.action === 'registerBot') {
+  //       strategy.registerBot();
+  //       console.log('✔️  Eseguito comando:', parsed.action);
+  //     }
+  //   } catch (err) {
+  //     console.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
+  //   }
+  // });
+
+  await subscriber.subscribe(REDIS_POSITIONS_KEY, async (message) => {
+    console.log(`📩 Ricevuto su ${REDIS_POSITIONS_KEY}: `, message);
     try {
       const parsed = JSON.parse(message);
-      if (parsed.action === 'registerBot') {
-        strategy.registerBot();
-        console.log('✔️  Eseguito comando:', parsed.action);
-      }
+        if (parsed.type === 'positions') {
+          sltp.setPositions(parsed.positions);
+        } else {
+          sltp.getPositions();
+        }
     } catch (err) {
       console.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
     }
   });
+
 })();
 
 
@@ -52,7 +69,7 @@ app.post('/processCandle', async (req, res) => {
   const { candle, strategyParams } = req.body;
 
   if (!candle || !strategyParams) {
-    return res.status(400).json({ error: 'Parametri richiesti: candle, scenarioId' });
+    return res.status(400).json({ error: 'Parametri richiesti: candle, strategyParams' });
   }
 
   try {

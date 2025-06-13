@@ -2,10 +2,12 @@
 */
 const axios = require('axios');
 const createLogger = require('../../shared/logger');
+const Alpaca = require('../../shared/Alpaca');
+const MICROSERVICE = 'STRATEGIES';
 const MODULE_NAME = 'SLTP';
 const MODULE_VERSION = '1.0';
 
-const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
 
 class SLTP {
@@ -14,15 +16,19 @@ class SLTP {
         this.dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
         this.positions=[];
         this.settings = {};
+        this.AlpacaApi = new Alpaca();
     }
 
     getInfo() {
         return {
-        module: MODULE_NAME,
-        version: MODULE_VERSION,
-        positions: this.positions
+          module: MODULE_NAME,
+          version: MODULE_VERSION,
+          positions: this.positions
         };
     }
+
+    setPositions(newPositions) { this.positions = newPositions; }
+    async getPositions() { this.positions = await this.AlpacaApi.loadActivePositions()}
 
     async loadSettings() {
         logger.info(`[loadSetting] Lettura setting da repository...`);
@@ -52,37 +58,22 @@ class SLTP {
         logger.info(`[registerBot] Bot registrato`);
         } catch (err) {
             logger.error(`[registerBot][registerBot] Errore: ${err.message}`);
-        }
-    }
-
-    async loadActivePosition (){
-        this.alpacaAPIServer = this.settings[`ALPACA-`+process.env.ENV_ORDERS+`-BASE`]+'/v2/positions';
-        logger.trace(`[loadActivePosition] variabile alpacaAPIServer ${this.alpacaAPIServer}`);
-        try {
-            const res = await axios.get(`${this.alpacaAPIServer}`, {
-                headers: {
-                    'APCA-API-KEY-ID': process.env.APCA_API_KEY_ID, 
-                    'APCA-API-SECRET-KEY': process.env.APCA_API_SECRET_KEY,
-                    'Content-Type': 'application/json'
-                }
-            });
-            this.positions = res.data;
-        } catch (error) {
-            logger.error(`[loadActivePosition] Errore recupero posizioni aperte da Alpaca ${error.message}`);
-            return null;
-        }
+        } 
     }
 
 
     async init(){
         logger.info(`[init] Inizializzazione...`);
 
+        await this.AlpacaApi.init();
+
         // Load dei settings da DB
         await this.loadSettings();
 
         // Qui carico tutte le posizioni aperte da Alpaca
          // Ma devo considerare di rileggerle ogni volta che un ordine viene accettato.
-        await this.loadActivePosition();
+        //await this.loadActivePosition();
+        this.positions = await this.AlpacaApi.loadActivePositions();
 
         // Log delle variabili definite nell'istanza
         for (const key of Object.keys(this)) {
@@ -100,31 +91,38 @@ class SLTP {
     }
 
 async processCandle(bar, StrategyParams) {
-  const position = this.positions.find(p => p.symbol === bar.s);
 
-  logger.trace(`[processCandle] bar: ${JSON.stringify(bar)}`);
+  logger.trace(`[processCandle] bar: ${JSON.stringify(bar)}`); 
+
+  const position = this.positions.find(p => p.symbol === bar.S);
+
+  
   logger.trace(`[processCandle] posizione trovata: ${position ? position.symbol : 'Nessuna'}`);
+  logger.trace(`[processCandle] posizione locale ${JSON.stringify(position)}`);
+  
 
   if (!position) {
-    logger.trace(`[processCandle] Nessuna posizione attiva per ${bar.s}, ritorno HOLD`);
+    logger.trace(`[processCandle] Nessuna posizione attiva per ${bar.S}, ritorno HOLD`);
     return {
       action: 'HOLD',
       reason: 'no_active_position',
-      symbol: bar.s
+      symbol: bar.S
     };
   }
 
-  const plpc = parseFloat(position.unrealized_plpc);
+
+  const plpc = (parseFloat(bar.c) / parseFloat(position.avg_entry_price))-1;
   const tp = parseFloat(StrategyParams.params.TP);
   const sl = parseFloat(StrategyParams.params.SL);
 
-  logger.trace(`[processCandle] unrealized_plpc: ${plpc} | TP: ${tp} | SL: ${sl}`);
+  logger.log(`[processCandle] unrealized_plpc: ${plpc} | TP: ${tp} | SL: ${sl} `);
 
   if (plpc >= tp) {
     logger.log(`[processCandle] 🟢 Triggerato TP per ${position.symbol}: ${plpc}`);
     return {
       action: 'SELL',
       trigger: 'TP',
+      bot: MODULE_NAME,
       PL: plpc,
       position
     };
@@ -135,6 +133,7 @@ async processCandle(bar, StrategyParams) {
     return {
       action: 'SELL',
       trigger: 'SL',
+      bot: MODULE_NAME,
       PL: plpc,
       position
     };
@@ -146,6 +145,7 @@ async processCandle(bar, StrategyParams) {
     SL: sl,
     TP: tp,
     current: plpc,
+    bot: MODULE_NAME,
     position
   };
 }

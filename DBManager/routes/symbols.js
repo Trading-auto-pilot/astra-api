@@ -17,7 +17,8 @@ module.exports = (dbManager) => {
       await cache.set(cacheKey, data);
       res.json(result);
     } catch (error) {
-      res.status(500).json({ error: 'Errore durante il recupero dei simboli' });
+      console.error('[GET /symbols] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore durante il recupero dei simboli '+ error.message, module:"[GET /symbols]" });
     }
   });
 
@@ -38,7 +39,8 @@ module.exports = (dbManager) => {
 
       res.json(result);
     } catch (error) {
-      res.status(500).json({ error: 'Errore durante il recupero del simbolo' });
+      console.error('[GET /symbols/:symbol] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore durante il recupero del simbolo '+ error.message, module:"[GET /symbols/:symbol]" });
     }
   });
 
@@ -50,7 +52,8 @@ module.exports = (dbManager) => {
       await cache.del('symbols:all');
       res.json(result);
     } catch (error) {
-      res.status(500).json({ error: 'Errore durante l\'inserimento del simbolo' });
+      console.error('[POST /symbols] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore durante l\'inserimento del simbolo '+ error.message, module:"[POST /symbols]" });
     }
   });
 
@@ -61,7 +64,8 @@ module.exports = (dbManager) => {
       await cache.del('symbols:all');
       res.json(result);
     } catch (error) {
-      res.status(500).json({ error: 'Errore durante l\'aggiornamento del simbolo' });
+      console.error('[PUT /symbols] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore durante l\'aggiornamento del simbolo '+ error.message, module:"[PUT /symbols]" });
     }
   });
 

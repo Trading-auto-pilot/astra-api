@@ -1,7 +1,13 @@
 // modules/symbols.js
 
 const { getDbConnection } = require('./core');
-const logger = require('../../shared/logger')('Symbols');
+const createLogger = require('../../shared/logger');
+
+const MICROSERVICE = 'DBManager';
+const MODULE_NAME = 'symbols';
+const MODULE_VERSION = '2.0';
+
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
 async function getSymbolsList() {
   const connection = await getDbConnection();
@@ -12,7 +18,7 @@ async function getSymbolsList() {
     logger.error(`[getSymbolsList] Errore select:`, err.message);
     throw err;
   } finally {
-    await connection.end();
+    connection.release();
   }
 }
 
@@ -26,7 +32,7 @@ async function resolveSymbolIdByName(name) {
       throw new Error(`Simbolo con nome "${name}" non trovato`);
     }
   } finally {
-    await connection.end();
+    connection.release();
   }
 }
 

@@ -2,9 +2,11 @@
 const axios = require('axios');
 const createLogger = require('../shared/logger');
 
+const MICROSERVICE = "capitalManager";
 const MODULE_NAME = 'capitalManager';
 const MODULE_VERSION = '1.1';
-const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
+
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
 class CapitalManager {
   constructor(config) {
@@ -87,19 +89,19 @@ class CapitalManager {
     const CapOrdiniInvestito = parseFloat(strategyDetails.TotalCommitted);
     const UsatoPerStrategia = parseFloat(strategyDetails.CapitaleInvestito) + parseFloat(strategyDetails.OpenOrders);
 
-      // Il cash rimanente piu tutto cio che ho impagnato e' ilmmio capitale originale
+      // Il cash rimanente piu tutto cio che ho impagnato e' il mio capitale originale
     const CapitaleOriginale = cache + CapOrdiniInvestito;        
       // Questo e' il capitale assegnato a questa strategia
     const AssegnatoStrategia = CapitaleOriginale * share;
       // Questo e' il capitale che rimane da investire per questa strategia
     const rimanenteStrategia = AssegnatoStrategia - UsatoPerStrategia
 
-    logger.trace(`[evaluateAllocation] Cash rimanente da ALPACA ${cache}`);
-    logger.trace(`[evaluateAllocation] Share di questa strategia ${share}`);
-    logger.trace(`[evaluateAllocation] Totale capitale impegnato Tutto investito + Tutto ordini attivi ${CapOrdiniInvestito}`);
-    logger.trace(`[evaluateAllocation] Capitale originale ${CapitaleOriginale}`);
-    logger.trace(`[evaluateAllocation] Assegnato per questa strategia ${AssegnatoStrategia}`);
-    logger.trace(`[evaluateAllocation] Rimanente per Questa strategia ${rimanenteStrategia}`);
+    logger.trace(`[evaluateAllocation] Cash rimanente da ALPACA: ${cache}`);
+    logger.trace(`[evaluateAllocation] Share di questa strategia: ${share}`);
+    logger.trace(`[evaluateAllocation] Totale capitale impegnato: ${CapOrdiniInvestito}`);
+    logger.trace(`[evaluateAllocation] Capitale originale (Totale capitale impegnato + Cash rimanente da ALPACA): ${CapitaleOriginale}`);
+    logger.trace(`[evaluateAllocation] Assegnato per questa strategia (Capitale originale * Share di questa strategia) ${AssegnatoStrategia}`);
+    logger.trace(`[evaluateAllocation] Rimanente per Questa strategia (Assegnato per questa strategia - Gia usato) ${rimanenteStrategia}`);
 
     if (rimanenteStrategia <= 0) {
       return {
