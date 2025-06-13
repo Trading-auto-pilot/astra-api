@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS schema_version (
 "
 
 echo "🔄 Avvio delle migrazioni..."
-
+ 
 for script in $(ls db/*.sql | sort); do
   script_name=$(basename "$script")
 
