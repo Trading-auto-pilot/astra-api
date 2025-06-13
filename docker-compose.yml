@@ -31,6 +31,9 @@ services:
       - "3306:3306"
     networks:
       - trading-net
+    depends_on:
+      redis:
+          condition: service_healthy
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
@@ -71,11 +74,11 @@ services:
     networks:
       - trading-net
     environment:
-      - DB_HOST=mysql
-      - DB_PORT=${MYSQL_PORT}
-      - DB_USER=${MYSQL_USER}
-      - DB_PASSWORD=${MYSQL_PASSWORD}
-      - DB_NAME=${MYSQL_DATABASE}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
       - LOG_LEVEL=${LOG_LEVEL}
       - REDIS_URL=redis://redis:6379
     depends_on:
@@ -272,6 +275,7 @@ services:
       - DBMANAGER_URL=http://dbmanager:3002
       - LOG_LEVEL=${LOG_LEVEL}
       - REDIS_URL=redis://redis:6379
+      - CACHEMANAGER_URL=http://cachemanager:3006
     depends_on:
       dbmanager:
         condition: service_healthy
@@ -328,6 +332,12 @@ services:
     environment:
       - LOG_LEVEL=${LOG_LEVEL}
       - DBMANAGER_URL=http://dbmanager:3002
+      - REDIS_URL=redis://redis:6379
+      - LIVEMARKETMANAGER_URL=http://livemarketlistener:3012
+      - FEED=${ALPACA_MARKET_FEED}
+      - ENV_MARKET=${ENV_MARKET}
+      - APCA_API_KEY_ID=${APCA_API_KEY_ID}
+      - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
     depends_on:
       dbmanager:
         condition: service_healthy
@@ -353,6 +363,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL}
       - DBMANAGER_URL=http://dbmanager:3002
       - REDIS_URL=redis://redis:6379
+      - CACHEMANAGER_URL=http://cachemanager:3006
     depends_on:
       dbmanager:
         condition: service_healthy
