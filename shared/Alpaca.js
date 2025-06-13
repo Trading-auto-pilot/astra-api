@@ -256,7 +256,7 @@ class AlpacaApi {
             return response.data;
 
         } catch (error) {
-            console.error('[ORDER] Failed to place order:', error.response ? error.response.data : error.message);
+            console.error('[ORDER] Failed to place order:', error.message);
             throw error;
         }
 

@@ -122,6 +122,10 @@ CREATE TABLE `logs` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Dumping data for table `logs`
+--
+
+--
 -- Table structure for table `orders`
 --
 
@@ -170,7 +174,10 @@ CREATE TABLE `orders` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
+--
+-- Dumping data for table `ord
 
+--
 -- Table structure for table `posizioni`
 --
 
@@ -208,22 +215,6 @@ CREATE TABLE `posizioni` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
-
---
--- Table structure for table `schema_version`
---
-
-DROP TABLE IF EXISTS `schema_version`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `schema_version` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `script_name` varchar(255) DEFAULT NULL,
-  `applied_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `script_name` (`script_name`)
-) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
 
 --
 -- Table structure for table `settings`
@@ -341,6 +332,16 @@ CREATE TABLE `strategy_runs` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Dumping data for table `strategy_runs`
+--
+
+LOCK TABLES `strategy_runs` WRITE;
+/*!40000 ALTER TABLE `strategy_runs` DISABLE KEYS */;
+INSERT INTO `strategy_runs` VALUES ('81e5a2e5-2e60-4e19-a441-73268406d957','10','2023-01-03 18:45:00','2023-01-03 20:00:00','2023-01-03 20:00:00',24850.260000,243.630000,237.640000,102,102,0.000000,-610.980000,-0.02,0.0000,240.290000,237.640000,0.011028,-0.012293,0.000302,0,0.000302,0.017385,0),('acf0328b-e54d-49c2-b2c7-8c11fcb63509','10','2023-02-02 18:45:00','1970-01-01 00:00:00','1970-01-01 00:00:00',18425.920000,259.520000,244.500000,71,71,0.000000,-1066.420000,-0.06,0.0000,244.503000,244.503000,0.000000,-0.009646,0.002791,0,0.000558,0.023628,0),('bf78b9f7-a16b-41ee-9af9-e750421325c4','10','2023-01-11 18:45:00','2023-02-02 18:15:00','2023-02-02 18:15:00',24509.100000,233.420000,258.870000,105,105,0.000000,2672.250000,0.11,0.0000,255.900000,255.830000,0.028381,0.027258,0.008916,0,0.002972,0.054515,0);
+/*!40000 ALTER TABLE `strategy_runs` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
 -- Table structure for table `transazioni`
 --
 
@@ -371,6 +372,15 @@ CREATE TABLE `transazioni` (
 ) ENGINE=InnoDB AUTO_INCREMENT=1145 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
+--
+-- Dumping data for table `transazioni`
+--
+
+LOCK TABLES `transazioni` WRITE;
+/*!40000 ALTER TABLE `transazioni` DISABLE KEYS */;
+INSERT INTO `transazioni` VALUES (1136,'10','2025-06-13 08:45:47','BUY',246.0000,25092.0000,NULL,NULL,NULL,20.0000,'cee03485-cda3-45b3-b76d-6c1ea91d3024',102,0,0,0.00,'0b862d3a-40c1-4072-a3e8-d8be4c256cf0',0.00),(1137,'10','2025-06-13 08:47:38','BUY',235.0000,18800.0000,NULL,NULL,NULL,20.0000,'e58ed64d-ad4f-4b38-b2c8-ea06c1b5eecb',80,0,0,0.00,'536d7827-5c22-4217-bee6-24cdf9870ec3',0.00),(1138,'10','2025-06-13 08:51:57','BUY',261.0000,14094.0000,NULL,NULL,NULL,20.0000,'b29672d8-c9ad-4747-bbff-3fb7f64d2ee5',54,0,0,0.00,'dbb4d78e-95e7-408f-82c2-404cf4289d35',0.00),(1139,'10','2025-06-13 09:10:32','BUY',246.0000,25092.0000,NULL,NULL,NULL,20.0000,'20845b0a-b692-4d44-8d43-4644112886cb',102,0,0,0.00,'90e8bcaa-c8bc-4960-a851-7036100501b7',0.00),(1140,'10','2025-06-13 09:15:10','BUY',235.0000,18565.0000,NULL,NULL,NULL,20.0000,'d4fa6888-6ed5-45be-a275-5df998a40326',79,0,0,0.00,'42ab75fb-b5fe-4584-a88b-74d36442d1ba',0.00),(1141,'10','2025-06-13 09:15:12','BUY',235.0000,235.0000,NULL,NULL,NULL,20.0000,'f8ddd324-959a-4d84-89bb-9a94a688dbf4',1,0,0,0.00,NULL,0.00),(1142,'10','2025-06-13 10:00:30','BUY',246.0000,25092.0000,NULL,NULL,NULL,20.0000,'b92441ee-c359-4124-b2e0-3521d0febd73',102,0,0,0.00,'81e5a2e5-2e60-4e19-a441-73268406d957',0.00),(1143,'10','2025-06-13 10:09:46','BUY',235.0000,24675.0000,NULL,NULL,NULL,20.0000,'f983400f-3224-4ea3-a5fc-d48f68cd4d29',105,0,0,0.00,'bf78b9f7-a16b-41ee-9af9-e750421325c4',0.00),(1144,'10','2025-06-13 10:31:15','BUY',261.0000,18531.0000,NULL,NULL,NULL,20.0000,'b197b297-19db-4641-a172-076478409d58',71,0,0,0.00,'acf0328b-e54d-49c2-b2c7-8c11fcb63509',0.00);
+/*!40000 ALTER TABLE `transazioni` ENABLE KEYS */;
+UNLOCK TABLES;
 
 --
 -- Temporary view structure for view `vBuySellDurations`
@@ -386,75 +396,131 @@ SET @saved_cs_client     = @@character_set_client;
  1 AS `days_in_position`*/;
 SET character_set_client = @saved_cs_client;
 
--- Trading.vBuySellDurations source
+--
+-- Temporary view structure for view `vKPI`
+--
 
-CREATE OR REPLACE
-ALGORITHM = UNDEFINED VIEW `vBuySellDurations` AS
-select
-    `b`.`strategy_id` AS `strategy_id`,
-    `b`.`symbol` AS `symbol`,
-    (to_days(`s`.`filled_at`) - to_days(`b`.`filled_at`)) AS `days_in_position`
-from
-    (`posizioni` `b`
-join `posizioni` `s` on
-    (((`b`.`strategy_id` = `s`.`strategy_id`) and (`b`.`symbol` = `s`.`symbol`) and (`b`.`side` = 'buy') and (`s`.`side` = 'sell') and (`s`.`filled_at` > `b`.`filled_at`))))
-where
-    exists(select 1 from `posizioni` `x` where ((`x`.`strategy_id` = `b`.`strategy_id`) and (`x`.`symbol` = `b`.`symbol`) and (`x`.`side` = 'sell') and (`x`.`filled_at` > `b`.`filled_at`) and (`x`.`filled_at` < `s`.`filled_at`))) is false;
+DROP TABLE IF EXISTS `vKPI`;
+/*!50001 DROP VIEW IF EXISTS `vKPI`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `vKPI` AS SELECT 
+ 1 AS `strategy_id`,
+ 1 AS `total_trades`,
+ 1 AS `closed_trades`,
+ 1 AS `avg_invested`,
+ 1 AS `total_profit`,
+ 1 AS `avg_profit_per_trade`,
+ 1 AS `avg_profit_pct`,
+ 1 AS `win_rate`,
+ 1 AS `avg_duration_sec`,
+ 1 AS `avg_days_in_position`*/;
+SET character_set_client = @saved_cs_client;
 
--- Trading.vKPI source
+--
+-- Temporary view structure for view `vstrategies`
+--
 
-CREATE OR REPLACE
-ALGORITHM = UNDEFINED VIEW `vKPI` AS
-select
-    `p`.`strategy_id` AS `strategy_id`,
-    count(0) AS `total_trades`,
-    sum((case when (`p`.`side` = 'sell') then 1 else 0 end)) AS `closed_trades`,
-    round(avg((case when (`p`.`side` = 'buy') then (`p`.`qty` * `p`.`filled_avg_price`) else NULL end)), 2) AS `avg_invested`,
-    round(sum((case when (`p`.`side` = 'sell') then `p`.`unrealized_pl` else 0 end)), 2) AS `total_profit`,
-    round(avg((case when (`p`.`side` = 'sell') then `p`.`unrealized_pl` else NULL end)), 2) AS `avg_profit_per_trade`,
-    round(avg((case when (`p`.`side` = 'sell') then `p`.`unrealized_plpc` else NULL end)), 4) AS `avg_profit_pct`,
-    round((sum((case when ((`p`.`side` = 'sell') and (`p`.`unrealized_pl` > 0)) then 1 else 0 end)) / nullif(sum((case when (`p`.`side` = 'sell') then 1 else 0 end)), 0)), 4) AS `win_rate`,
-    round(avg(timestampdiff(SECOND, `p`.`created_at`, `p`.`filled_at`)), 2) AS `avg_duration_sec`,
-    (
-    select
-        round(avg(`d`.`days_in_position`), 2)
-    from
-        `vBuySellDurations` `d`
-    where
-        (`d`.`strategy_id` = `p`.`strategy_id`)) AS `avg_days_in_position`
-from
-    `posizioni` `p`
-group by
-    `p`.`strategy_id`;
+DROP TABLE IF EXISTS `vstrategies`;
+/*!50001 DROP VIEW IF EXISTS `vstrategies`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `vstrategies` AS SELECT 
+ 1 AS `id`,
+ 1 AS `idBotIn`,
+ 1 AS `idBotOut`,
+ 1 AS `idSymbol`,
+ 1 AS `params`,
+ 1 AS `status`,
+ 1 AS `share`,
+ 1 AS `CapitaleInvestito`,
+ 1 AS `OpenOrders`,
+ 1 AS `NumeroOperazioni`,
+ 1 AS `NumeroOperazioniVincenti`,
+ 1 AS `AvgBuy`,
+ 1 AS `AvgSell`,
+ 1 AS `PLAzione`,
+ 1 AS `PLCapitale`,
+ 1 AS `PLPerc`,
+ 1 AS `CAGR`,
+ 1 AS `Drawdown_PeakMax`,
+ 1 AS `Drawdown_PeakMin`,
+ 1 AS `MaxDrawdown`,
+ 1 AS `Mean`,
+ 1 AS `M2`,
+ 1 AS `Count`,
+ 1 AS `Varianza`,
+ 1 AS `ScartoQuadratico`,
+ 1 AS `ggCapitaleInvestito`,
+ 1 AS `MaxDay`,
+ 1 AS `MinDay`,
+ 1 AS `numAzioniBuy`,
+ 1 AS `numAzioniSell`,
+ 1 AS `posizioneMercato`,
+ 1 AS `CapitaleResiduo`*/;
+SET character_set_client = @saved_cs_client;
 
+--
+-- Final view structure for view `vBuySellDurations`
+--
 
--- Trading.vstrategies source
+/*!50001 DROP VIEW IF EXISTS `vBuySellDurations`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`trading_user`@`%` SQL SECURITY DEFINER */
+/*!50001 VIEW `vBuySellDurations` AS select `b`.`strategy_id` AS `strategy_id`,`b`.`symbol` AS `symbol`,(to_days(`s`.`filled_at`) - to_days(`b`.`filled_at`)) AS `days_in_position` from (`posizioni` `b` join `posizioni` `s` on(((`b`.`strategy_id` = `s`.`strategy_id`) and (`b`.`symbol` = `s`.`symbol`) and (`b`.`side` = 'buy') and (`s`.`side` = 'sell') and (`s`.`filled_at` > `b`.`filled_at`)))) where exists(select 1 from `posizioni` `x` where ((`x`.`strategy_id` = `b`.`strategy_id`) and (`x`.`symbol` = `b`.`symbol`) and (`x`.`side` = 'sell') and (`x`.`filled_at` > `b`.`filled_at`) and (`x`.`filled_at` < `s`.`filled_at`))) is false */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
 
-CREATE OR REPLACE
-ALGORITHM = UNDEFINED VIEW `vstrategies` AS
-select
-    `S`.`id` AS `id`,
-    `BIN`.`name` AS `idBotIn`,
-    `BOUT`.`name` AS `idBotOut`,
-    `C`.`name` AS `idSymbol`,
-    `S`.`params` AS `params`,
-    `S`.`status` AS `status`,
-    `S`.`share` AS `share`,
-    `S`.`CapitaleInvestito` AS `CapitaleInvestito`,
-    `S`.`OpenOrders` AS `OpenOrders`,
-    `S`.`NumeroOperazioni` AS `NumeroOperazioni`,
-    `S`.`NumeroOperazioniVincenti` AS `NumeroOperazioniVincenti`,
-    `S`.`ggCapitaleInvestito` AS `ggCapitaleInvestito`,
-    `S`.`MaxDay` AS `MaxDay`,
-    `S`.`MinDay` AS `MinDay`,
-    `S`.`posizioneMercato` AS `posizioneMercato`,
-    `S`.`CapitaleResiduo` AS `CapitaleResiduo`
-from
-    (((`strategies` `S`
-join `bots` `BIN`)
-join `bots` `BOUT`)
-join `Symbols` `C`)
-where
-    ((`S`.`idBotIn` = `BIN`.`id`)
-        and (`S`.`idBotOut` = `BOUT`.`id`)
-            and (`S`.`idSymbol` = `C`.`id`));
+--
+-- Final view structure for view `vKPI`
+--
+
+/*!50001 DROP VIEW IF EXISTS `vKPI`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`trading_user`@`%` SQL SECURITY DEFINER */
+/*!50001 VIEW `vKPI` AS select `p`.`strategy_id` AS `strategy_id`,count(0) AS `total_trades`,sum((case when (`p`.`side` = 'sell') then 1 else 0 end)) AS `closed_trades`,round(avg((case when (`p`.`side` = 'buy') then (`p`.`qty` * `p`.`filled_avg_price`) else NULL end)),2) AS `avg_invested`,round(sum((case when (`p`.`side` = 'sell') then `p`.`unrealized_pl` else 0 end)),2) AS `total_profit`,round(avg((case when (`p`.`side` = 'sell') then `p`.`unrealized_pl` else NULL end)),2) AS `avg_profit_per_trade`,round(avg((case when (`p`.`side` = 'sell') then `p`.`unrealized_plpc` else NULL end)),4) AS `avg_profit_pct`,round((sum((case when ((`p`.`side` = 'sell') and (`p`.`unrealized_pl` > 0)) then 1 else 0 end)) / nullif(sum((case when (`p`.`side` = 'sell') then 1 else 0 end)),0)),4) AS `win_rate`,round(avg(timestampdiff(SECOND,`p`.`created_at`,`p`.`filled_at`)),2) AS `avg_duration_sec`,(select round(avg(`d`.`days_in_position`),2) from `vBuySellDurations` `d` where (`d`.`strategy_id` = `p`.`strategy_id`)) AS `avg_days_in_position` from `posizioni` `p` group by `p`.`strategy_id` */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `vstrategies`
+--
+
+/*!50001 DROP VIEW IF EXISTS `vstrategies`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`trading_user`@`%` SQL SECURITY DEFINER */
+/*!50001 VIEW `vstrategies` AS select `S`.`id` AS `id`,`BIN`.`name` AS `idBotIn`,`BOUT`.`name` AS `idBotOut`,`C`.`name` AS `idSymbol`,`S`.`params` AS `params`,`S`.`status` AS `status`,`S`.`share` AS `share`,`S`.`CapitaleInvestito` AS `CapitaleInvestito`,`S`.`OpenOrders` AS `OpenOrders`,`S`.`NumeroOperazioni` AS `NumeroOperazioni`,`S`.`NumeroOperazioniVincenti` AS `NumeroOperazioniVincenti`,`S`.`AvgBuy` AS `AvgBuy`,`S`.`AvgSell` AS `AvgSell`,`S`.`PLAzione` AS `PLAzione`,`S`.`PLCapitale` AS `PLCapitale`,`S`.`PLPerc` AS `PLPerc`,`S`.`CAGR` AS `CAGR`,`S`.`Drawdown_PeakMax` AS `Drawdown_PeakMax`,`S`.`Drawdown_PeakMin` AS `Drawdown_PeakMin`,`S`.`MaxDrawdown` AS `MaxDrawdown`,`S`.`Mean` AS `Mean`,`S`.`M2` AS `M2`,`S`.`Count` AS `Count`,`S`.`Varianza` AS `Varianza`,`S`.`ScartoQuadratico` AS `ScartoQuadratico`,`S`.`ggCapitaleInvestito` AS `ggCapitaleInvestito`,`S`.`MaxDay` AS `MaxDay`,`S`.`MinDay` AS `MinDay`,`S`.`numAzioniBuy` AS `numAzioniBuy`,`S`.`numAzioniSell` AS `numAzioniSell`,`S`.`posizioneMercato` AS `posizioneMercato`,`S`.`CapitaleResiduo` AS `CapitaleResiduo` from (((`strategies` `S` join `bots` `BIN`) join `bots` `BOUT`) join `Symbols` `C`) where ((`S`.`idBotIn` = `BIN`.`id`) and (`S`.`idBotOut` = `BOUT`.`id`) and (`S`.`idSymbol` = `C`.`id`)) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+
+/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+
+-- Dump completed on 2025-06-13 16:29:11

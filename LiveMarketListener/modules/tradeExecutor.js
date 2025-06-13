@@ -52,7 +52,7 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
     async function BUY(strategy, evalResult, bar) {
         try {
             const numShare = Math.floor(evalResult.grantedAmount / bar.c);
-            logger.trace(`[BUY] grantedAmount : ${evalResult.grantedAmount} asset cost : ${bar.c} Num share tu buy : ${numShare}`);
+            logger.trace(`[BUY] grantedAmount : ${evalResult.grantedAmount} asset cost : ${bar.c} Num share to buy : ${numShare}`);
             const orderId = strategy.id + '-' + uuidv4();
             logger.trace(`[BUY] Ordine id ${orderId}`);
             const orderRes = await shared.AlpacaApi.placeOrder(
@@ -140,8 +140,8 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
                 id:strategy.id,
                 CapitaleInvestito: statoOrdine === "CHIUSO" ? 0 : Number(strategy.CapitaleInvestito) - (parseFloat(orderRes.avg_entry_price) * parseFloat(orderRes.qty)),
                 NumeroOperazioni:strategy.NumeroOperazioni +1,
-                AvgBuy: statoOrdine === "CHIUSO"  ? 0 : strategy.AvgBuy,
-                AvgSell: statoOrdine === "CHIUSO"  ? 0 : (Number(strategy.AvgSell) * Number(strategy.numAzioniSell) + Number(orderRes.market_value)) / (Number(strategy.numAzioniSell) + Number(orderRes.qty)),
+                // AvgBuy: statoOrdine === "CHIUSO"  ? 0 : strategy.AvgBuy,
+                // AvgSell: statoOrdine === "CHIUSO"  ? 0 : (Number(strategy.AvgSell) * Number(strategy.numAzioniSell) + Number(orderRes.market_value)) / (Number(strategy.numAzioniSell) + Number(orderRes.qty)),
                 posizioneMercato: statoOrdine === "CHIUSO"  ? "OFF" :strategy.posizioneMercato,
             };
 
@@ -153,16 +153,10 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
                 CapitaleInvestito: statoOrdine === "CHIUSO" ? 0 : Number(strategy.CapitaleInvestito) - (parseFloat(orderRes.market_value) * (1 + parseFloat(orderRes.unrealized_pl))),
                 NumeroOperazioni:strategy.NumeroOperazioni +1,
                 NumeroOperazioniVincenti: orderRes.unrealized_pl > 0  ? Number(strategy.NumeroOperazioniVincenti) +1 : Number(strategy.NumeroOperazioniVincenti),
-                AvgBuy: statoOrdine === "CHIUSO"  ? 0 : strategy.AvgBuy,
-                AvgSell: statoOrdine === "CHIUSO"  ? 0 : (Number(strategy.AvgSell) * Number(strategy.numAzioniSell) + Number(orderRes.market_value)) / (Number(strategy.numAzioniSell) + Number(orderRes.qty)),
+                // AvgBuy: statoOrdine === "CHIUSO"  ? 0 : strategy.AvgBuy,
+                // AvgSell: statoOrdine === "CHIUSO"  ? 0 : (Number(strategy.AvgSell) * Number(strategy.numAzioniSell) + Number(orderRes.market_value)) / (Number(strategy.numAzioniSell) + Number(orderRes.qty)),
                 posizioneMercato: statoOrdine === "CHIUSO"  ? "OFF" :strategy.posizioneMercato,
             };
-
-            // strategy_runs_update = {
-            //     close_date : new Date(),
-            //     AvgSell : (Number(strategy_runs.AvgSell) * Number(strategy_runs.numAzioniSell) + Number(orderRes.market_value)) / (Number(strategy_runs.numAzioniSell) + Number(orderRes.qty)),
-            //     numAzioniSell : Number(strategy_runs.numAzioniSell) + Number(orderRes.qty)
-            // }
         }
         logger.log(`[handleSell] Update strategies con data ${JSON.stringify(data)}`);
 
