@@ -1,5 +1,5 @@
 -- MySQL dump 10.13  Distrib 9.3.0, for macos14.7 (arm64)
---
+-- Complete DB and Content
 -- Host: 127.0.0.1    Database: Trading
 -- ------------------------------------------------------
 -- Server version	8.0.42
