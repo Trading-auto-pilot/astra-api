@@ -4,7 +4,7 @@ const createLogger = require('../shared/logger');
 
 const MICROSERVICE = "capitalManager";
 const MODULE_NAME = 'capitalManager';
-const MODULE_VERSION = '1.1';
+const MODULE_VERSION = '1.2';
 
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
@@ -78,62 +78,60 @@ class CapitalManager {
 
 
 
-  async evaluateAllocation(strategyId) {
+async evaluateAllocation(strategyId) {
+  logger.trace(`[evaluateAllocation] Valutazione capitale per strategyId ${strategyId}`);
 
-    logger.trace(`[evaluateAllocation] Valutazione capitale per strategyId ${strategyId}`);
-    const cache = await this.getAvailableCapital();        
-    
-    const strategyDetails = await this.getStrategyDetaisl(strategyId);
-
-    const share = parseFloat(strategyDetails.share);
-    const CapOrdiniInvestito = parseFloat(strategyDetails.TotalCommitted);
-    const UsatoPerStrategia = parseFloat(strategyDetails.CapitaleInvestito) + parseFloat(strategyDetails.OpenOrders);
-
-      // Il cash rimanente piu tutto cio che ho impagnato e' il mio capitale originale
-    const CapitaleOriginale = cache + CapOrdiniInvestito;        
-      // Questo e' il capitale assegnato a questa strategia
-    const AssegnatoStrategia = CapitaleOriginale * share;
-      // Questo e' il capitale che rimane da investire per questa strategia
-    const rimanenteStrategia = AssegnatoStrategia - UsatoPerStrategia
-
-    logger.trace(`[evaluateAllocation] Cash rimanente da ALPACA: ${cache}`);
-    logger.trace(`[evaluateAllocation] Share di questa strategia: ${share}`);
-    logger.trace(`[evaluateAllocation] Totale capitale impegnato: ${CapOrdiniInvestito}`);
-    logger.trace(`[evaluateAllocation] Capitale originale (Totale capitale impegnato + Cash rimanente da ALPACA): ${CapitaleOriginale}`);
-    logger.trace(`[evaluateAllocation] Assegnato per questa strategia (Capitale originale * Share di questa strategia) ${AssegnatoStrategia}`);
-    logger.trace(`[evaluateAllocation] Rimanente per Questa strategia (Assegnato per questa strategia - Gia usato) ${rimanenteStrategia}`);
-
-    if (rimanenteStrategia <= 0) {
-      return {
-        approved: false,
-        reason: 'Insufficient allocation margin'
-      };
-    }
-
-    if( !Number.isFinite(rimanenteStrategia)) {
-      return {
-        approved: false,
-        reason: 'Capitale rimanente non correttamente calcolato'
-      };
-    }
-
-      // Prendo la cifra minima tra il rimanente per questa strategia e il cache rimanente
-    const toInvest = Math.min(rimanenteStrategia, cache);
-
-    if(rimanenteStrategia > toInvest) {
-      logger.info(`[evaluateAllocation] Approvato ${rimanenteStrategia} ma capitale rimanente ${toInvest} utilizzo il capitale a disposizione`);
-      return {
-        approved: true,
-        grantedAmount: Math.round(toInvest * 100) / 100
-      };
-    }
-
+  const cache = parseFloat(await this.getAvailableCapital());
+  if (!Number.isFinite(cache) || cache <= 0) {
+    logger.warning(`[evaluateAllocation] Cache non valido o negativo: ${cache}`);
     return {
-      approved: true,
-      grantedAmount: Math.round(rimanenteStrategia * 100) / 100
+      approved: false,
+      reason: 'Cache non disponibile o negativo'
     };
-        
   }
+
+  const strategyDetails = await this.getStrategyDetaisl(strategyId);
+  const share = parseFloat(strategyDetails?.share ?? 0);
+  const capOrdiniInvestito = parseFloat(strategyDetails?.TotalCommitted ?? 0);
+  const capitaleInvestito = parseFloat(strategyDetails?.CapitaleInvestito ?? 0);
+  const openOrders = parseFloat(strategyDetails?.OpenOrders ?? 0);
+  const usatoPerStrategia = capitaleInvestito + openOrders;
+
+  if (!Number.isFinite(share) || share <= 0 || share > 1) {
+    logger.warning(`[evaluateAllocation] Share non valido per strategyId ${strategyId}: ${share}`);
+    return {
+      approved: false,
+      reason: 'Share non valido'
+    };
+  }
+
+  const capitaleOriginale = cache + capOrdiniInvestito;
+  const assegnatoStrategia = capitaleOriginale * share;
+  const rimanenteStrategia = assegnatoStrategia - usatoPerStrategia;
+
+  logger.trace(`[evaluateAllocation] ➤ Cache disponibile: ${cache}`);
+  logger.trace(`[evaluateAllocation] ➤ Share strategia: ${share}`);
+  logger.trace(`[evaluateAllocation] ➤ Capitale usato: ${usatoPerStrategia}`);
+  logger.trace(`[evaluateAllocation] ➤ Capitale originale: ${capitaleOriginale}`);
+  logger.trace(`[evaluateAllocation] ➤ Capitale assegnato strategia: ${assegnatoStrategia}`);
+  logger.trace(`[evaluateAllocation] ➤ Rimanente da allocare: ${rimanenteStrategia}`);
+
+  if (!Number.isFinite(rimanenteStrategia) || rimanenteStrategia <= 0) {
+    return {
+      approved: false,
+      reason: 'Capitale non allocabile'
+    };
+  }
+
+  const toInvest = Math.min(rimanenteStrategia, cache);
+  const granted = Math.round(toInvest * 100) / 100;
+
+  return {
+    approved: true,
+    grantedAmount: granted
+  };
+}
+
 
 }
 

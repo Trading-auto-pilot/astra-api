@@ -91,10 +91,16 @@ class SLTP {
     }
 
 async processCandle(bar, StrategyParams) {
-
+  let position;
   logger.trace(`[processCandle] bar: ${JSON.stringify(bar)}`); 
 
-  const position = this.positions.find(p => p.symbol === bar.S);
+  try { 
+    position = this.positions.find(p => p.symbol === bar.S);
+  } catch (error) {
+    this.positions = await this.AlpacaApi.loadActivePositions();
+    logger.error(`[processCandle] Errore nel recupero della posizione. Richiamo loadActivePositions() posizioni ${JSON.stringify(this.positions)}`);
+  }
+  
 
   
   logger.trace(`[processCandle] posizione trovata: ${position ? position.symbol : 'Nessuna'}`);
@@ -123,6 +129,7 @@ async processCandle(bar, StrategyParams) {
       action: 'SELL',
       trigger: 'TP',
       bot: MODULE_NAME,
+      symbol:bar.S,
       PL: plpc,
       position
     };
@@ -134,6 +141,7 @@ async processCandle(bar, StrategyParams) {
       action: 'SELL',
       trigger: 'SL',
       bot: MODULE_NAME,
+      symbol:bar.S,
       PL: plpc,
       position
     };
@@ -146,6 +154,7 @@ async processCandle(bar, StrategyParams) {
     TP: tp,
     current: plpc,
     bot: MODULE_NAME,
+    symbol:bar.S,
     position
   };
 }

@@ -1,7 +1,6 @@
 // modules/tradeExecutor.js
 const axios = require('axios');
 const uuidv4 = require('uuid').v4;
-const {placeOrder} = require('./placeOrders');
 const createLogger = require('../../shared/logger');
 const tradeDbHelpersFactory = require('../../shared/tradeDbHelpers');
 const { publishCommand } = require('../../shared/redisPublisher');
@@ -21,8 +20,8 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
     };
 
     function init(config) {
-    shared = { ...shared, ...config };
-    logger.trace(`[init] Init complete : ${JSON.stringify(shared)}`);
+        shared = { ...shared, ...config };
+        logger.trace(`[init] Init complete : ${JSON.stringify(shared)}`);
     }
 
     async function SELL(strategy, bar) {
@@ -116,10 +115,11 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
         );
 
         if (exists) {
-            logger.warning(`[handleSell] Ordine SELL già esistente`);
+            logger.warning(`[handleSell] Ordine SELL per sybol ${bar.S} e qty ${trategy.numAzioniBuy}  già esistente`);
             return;
         }
 
+        logger.info(`[handleSell] Recupero informazioni strategy_runs : ${shared.dbManagerUrl}/strategies/runs/strategy/${strategy.posizioneMercato}`);
         strategy_runs = await axios.get(`${shared.dbManagerUrl}/strategies/runs/strategy/${strategy.posizioneMercato}`);
 
 

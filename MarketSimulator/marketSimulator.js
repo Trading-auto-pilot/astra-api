@@ -16,6 +16,9 @@ class MarketSimulator {
     this.dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
     this.cacheManagerUrl = process.env.CACHEMANAGER_URL || 'http://localhost:3006';
     this.interval = null;
+    this.saveLastDate = null;
+    this.saveEndDate = null;
+    this.saveTf = null;
 
     // Log delle variabili definite nell'istanza
     for (const key of Object.keys(this)) {
@@ -93,6 +96,10 @@ class MarketSimulator {
  
   async startSimulation(startDate, endDate, tf = '15Min') {
 
+    this.saveLastDate = startDate;
+    this.saveEndDate = endDate;
+    this.saveTf = tf;
+
     for (const ws of this.wsClients) {
         if (!ws.isAuthenticated || !ws.subscribedSymbols || ws.subscribedSymbols.length === 0) {
           logger.warning('[startSimulation] Client non autenticato o senza simboli sottoscritti');
@@ -102,16 +109,16 @@ class MarketSimulator {
         for (const symbol of ws.subscribedSymbols) {
             logger.log(`[startSimulation] Simulazione per ${symbol} da ${startDate} a ${endDate} con TF ${tf}`);
             await this.loadSettings();
-        
-            console.log(`Chiamo : ${this.cacheManagerUrl}/candles`)
-            const res = await axios.get(`${this.cacheManagerUrl}/candles`, {
-              params: {
-                symbol,
-                startDate,
-                endDate,
-                tf
-              }
-            });
+
+            const body = { 
+                params: {
+                  symbol,
+                  startDate,
+                  endDate,
+                  tf
+              }}
+            logger.log(`Chiamo : ${this.cacheManagerUrl}/candles con body ${JSON.stringify(body)}`);
+            const res = await axios.get(`${this.cacheManagerUrl}/candles`, body);
         
             const candles = res.data;
             if (!Array.isArray(candles) || candles.length === 0) {
@@ -126,6 +133,8 @@ class MarketSimulator {
               if (index >= candles.length) {
                 logger.info(`[startSimulation] Fine simulazione`);
                 clearInterval(this.interval);
+                this.interval = null;
+                index = candles.length;
                 return;
               } 
               
@@ -133,6 +142,7 @@ class MarketSimulator {
               const candle = candles[index++];
               candle['S'] = symbol;
               candle["T"] = "b"; 
+              this.saveLastDate = candle['t'];
               this.broadcastMessage([candle]);
         
               logger.trace(`[startSimulation] Inviata candela: ${JSON.stringify(candle)}`);
@@ -161,20 +171,57 @@ class MarketSimulator {
     }
   }
 
+  restartSimulation() {
+    this.startSimulation(this.saveLastDate, this.saveEndDate, this.saveTf)
+    return (this.saveLastDate);
+  }
+
+async recovery(candle) {
+  logger.info(`[recovery] Avviata funzione recovery su | ${JSON.stringify(candle)}`);
+  this.stopSimulation();
+  let connected = false;
+
+  while (!connected) {
+    try {
+      logger.info('[recovery] Tentativo di riconnessione a DBManager...');
+      await axios.get(`${this.dbManagerUrl}/health`); // o `/simul/positions` se non hai un endpoint di health check
+      connected = true;
+      logger.info('[recovery] Riconnesso con successo a DBManager.');
+    } catch (err) {
+      logger.warning('[recovery] DBManager non disponibile. Nuovo tentativo tra 5 secondi...');
+      await new Promise(res => setTimeout(res, 5000));
+    }
+  }
+
+  this.restartSimulation();
+}
+
+
 async  updatePositionFromCandle(candle) {
   const symbol = candle[0].S;
   const close = parseFloat(candle[0].c);
+  let position;
 
   logger.trace(`[updatePositionFromCandle] Aggiorno posizioni aperte con candela ${JSON.stringify(candle)}`);
   if (!symbol || isNaN(close)) {
     logger.warning('[updatePositionFromCandle] Candela non valida o incompleta');
     return { updated: false, reason: 'symbol o close mancanti' };
   }
-  const allPositions = await axios.get(`${this.dbManagerUrl}/simul/positions`);
-  const position = allPositions.data.find(pos => pos.symbol === symbol);
-  logger.trace(`[updatePositionFromCandle] Simbolo da cercare ${symbol}  Posizioni attive trovate | ${JSON.stringify(position)}`);
-  
-
+  try {
+    const allPositions = await axios.get(`${this.dbManagerUrl}/simul/positions`);
+    position = allPositions.data.find(pos => pos.symbol === symbol);
+    logger.trace(`[updatePositionFromCandle] Simbolo da cercare ${symbol}  Posizioni attive trovate | ${JSON.stringify(position)}`); 
+  } catch (error) {
+    if (error.code === 'ECONNRESET') {
+      logger.error('[updatePositionFromCandle] Connessione persa con DBManager. Avvio recovery...');
+      await this.recovery(candle);
+    } else {
+      logger.error('[updatePositionFromCandle] Errore non previsto:', error);
+      throw error;
+    }
+  }
+ 
+ 
   if (!position) {
     logger.info(`[updatePositionFromCandle] Nessuna posizione attiva per ${symbol}`);
     return { updated: false, reason: 'nessuna posizione trovata' };

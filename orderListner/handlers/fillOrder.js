@@ -6,11 +6,11 @@ const MODULE_VERSION = '1.0';
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
  
 class fiilOrders {
-    constructor(caller, filledOrder, transazioni, strategia, cache, openOrders, strategy_runs) {
+    constructor(caller, filledOrder, transazioni, strategia, /*cache,*/ openOrders, strategy_runs) {
         this.caller = caller;
         this.transazioni = transazioni;
         this.strategia = strategia;
-        this.cache=cache;
+        //this.cache=cache;
         this.filledOrder=filledOrder;
         //this.ordine = ordine;
         this.openOrders = openOrders;
@@ -95,6 +95,7 @@ class fiilOrders {
             this.strategyrunsUpdate['PLCapitale'] = Number(this.strategyrunsUpdate['PLCapitale']) + Number((parseFloat(this.strategyrunsUpdate['AvgSell']) - parseFloat(this.strategyrunsUpdate['AvgBuy'])) * parseFloat(this.filledOrder.order.filled_qty))              // Cumulato del Capitale guadagnato o perso
             this.strategyrunsUpdate['PLPerc'] = Number(this.strategyrunsUpdate['PLCapitale']) / Number(this.strategyrunsUpdate['CapitaleInvestito']); //Number(( parseFloat(this.filledOrder.order.filled_avg_price) / parseFloat(this.strategyrunsUpdate['AvgBuy']) -1 ).toFixed(2));
             this.strategiaUpdate.CapitaleResiduo = parseFloat(this.strategiaUpdate.CapitaleResiduo) - parseFloat(this.strategiaUpdate.AvgBuy) * parseFloat(this.filledOrder.order.filled_qty)                // Aggiorno capitale residuo
+            this.strategyrunsUpdate['CapitaleResiduo'] =  this.strategiaUpdate.CapitaleResiduo;
             // (Capitale Finale - Capitale Iniziale) / Capitale Iniziale
             //this.strategia.PLPerc = ((this.strategia.CapitaleResiduo + this.strategia.PLCapitale) - (this.strategia.CapitaleInvestito)) / this.strategia.CapitaleInvestito
 

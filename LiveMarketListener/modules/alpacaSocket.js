@@ -21,7 +21,7 @@ class AlpacaSocket {
     this.retryCount = 0;
   }
 
-  connect() {
+  async connect() {
     const baseUrl = this.settings([`ALPACA-${process.env.ENV_MARKET}-MARKET`]);
     const wsUrl = `${baseUrl}/${process.env.FEED}`;
     logger.info(`[connect] Connessione a: ${wsUrl}`);
@@ -83,16 +83,19 @@ class AlpacaSocket {
     });
   }
 
-  scheduleReconnect() {
-    if (this.retryCount < this.maxRetries) {
-      setTimeout(() => {
-        this.retryCount++;
-        logger.info(`[reconnect] Tentativo ${this.retryCount}/${this.maxRetries}`);
-        this.connect();
-      }, this.retryDelay);
-    } else {
-      logger.error(`[reconnect] Numero massimo di tentativi raggiunto. Connessione fallita.`);
-      // Qui in futuro si potrà pubblicare un messaggio su Redis per notificare il fallimento definitivo
+  async scheduleReconnect() {
+    let attempt=0;
+    while (true) {
+      try {
+        logger.info(`[reconnect] Tentativo ${attempt}`);
+        await this.connect(); // deve essere async
+        logger.info('[reconnect] Connessione riuscita');
+        break; // esce se la connessione ha successo
+      } catch (err) {
+        logger.warn(`[reconnect] Connessione fallita (tentativo ${attempt}): ${err.message}`);
+        attempt++;
+        await new Promise(res => setTimeout(res, this.retryDelay));
+      }
     }
   }
 

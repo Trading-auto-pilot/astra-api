@@ -395,18 +395,36 @@ buildTradeUpdateFromClose(res) {
 }
 
 async  closePosition(symbol) {
+
+  let resClosed, res;
   try {
-    const res = await axios.delete(`${this.dbManagerUrl}/simul/positions/${symbol}`);
-    const FillMessage = this.buildTradeUpdateFromClose(res.data);
+    logger.trace(`[closePosition] Richiamo ${this.dbManagerUrl}/simul/positions/${symbol}`);
+    resClosed = await axios.delete(`${this.dbManagerUrl}/simul/positions/${symbol}`);
+    logger.trace(`[closePosition] resClosed =  ${JSON.stringify(resClosed.data)}`);
+    const FillMessage = this.buildTradeUpdateFromClose(resClosed.data);
     logger.trace(`[closePosition] Messaggio da inviare su webSocket ${JSON.stringify(FillMessage)}`);
     FillMessage.forEach(msg => this.sendPayloadToClients(msg))
-    
-    return res.data.positions[0];
     
   } catch (error) {
     logger.error(`[closePosition] Errore nella chiusura della posizione: ${error.message}`);
     throw new Error('Errore nella chiusura della posizione :'+error.message);
   }
+
+  try {
+    /******** Recupero capitale investito */
+      // Incremento cache su Alpaca
+      res = await axios.get(`${this.dbManagerUrl}/simul/account`);
+      let account = res.data;
+      logger.trace(`[processCandle] Chiusura posizione incremento account cache ${account.cash} di ${resClosed.data.released}`);
+      account.cash = Number(account.cash) + Number(resClosed.data.released);
+      logger.trace(`[processCandle] Nuovo cache aggiornato ${account.cash}`);
+      await axios.put(`${this.dbManagerUrl}/simul/account`, account); 
+    /************************************ */
+  } catch (error) {
+    logger.error(`[closePosition] Errore nel recupero del capitale investito: ${error.message}`);
+  }
+
+  return resClosed.data.positions[0];
 }
  
 async  getPositions() {
@@ -495,7 +513,7 @@ async  processCandle(candle) {
       // Inserisci posizione nel DB
       await axios.post(`${this.dbManagerUrl}/simul/positions`, newPosition); 
 
-      // // Inviare messaggio si websocket channel command : loadActivePosition
+      // // Inviare messaggio di websocket channel command : loadActivePosition
       await publishCommand({ action: 'loadActivePosition' });
 
       // Remove the symbol from the list of Active orders
@@ -506,6 +524,7 @@ async  processCandle(candle) {
       let account = res.data;
       logger.trace(`[processCandle] Recuperato cash account da decrementare ${account.cash} decremento di una quantita ${fillPrice * qty}`);
       account.cash -= fillPrice * qty;
+      logger.trace(`[processCandle] Nuovo cache ${account.cash}`);
       await axios.put(`${this.dbManagerUrl}/simul/account`, account); 
       
       // Invio messaggio fill su websocket

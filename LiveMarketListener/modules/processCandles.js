@@ -24,8 +24,9 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
             this.isLocalEnv = isLocal;
             this.tradeExecutor = tradeExecutor;
             this.active = active;
-            this.lastEvaluationBuy = null;
-            this.lastEvaluationSell = null;
+            this.lastEvaluationBuy = {};
+            this.lastEvaluationSell = {};
+            this.lastPrice = {};
             this.lastTimestampProcessed = null;
         }
 
@@ -151,7 +152,7 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
 
 
     async processBar(bar) {
-        this.lastPrice = bar.c;
+        this.lastPrice[bar.S] = bar.c;
         this.lastTimestampProcessed = bar.t;
         let sell_decision;
 
@@ -184,7 +185,7 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
                 try {
                     const decision = await this.evaluateBuySignal(bar, strategyParams);
                     logger.info(`[processBar] Strategia ${strategyParams.id} per ${bar.S} → ${decision.action}`);
-                    this.lastEvaluationBuy = decision;
+                    this.lastEvaluationBuy[bar.S] = decision;
                     if(decision.action === 'BUY')
                         await this.tradeExecutor.handleBuy(strategyParams, bar);
                 } catch (err) {
@@ -198,7 +199,7 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
                 try {   // Valuto prima la vendita
                     logger.trace(`[processBar] Esistono posizioni attive per ${bar.S} Non ci sono ordini attivi. valuto la vendita`);
                     sell_decision = await this.evaluateSellSignal(bar, strategyParams);
-                    this.lastEvaluationSell = sell_decision;
+                    this.lastEvaluationSell[bar.S] = sell_decision;
                     logger.info(`[processBar] Strategia ${strategyParams.id} per ${bar.S} → ${sell_decision.action}`);
                     if(sell_decision.action === 'SELL'){
                         await this.tradeExecutor.handleSell(strategyParams, bar, this.orders);
@@ -206,6 +207,8 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
                     }
                 } catch (error) {
                     logger.error(`[processBar] Errore in SELL per strategia per ${bar.S}:`, error.message);
+                    this.loadPositions();
+                    this.loadOrderActive();
                 }
 
                 // In caso di segnale HOLD in vendita, valuto un ascquisto 
@@ -213,7 +216,7 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
                     try {
                         const decision = await this.evaluateBuySignal(bar, strategyParams);
                         logger.info(`[processBar] Strategia ${strategyParams.id} per ${bar.S} → ${decision.action}`);
-                        this.lastEvaluationBuy = decision;
+                        this.lastEvaluationBuy[bar.S] = decision;
                         if(decision.action === 'BUY')
                             await this.tradeExecutor.handleBuy(strategyParams, bar);
                     } catch (err) {
@@ -233,7 +236,7 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
                 try {   // Valuto prima la vendita
                     logger.trace(`[processBar] Esistono sia posizioni attive che ordini attivi per ${bar.S} valuto solo la vendita`);
                     sell_decision = await this.evaluateSellSignal(bar, strategyParams);
-                    this.lastEvaluationSell = sell_decision;
+                    this.lastEvaluationSell[bar.S] = sell_decision;
                     logger.info(`[processBar] Strategia ${strategyParams.id} per ${bar.S} → ${sell_decision.action}`);
                     if(sell_decision.action === 'SELL'){
                         await this.tradeExecutor.handleSell(strategyParams, bar, this.orders);
@@ -250,6 +253,7 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
 
 
     async evaluateBuySignal(bar, strategy) {
+        let fullUrl;
         try {
             const bot = this.bots.find(b => b.name === strategy.idBotIn);
             if (!bot || !bot.url) {
@@ -264,7 +268,7 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
                 botUrl = urlObj.toString();
             }
 
-            const fullUrl = new URL('/processCandle', botUrl).toString();
+            fullUrl = new URL('/processCandle', botUrl).toString();
             logger.info(`[evaluateBuySignal] Chiamo bot ${strategy.idBotIn} su URL: ${fullUrl} con body ${JSON.stringify({bar, strategy })}`);
 
             const response = await axios.post(fullUrl, { candle:bar, strategyParams:strategy });
@@ -276,8 +280,9 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
             return null;
         }
     }
-
+ 
     async evaluateSellSignal(bar, strategy) {
+        let fullUrl;
         try {
             const bot = this.bots.find(b => b.name === strategy.idBotOut);
             if (!bot || !bot.url) {
@@ -291,7 +296,7 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
                 urlObj.hostname = 'localhost';
                 botUrl = urlObj.toString();
             }
-            const fullUrl = new URL('/processCandle', botUrl).toString();
+            fullUrl = new URL('/processCandle', botUrl).toString();
             const body = { candle:bar, strategyParams:strategy };
 
             logger.trace(`[evaluateSellSignal] Chiamo bot ${strategy.idBotOut} su URL: ${fullUrl} con body ${JSON.stringify(body)}`);
@@ -302,7 +307,7 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
 
         } catch (err) {
             logger.error(`[evaluateSellSignal] Errore nella chiamata al bot ${strategy.idBotOut}: ${err.message}`);
-            logger.warning(`[evaluateSellSignal] Chiamato bot ${strategy.idBotOut} su URL: ${fullUrl} con body ${JSON.stringify(body)}`);
+            //logger.warning(`[evaluateSellSignal] Chiamato bot ${strategy.idBotOut} su URL: ${fullUrl} con body ${JSON.stringify(body)}`);
             return null;
         }
     }

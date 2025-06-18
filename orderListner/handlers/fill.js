@@ -80,20 +80,20 @@ module.exports = async (data, event_type, AlpacaEnv, AlpacaApi) => {
 
   /**  ***************************************************************************************** */
   // Recupero capitale totale disponibile
-  logger.log(`[getAvailableCapital] Recupero capitale disponibile da Alpaca : ${AlpacaEnv}/v2/account`);
-  try {
-    const res = await axios.get(AlpacaEnv+'/v2/account', {
-      headers: {
-        'APCA-API-KEY-ID':  process.env.APCA_API_KEY_ID,
-        'APCA-API-SECRET-KEY': process.env.APCA_API_SECRET_KEY
-      }
-    });
-    logger.log(`[getAvailableCapital] Recuperato capitale ${res.data.cash}`);
-    cache = (parseFloat(res.data.cash));
-  } catch (err) {
-    logger.error(`[getAvailableCapital] Errore Alpaca:`, err.message);
-    return null;
-  }
+  // logger.log(`[getAvailableCapital] Recupero capitale disponibile da Alpaca : ${AlpacaEnv}/v2/account`);
+  // try {
+  //   const res = await axios.get(AlpacaEnv+'/v2/account', {
+  //     headers: {
+  //       'APCA-API-KEY-ID':  process.env.APCA_API_KEY_ID,
+  //       'APCA-API-SECRET-KEY': process.env.APCA_API_SECRET_KEY
+  //     }
+  //   });
+  //   logger.log(`[getAvailableCapital] Recuperato capitale ${res.data.cash}`);
+  //   cache = (parseFloat(res.data.cash));
+  // } catch (err) {
+  //   logger.error(`[getAvailableCapital] Errore Alpaca:`, err.message);
+  //   return null;
+  // }
   /**  ***************************************************************************************** */
 
   /**  ***************************************************************************************** */
@@ -147,7 +147,7 @@ module.exports = async (data, event_type, AlpacaEnv, AlpacaApi) => {
 
 
   // Istanzio la calsse comune e gli passo le transazioni e la strategia.
-  const fillComm = new fillOrder(event_type, data, transazioni.data, strategia.data[0], cache, openOrders.data.count, strategy_runs);
+  const fillComm = new fillOrder(event_type, data, transazioni.data, strategia.data[0], /*cache,*/ openOrders.data.count, strategy_runs);
 
   logger.trace(`[FILL] Calcolo update KPIs`);
   fillComm.updateKPIs();

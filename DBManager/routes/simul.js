@@ -2,6 +2,13 @@
 // Questo file contiene tutti gli endpoint usati dal simulatore OrderSimul e MarketSimul
 const express = require('express');
 const cache = require('../cache');
+const createLogger = require('../../shared/logger');
+
+const MICROSERVICE = 'DBManager';
+const MODULE_NAME = 'RESTServer simul';
+const MODULE_VERSION = '2.0';
+
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
 let totalReq = 0;
 let cacheHit = 0;
@@ -40,7 +47,7 @@ module.exports = (dbManager) => {
       await cache.set(cacheKey, data);
       res.json(data);
     } catch (error) {
-      console.error('[GET /simul/account] Errore: '+ error.message);
+      logger.error('[GET /simul/account] Errore: '+ error.message);
       res.status(500).json({ error: 'Errore nel recupero dell\'account '+ error.message, module:"[GET /simul/account]" });
     }
   });
@@ -51,26 +58,29 @@ module.exports = (dbManager) => {
       await cache.del('simul_account:all');
       res.json(data);
     } catch (error) {
-      console.error('[PUT /simul/account] Errore: '+ error.message);
+      logger.error('[PUT /simul/account] Errore: '+ error.message);
       res.status(500).json({ error: 'Errore nell\'aggiornamento dell\'account '+ error.message, module:"[PUT /simul/account]" });
     }
   });
 
   // 📈 POSITIONS
   router.get('/positions', async (req, res) => {
+    logger.info('[GET /simul/positions] Richiesta ricevuta');
     totalReq++;
     const cacheKey = 'simul_position:all';
     let data = await cache.get(cacheKey);
     if (data) {
       cacheHit++;
+      logger.info('[GET /simul/positions] [cache hit]');
       return res.json(data);
     }
     try {
       const data = await dbManager.simul_getAllPositionsAsJson();
       await cache.set(cacheKey, data);
+      logger.info('[GET /simul/positions] Risposta pronta:', JSON.stringify(data));
       res.json(data);
     } catch (error) {
-      console.error('[GET /simul/positions] Errore: '+ error.message);
+      logger.error('[GET /simul/positions] Errore: '+ error.message);
       res.status(500).json({ error: 'Errore durante il recupero delle posizioni '+ error.message, module:"[GET /simul/positions]" });
     }
   });
@@ -92,7 +102,7 @@ module.exports = (dbManager) => {
 
       res.json(position);
     } catch (error) {
-      console.error('[GET /simul/positions/:symbol] Errore: '+ error.message);
+      logger.error('[GET /simul/positions/:symbol] Errore: '+ error.message);
       res.status(500).json({ error: 'Errore durante il recupero della posizione '+ error.message, module:"[GET /simul/positions/:symbol]" });
     }
   });
@@ -104,7 +114,7 @@ module.exports = (dbManager) => {
       await cache.del('simul_position:all');
       res.json(data);
     } catch (error) {
-      console.error('[POST /simul/positions] Errore: '+ error.message);
+      logger.error('[POST /simul/positions] Errore: '+ error.message);
       res.status(500).json({ error: 'Errore durante l\'inserimento della posizione '+error.message, module:"[POST /simul/positions]" });
     }
   });
@@ -115,7 +125,7 @@ module.exports = (dbManager) => {
       await cache.del('simul_position:all');
       res.json(rc.data);
     } catch (error) {
-      console.error('[PUT /simul/positions] Errore: '+ error.message);
+      logger.error('[PUT /simul/positions] Errore: '+ error.message);
       res.status(500).json({ error: 'Errore durante l\'aggiornamento della posizione '+error.message, module:"[PUT /simul/positions]" });
     }
   });
@@ -126,7 +136,7 @@ module.exports = (dbManager) => {
       await cache.del('simul_position:all');
       res.json(data);
     } catch (error) {
-      console.error('[DELETE /simul/positions/:symbol] Errore: '+ error.message);
+      logger.error('[DELETE /simul/positions/:symbol] Errore: '+ error.message);
       res.status(500).json({ error: 'Errore durante la chiusura della posizione '+ error.message, module:"[DELETE /simul/positions/:symbol]" });
     }
   });
@@ -137,7 +147,7 @@ module.exports = (dbManager) => {
       await cache.del('simul_position:all');
       res.json(rc.data);
     } catch (error) {
-      console.error('[DELETE /simul/positions] Errore: '+ error.message);
+      logger.error('[DELETE /simul/positions] Errore: '+ error.message);
       res.status(500).json({ error: 'Errore durante l\'eliminazione delle posizioni '+error.message, module:"[DELETE /simul/positions]" });
     }
   });
@@ -158,7 +168,7 @@ module.exports = (dbManager) => {
       await cache.set(cacheKey, data);
       res.json(data);
     } catch (error) {
-      console.error('[GET /simul/orders] Errore: '+ error.message);
+      logger.error('[GET /simul/orders] Errore: '+ error.message);
       res.status(500).json({ error: 'Errore durante il recupero delle posizioni '+ error.message, module:"[GET /simul/orders]" });
     }
   });
@@ -169,7 +179,7 @@ module.exports = (dbManager) => {
       await cache.del('orders:all');
       res.json(data);
     } catch (error) {
-      console.error('[PUT /simul/orders] Errore: '+ error.message);
+      logger.error('[PUT /simul/orders] Errore: '+ error.message);
       res.status(500).json({ error: 'Errore durante il recupero delle posizioni '+ error.message, module:"[PUT /simul/orders]" });
     }
   });
@@ -180,7 +190,7 @@ module.exports = (dbManager) => {
       await cache.del('orders:all');
       res.json(data);
     } catch (error) {
-      console.error('[POST /simul/orders] Errore: '+ error.message);
+      logger.error('[POST /simul/orders] Errore: '+ error.message);
       res.status(500).json({ error: 'Errore durante il recupero delle posizioni '+ error.message, module:"[POST /simul/orders]" });
     }
   });
@@ -191,7 +201,7 @@ module.exports = (dbManager) => {
       await cache.del('orders:all');
       res.json(data);
     } catch (error) {
-      console.error('[DELETE /simul/orders] Errore: '+ error.message);
+      logger.error('[DELETE /simul/orders] Errore: '+ error.message);
       res.status(500).json({ error: 'Errore durante l\'eliminazione degli ordini '+ error.message, module:"[DELETE /simul/orders]" });
     }
   });

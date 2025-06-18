@@ -42,7 +42,7 @@ class LiveMarketListener {
   resume() {
     this.active = true;
     logger.warning(`[resume] Ricevuto comando RESUME`);
-  }
+  } 
 
   getInfo() {
     return {

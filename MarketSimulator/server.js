@@ -44,6 +44,11 @@ app.post('/stop', (req, res) => {
   res.json({ status: 'Simulazione fermata' });
 });
 
+app.post('/restart', (req, res) => {
+  lastDate = simulator.restartSimulation();
+  res.json({ status: 'Simulazione Riavviata da data '+lastDate });
+});
+
 app.post('/send', (req, res) => {
   const payload = req.body;
 

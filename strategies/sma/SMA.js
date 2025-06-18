@@ -122,6 +122,7 @@ async loadLastPosition(scenarioId) {
         prezzo,
         mediaMobile,
         bot: MODULE_NAME,
+        symbol:candle.S,
         motivo: 'Prezzo sopra media mobile'
       };
     }
@@ -137,6 +138,7 @@ async loadLastPosition(scenarioId) {
           mediaMobile,
           motivo: 'TP',
           bot: MODULE_NAME,
+          symbol:candle.S,
           profitLoss: profit
         };
       }
@@ -147,6 +149,7 @@ async loadLastPosition(scenarioId) {
       action: 'HOLD',
       prezzo,
       bot: MODULE_NAME,
+      symbol:candle.S,
       mediaMobile
     };
   }
