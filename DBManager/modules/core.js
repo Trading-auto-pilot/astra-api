@@ -2,6 +2,10 @@
 
 const mysql = require('mysql2/promise');
 const createLogger = require('../../shared/logger');
+const Alpaca = require('../../shared/Alpaca');
+const cache = require('../../shared/cache');
+
+const AlpacaApi = new Alpaca();
 
 const MICROSERVICE = 'DBManager';
 const MODULE_NAME = 'core';
@@ -49,6 +53,7 @@ async function getDbConnection() {
     throw err;
   }
 }
+
 
 module.exports = {
   getDbConnection,

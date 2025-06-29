@@ -151,7 +151,7 @@ async function simul_insertOrder(order) {
     ];
 
     await connection.execute(query, values);
-    logger.info(`[simul_insertOrder] Ordine ${order.id} inserito con successo`);
+    logger.info(`[simul_insertOrder] Ordine ${order.id} inserito con successo. Symbol ${order.symbol}`);
     return order.id;
   } catch (err) {
     logger.error(`[simul_insertOrder] Errore inserimento ordine: ${err.message}`);

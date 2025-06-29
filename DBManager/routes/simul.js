@@ -1,7 +1,7 @@
 // /route/simul.js
 // Questo file contiene tutti gli endpoint usati dal simulatore OrderSimul e MarketSimul
 const express = require('express');
-const cache = require('../cache');
+const cache = require('../../shared/cache');
 const createLogger = require('../../shared/logger');
 
 const MICROSERVICE = 'DBManager';

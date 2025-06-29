@@ -6,7 +6,7 @@ const MODULE_VERSION = '1.0';
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
  
 class fiilOrders {
-    constructor(caller, filledOrder, transazioni, strategia, /*cache,*/ openOrders, strategy_runs) {
+    constructor(caller, filledOrder, transazioni, strategia, /*cache,*/ openOrders, strategy_runs, capitali) {
         this.caller = caller;
         this.transazioni = transazioni;
         this.strategia = strategia;
@@ -14,6 +14,7 @@ class fiilOrders {
         this.filledOrder=filledOrder;
         //this.ordine = ordine;
         this.openOrders = openOrders;
+        this.capitali = capitali;
 
         this.transactionUpdate = transazioni;
         this.strategiaUpdate = strategia;
@@ -40,7 +41,9 @@ class fiilOrders {
         logger.trace(`[updateKPIs] this.strategiaUpdate ${JSON.stringify(this.strategiaUpdate)}`);
         logger.trace(`[updateKPIs] this.filledOrder ${JSON.stringify(this.filledOrder)}`);
         logger.trace(`[updateKPIs] this.strategyrunsUpdate ${JSON.stringify(this.strategyrunsUpdate)}`);
-        logger.trace(`[updateKPIs] this.openOrders : ${this.openOrders}`);
+        logger.trace(`[updateKPIs] this.openOrders : ${JSON.stringify(this.openOrders)}`);
+        logger.trace(`[updateKPIs] this.transactionUpdate : ${JSON.stringify(this.transactionUpdate)}`);
+        logger.trace(`[updateKPIs] this.capitali : ${JSON.stringify(this.capitali)}`);
 
         // Caso Acquisto
         if(this.filledOrder.order.side == "buy"){
@@ -92,10 +95,11 @@ class fiilOrders {
             
 
             // Calcolo del Profit/Loss cumulativo sulla tabella strategies
+            this.strategyrunsUpdate['CapitaleResiduo'] = this.capitali.totaleCapitale;
             this.strategyrunsUpdate['PLCapitale'] = Number(this.strategyrunsUpdate['PLCapitale']) + Number((parseFloat(this.strategyrunsUpdate['AvgSell']) - parseFloat(this.strategyrunsUpdate['AvgBuy'])) * parseFloat(this.filledOrder.order.filled_qty))              // Cumulato del Capitale guadagnato o perso
             this.strategyrunsUpdate['PLPerc'] = Number(this.strategyrunsUpdate['PLCapitale']) / Number(this.strategyrunsUpdate['CapitaleInvestito']); //Number(( parseFloat(this.filledOrder.order.filled_avg_price) / parseFloat(this.strategyrunsUpdate['AvgBuy']) -1 ).toFixed(2));
-            this.strategiaUpdate.CapitaleResiduo = parseFloat(this.strategiaUpdate.CapitaleResiduo) - parseFloat(this.strategiaUpdate.AvgBuy) * parseFloat(this.filledOrder.order.filled_qty)                // Aggiorno capitale residuo
-            this.strategyrunsUpdate['CapitaleResiduo'] =  this.strategiaUpdate.CapitaleResiduo;
+            this.strategiaUpdate.CapitaleResiduo = this.capitali.totaleCapitale;                // Aggiorno capitale residuo
+            //this.strategyrunsUpdate['CapitaleResiduo'] =  this.strategiaUpdate.CapitaleResiduo;
             // (Capitale Finale - Capitale Iniziale) / Capitale Iniziale
             //this.strategia.PLPerc = ((this.strategia.CapitaleResiduo + this.strategia.PLCapitale) - (this.strategia.CapitaleInvestito)) / this.strategia.CapitaleInvestito
 
@@ -105,6 +109,7 @@ class fiilOrders {
 
                 this.strategyrunsUpdate['close_date'] = this.filledOrder.timestamp;;
                 // Aggiorno numero operazioni e operazioni vincenti
+                logger.trace(`[updateKPIs] Incremento numeroOperazioni da ${this.strategiaUpdate.NumeroOperazioni}`);
                 this.strategiaUpdate.NumeroOperazioni ++;
                 if(this.strategyrunsUpdate['PLCapitale'] > 0)
                     this.strategiaUpdate.NumeroOperazioniVincenti++;

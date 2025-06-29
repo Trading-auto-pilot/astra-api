@@ -9,7 +9,7 @@ app.use(express.json());
 const MICROSERVICE = 'OrderSimulator';
 const MODULE_NAME = 'OrderSimulator RESTServer';
 const MODULE_VERSION = '1.0';
-
+ 
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
 const server = http.createServer(app);
@@ -50,7 +50,7 @@ app.get('/v2/orders', async (req, res) => {
     const result = await simulator.getOrders();
     res.status(200).json(result.data);
   } catch (err) {
-    logger.error(`[orders] GET /v2/account ${err.message}`);
+    logger.error(`[orders] GET /v2/orders ${err.message}`);
     res.status(400).json({ error: err.message });
   }
 });
@@ -60,7 +60,7 @@ app.post('/v2/orders', async (req, res) => {
     const result = await simulator.acceptOrder(req.body);
     res.status(200).json(result);
   } catch (err) {
-    logger.error(`[orders] POST /v2/account ${err.message}`);
+    logger.error(`[orders] POST /v2/orders ${err.message}`);
     res.status(400).json({ error: err.message });
   }
 });

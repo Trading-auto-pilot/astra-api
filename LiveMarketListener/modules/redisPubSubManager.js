@@ -9,7 +9,7 @@ const MICROSERVICE = 'LiveMarketListener';
 const MODULE_NAME = 'redisPubSubManager';
 const MODULE_VERSION = '2.0';
 
-const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
+
 
 class RedisPubSubManager extends EventEmitter {
   constructor({ url = process.env.REDIS_URL || 'process.env. redis://localhost:6379', retryDelay = 5000, maxRetries = 10 } = {}) {
@@ -21,7 +21,18 @@ class RedisPubSubManager extends EventEmitter {
     this.subscriber = null;
     this.publisher = null;
     this.connected = false;
+    this.logLevel = process.env.LOG_LEVEL || 'info';
+    this.logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION,this.logLevel );
   }
+
+    getLogLevel(){
+        return this.logLevel;
+    }
+
+    setLogLevel(level) {
+        this.logLevel=level;
+        this.logger.setLevel(level);
+    }
 
   async init() {
     await this._initSubscriber();
@@ -41,14 +52,14 @@ class RedisPubSubManager extends EventEmitter {
   }
 
   _handleEvents(client, label) {
-    client.on('connect', () => logger.info(`[${label}] Connessione a Redis in corso...`));
+    client.on('connect', () => this.logger.info(`[${label}] Connessione a Redis in corso...`));
     client.on('ready', () => {
-      logger.info(`[${label}] ✅ Connessione a Redis pronta`);
+      this.logger.info(`[${label}] ✅ Connessione a Redis pronta`);
       this.retryCount = 0;
       this.connected = true;
     });
-    client.on('end', () => logger.warning(`[${label}] ❌ Connessione Redis terminata`));
-    client.on('error', err => logger.error(`[${label}] Errore Redis: ${err.message}`));
+    client.on('end', () => this.logger.warning(`[${label}] ❌ Connessione Redis terminata`));
+    client.on('error', err => this.logger.error(`[${label}] Errore Redis: ${err.message}`));
   }
 
   async _connectWithRetry(client, label) {
@@ -58,11 +69,11 @@ class RedisPubSubManager extends EventEmitter {
         return;
       } catch (err) {
         this.retryCount++;
-        logger.warning(`[${label}] Tentativo ${this.retryCount}/${this.maxRetries} fallito: ${err.message}`);
+        this.logger.warning(`[${label}] Tentativo ${this.retryCount}/${this.maxRetries} fallito: ${err.message}`);
         await new Promise(res => setTimeout(res, this.retryDelay));
       }
     }
-    logger.error(`[${label}] Raggiunto numero massimo di tentativi (${this.maxRetries})`);
+    this.logger.error(`[${label}] Raggiunto numero massimo di tentativi (${this.maxRetries})`);
     // TODO: notificare errori al sistema esterno
   }
 
@@ -73,26 +84,26 @@ class RedisPubSubManager extends EventEmitter {
         const data = JSON.parse(message);
         await handler(data);
       } catch (err) {
-        logger.error(`[subscribe][${channel}] Errore parsing o gestione messaggio: ${err.message}`);
+        this.logger.error(`[subscribe][${channel}] Errore parsing o gestione messaggio: ${err.message}`);
       }
     });
-    logger.info(`[subscribe] Sottoscritto al canale ${channel}`); 
+    this.logger.info(`[subscribe] Sottoscritto al canale ${channel}`); 
   }
 
   async publish(channel, payload) {
     if (!this.publisher) return;
     try {
       await this.publisher.publish(channel, JSON.stringify(payload));
-      logger.trace(`[publish] Messaggio pubblicato su ${channel}`);
+      this.logger.trace(`[publish] Messaggio pubblicato su ${channel}`);
     } catch (err) {
-      logger.error(`[publish] Errore pubblicazione su ${channel}: ${err.message}`);
+      this.logger.error(`[publish] Errore pubblicazione su ${channel}: ${err.message}`);
     }
   }
 
   async close() {
     if (this.subscriber) await this.subscriber.quit();
     if (this.publisher) await this.publisher.quit();
-    logger.info(`[close] Connessioni Redis chiuse`);
+    this.logger.info(`[close] Connessioni Redis chiuse`);
   }
 }
 

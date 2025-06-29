@@ -103,6 +103,23 @@ async function getLastTransactionByScenario(scenarioId) {
   }
 }
 
+async function getOpenTransactions() {
+  const connection = await getDbConnection();
+  try {
+    const [rows] = await connection.query(
+      `SELECT * FROM transazioni 
+       WHERE operation = 'BUY NEW'
+       ORDER BY id DESC`
+    );
+    return rows;
+  } catch (err) {
+    logger.error(`[getOpenTransactions] Errore select:`, err.message);
+    throw err;
+  } finally {
+    connection.release();
+  }
+}
+
 async function getTransaction(orderId) {
   const connection = await getDbConnection();
   try {
@@ -177,5 +194,6 @@ module.exports = {
   getTransaction,
   getScenarioIdByOrderId,
   countTransactionsByStrategyAndOrders,
-  deleteAllTransactions
+  deleteAllTransactions,
+  getOpenTransactions
 };

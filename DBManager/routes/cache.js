@@ -1,7 +1,7 @@
 // routes/cache.js
 const express = require('express');
 const router = express.Router();
-const cache = require('../cache');
+const cache = require('../../shared/cache');
 
 module.exports = () => {
     //Reset del tempo cache

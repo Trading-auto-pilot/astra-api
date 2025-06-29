@@ -35,7 +35,7 @@ const dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
 
 // --- REST ---
 
-app.get('/health', (req, res) => {
+app.get('/health', (req, res) => { 
   res.json({ status: 'OK', service: 'orderEventListener', uptime: process.uptime() });
 });
 

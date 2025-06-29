@@ -15,13 +15,13 @@ docker-compose start mysql redis
 # Ordine dei servizi da avviare
 SERVICES=(
   "dbManager"
+  "MarketSimulator"
+  "orderSimulator"
   "cacheManager"
   "alertingService"
   "capitalManager"
   "strategies/sltp"
   "strategies/sma"
-  "MarketSimulator"
-  "orderSimulator"
   "orderListner"
   "liveMarketListener"
 )

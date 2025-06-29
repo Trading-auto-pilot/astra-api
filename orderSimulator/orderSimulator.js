@@ -2,6 +2,7 @@
 const axios = require('axios');
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const { publishCommand } = require('../shared/redisPublisher');
 const createLogger = require('../shared/logger');
 
@@ -48,6 +49,11 @@ class OrderSimulator {
     for (const [key, value] of Object.entries(process.env)) {
       logger.trace(`Environment variable ${key}=${value}`);
     }
+  }
+
+  generateHash(input) {
+    const hash = crypto.createHash('sha256').update(input).digest('hex');
+    return hash.substring(0, 36);
   }
 
   applySharedClockToOrder(order) {
@@ -154,7 +160,7 @@ class OrderSimulator {
         "replaced_at": null,
         "replaced_by": null,
         "replaces": null,
-        "asset_id": "b6d1aa75-5c9c-4353-a305-9e2caa1925ab",
+        "asset_id": this.generateHash(orderPayload.symbol),
         "symbol": orderPayload.symbol,
         "asset_class": "us_equity",
         "notional": null,
@@ -392,10 +398,10 @@ buildTradeUpdateFromClose(res) {
   }
 
   return updates;
-}
+} 
 
 async  closePosition(symbol) {
-
+ 
   let resClosed, res;
   try {
     logger.trace(`[closePosition] Richiamo ${this.dbManagerUrl}/simul/positions/${symbol}`);
@@ -408,8 +414,8 @@ async  closePosition(symbol) {
   } catch (error) {
     logger.error(`[closePosition] Errore nella chiusura della posizione: ${error.message}`);
     throw new Error('Errore nella chiusura della posizione :'+error.message);
-  }
-
+  } 
+ 
   try {
     /******** Recupero capitale investito */
       // Incremento cache su Alpaca

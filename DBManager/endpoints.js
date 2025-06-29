@@ -50,8 +50,6 @@ fs.readdirSync(routesPath).forEach(file => {
   }
 });
 
-
-
 // app.listen(port, () => {
 //   console.log(`[${MODULE_NAME}] Avviato sulla porta ${port}`);
 // });

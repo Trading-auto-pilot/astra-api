@@ -9,9 +9,9 @@ const MICROSERVICE = 'LiveMarketListener';
 const MODULE_NAME = 'REST Server';
 const MODULE_VERSION = '2.0';
 
-
+let logLevel = process.env.LOG_LEVEL || 'info' ;
  
-const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, logLevel );
 
 dotenv.config();
 const app = express();
@@ -30,6 +30,30 @@ let liveMarketListner;
     process.exit(1);
   }
 })();
+
+app.get('/loglevel', (req, res) => {
+  res.json({ 
+    liveMarketListner : liveMarketListner.getLogLevel(),
+    processCandles : liveMarketListner.getLogLevel('processCandles'),
+    redisPubSubManager : liveMarketListner.getLogLevel('redisPubSubManager'),
+    alpacaSocket : liveMarketListner.getLogLevel('alpacaSocket'),
+    tradeExecutor : liveMarketListner.getLogLevel('tradeExecutor'),
+    RESTServer : logLevel
+
+  });
+});
+
+app.put('/loglevel/:module', (req, res) => {
+
+
+  if(req.params.module === "RESTServer") 
+    logLevel = req.body.logLevel;
+  else
+    liveMarketListner.setLogLevel(req.body.logLevel, req.params.module);
+
+  res.status(200).json({ success: true, msg: `Nuovo livello ${req.body.logLevel} log per modulo ${req.params.module}` });
+});
+
 
 // REST API
 app.get('/health', (req, res) => {

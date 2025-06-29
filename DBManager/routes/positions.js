@@ -1,5 +1,5 @@
 const express = require('express');
-const cache = require('../cache');
+const cache = require('../../shared/cache');
 const router = express.Router();
 
 module.exports = (dbManager) => {

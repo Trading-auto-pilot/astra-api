@@ -16,6 +16,9 @@ module.exports = {
   set: async (key, value, ttl = DEFAULT_TTL) => {
     await client.set(key, JSON.stringify(value), { EX: ttl }); // TTL in secondi
   },
+  setp: async (key, value) => {
+    await client.set(key, JSON.stringify(value));
+  },
   del: async (key) => {
     await client.del(key);
   },
@@ -27,5 +30,11 @@ module.exports = {
   },
   getRaw: async (key) => {
     return await client.get(key); // stringa JSON grezza
+  },
+  hmset: async (key, dataObj) => {
+    await client.hSet(key, dataObj); // hSet accetta oggetto key-value
+  },
+  hgetall: async (key) => {
+    return await client.hGetAll(key); // restituisce oggetto con tutti i campi dell'hash
   }
 };

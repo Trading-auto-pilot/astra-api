@@ -4,13 +4,16 @@ const uuidv4 = require('uuid').v4;
 const createLogger = require('../../shared/logger');
 const tradeDbHelpersFactory = require('../../shared/tradeDbHelpers');
 const { publishCommand } = require('../../shared/redisPublisher');
-const tradeDbHelpers = tradeDbHelpersFactory(process.env.DBMANAGER_URL || 'http://localhost:3002');
 
+const marketSimulatorUrl = process.env.MARKETSIMULATOR_URL || 'http://localhost:3003'
 const MICROSERVICE = 'LiveMarketListener';
 const MODULE_NAME = 'tradeExecutor';
+const DBMANAGER_URL = process.env.DBMANAGER_URL || 'http://localhost:3002'
+const tradeDbHelpers = tradeDbHelpersFactory(DBMANAGER_URL);
 const MODULE_VERSION = '2.0';
 
-const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
+let logLevel =  process.env.LOG_LEVEL || 'info'
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION,logLevel);
 
     let shared = {
         dbManagerUrl: '',
@@ -22,6 +25,15 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
     function init(config) {
         shared = { ...shared, ...config };
         logger.trace(`[init] Init complete : ${JSON.stringify(shared)}`);
+    }
+
+    function getLogLevel(){
+        return logLevel;
+    }
+
+    function setLogLevel(level) {
+        logLevel=level;
+        logger.setLevel(level);
     }
 
     async function SELL(strategy, bar) {
@@ -53,7 +65,7 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
             const numShare = Math.floor(evalResult.grantedAmount / bar.c);
             logger.trace(`[BUY] grantedAmount : ${evalResult.grantedAmount} asset cost : ${bar.c} Num share to buy : ${numShare}`);
             const orderId = strategy.id + '-' + uuidv4();
-            logger.trace(`[BUY] Ordine id ${orderId}`);
+            logger.trace(`[BUY] Ordine id ${orderId} symbol ${strategy.idSymbol}`);
             const orderRes = await shared.AlpacaApi.placeOrder(
                     strategy.idSymbol,
                     numShare,
@@ -77,6 +89,12 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
 
     async function handleBuy(strategy, bar) {
         logger.info(`[handleBuy] BUY con candela ${JSON.stringify(bar)}`);
+        logger.trace(`[handleBuy] Verifico se esiste un ordine appena immesso ${DBMANAGER_URL}/transactions/open/${strategy.id}`);  
+        const order = await axios.get(`${DBMANAGER_URL}/transactions/open/${strategy.id}`);
+        if(Number(order.open) === 1) {
+            logger.trace(`[handleBuy] Ordine BUY OPEN esistente. Non inserisco altro ordine`);  
+            return;
+        }
 
 
         const evalResult = await richiestaCapitale(bar, strategy);
@@ -85,8 +103,16 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
         const orderRes = await BUY(strategy, evalResult, bar);
         if (!orderRes) throw new Error('BUY failed');
 
+        // Aggiorno Capitale utilizzato
+        const url = `${shared.capitalManagerUrl}/capital/${strategy.id}`;
+        const amount = parseFloat(orderRes.qty || 0) * parseFloat(orderRes.limit_price || 0); 
+        const body = {requested : evalResult.grantedAmount, approved : amount};
+        logger.trace(`[handleBuy] Richiesta capitale a POST: ${url} con body | ${JSON.stringify(body)}`);       
+        
+        await axios.post(url,body);
+
         // Devo richiamare funzione condivisa in shared
-        const data = {id: strategy.id, OpenOrders : parseFloat(orderRes.qty || 0) * parseFloat(orderRes.limit_price || 0)}
+        const data = {id: strategy.id, OpenOrders : amount}
         // Aggiungo record a Strategy
         let rc = await tradeDbHelpers.updateStrategies(data, strategy);
         if (!rc) throw new Error('update Strategies fallita');
@@ -115,12 +141,13 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
         );
 
         if (exists) {
-            logger.warning(`[handleSell] Ordine SELL per sybol ${bar.S} e qty ${trategy.numAzioniBuy}  già esistente`);
+            logger.warning(`[handleSell] Ordine SELL per sybol ${bar.S} e qty ${strategy.numAzioniBuy}  già esistente`);
             return;
         }
 
         logger.info(`[handleSell] Recupero informazioni strategy_runs : ${shared.dbManagerUrl}/strategies/runs/strategy/${strategy.posizioneMercato}`);
         strategy_runs = await axios.get(`${shared.dbManagerUrl}/strategies/runs/strategy/${strategy.posizioneMercato}`);
+        strategy_runs = strategy_runs.data;
 
 
         const orderRes = strategy.params.sell.exitMode === 'order'
@@ -133,32 +160,44 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
             ? "CHIUSO"
             : "APERTO";
 
+        logger.log(`[handleSell] Chiusura posizione ${strategy.id} numAzioniBuy ${strategy_runs.numAzioniBuy} numAzioniSell ${strategy_runs.numAzioniSell} qty Order sold ${orderRes.qty} statoOrdine : ${statoOrdine}`);
+        logger.log(`[handleSell] strategy_runs : ${JSON.stringify(strategy_runs)}`);
         // Verifico se ho chiuso tutto o parte.
-        let data;
+        let data, CapitaleInvestito;
         if(strategy.params.sell.exitMode === 'order') {
             data = {
                 id:strategy.id,
-                CapitaleInvestito: statoOrdine === "CHIUSO" ? 0 : Number(strategy.CapitaleInvestito) - (parseFloat(orderRes.avg_entry_price) * parseFloat(orderRes.qty)),
-                NumeroOperazioni:strategy.NumeroOperazioni +1,
+                //NumeroOperazioni:strategy.NumeroOperazioni +1,
                 // AvgBuy: statoOrdine === "CHIUSO"  ? 0 : strategy.AvgBuy,
                 // AvgSell: statoOrdine === "CHIUSO"  ? 0 : (Number(strategy.AvgSell) * Number(strategy.numAzioniSell) + Number(orderRes.market_value)) / (Number(strategy.numAzioniSell) + Number(orderRes.qty)),
                 posizioneMercato: statoOrdine === "CHIUSO"  ? "OFF" :strategy.posizioneMercato,
             };
-
+            CapitaleInvestito = statoOrdine === "CHIUSO" ? 0 : Number(strategy.CapitaleInvestito) - (parseFloat(orderRes.avg_entry_price) * parseFloat(orderRes.qty));
 
         } else {
             data = {
                 id:strategy.id,
-
-                CapitaleInvestito: statoOrdine === "CHIUSO" ? 0 : Number(strategy.CapitaleInvestito) - (parseFloat(orderRes.market_value) * (1 + parseFloat(orderRes.unrealized_pl))),
-                NumeroOperazioni:strategy.NumeroOperazioni +1,
-                NumeroOperazioniVincenti: orderRes.unrealized_pl > 0  ? Number(strategy.NumeroOperazioniVincenti) +1 : Number(strategy.NumeroOperazioniVincenti),
+                //NumeroOperazioni:strategy.NumeroOperazioni +1,
+                //NumeroOperazioniVincenti: orderRes.unrealized_pl > 0  ? Number(strategy.NumeroOperazioniVincenti) +1 : Number(strategy.NumeroOperazioniVincenti),
                 // AvgBuy: statoOrdine === "CHIUSO"  ? 0 : strategy.AvgBuy,
                 // AvgSell: statoOrdine === "CHIUSO"  ? 0 : (Number(strategy.AvgSell) * Number(strategy.numAzioniSell) + Number(orderRes.market_value)) / (Number(strategy.numAzioniSell) + Number(orderRes.qty)),
                 posizioneMercato: statoOrdine === "CHIUSO"  ? "OFF" :strategy.posizioneMercato,
             };
+            CapitaleInvestito= statoOrdine === "CHIUSO" ? 0 : Number(strategy.CapitaleInvestito) - (parseFloat(orderRes.market_value) * (1 + parseFloat(orderRes.unrealized_plpc)));
         }
-        logger.log(`[handleSell] Update strategies con data ${JSON.stringify(data)}`);
+        if(CapitaleInvestito < 0 ){
+            logger.error(`[handleSell] ATTENZIONE!!! CapitaleInvestito negativo Capitale Investito precedente ${strategy.CapitaleInvestito} CapitaleInvestito : $CapitaleInvestito} orderRes : ${JSON.stringify(orderRes)}`);
+            // Fermare la simulazione
+            await axios.post(`${marketSimulatorUrl}/stop`);
+            throw new Error(`[handleSell] ATTENZIONE!!! CapitaleInvestito negativo Capitale Investito precedente ${strategy.CapitaleInvestito} CapitaleInvestito : ${CapitaleInvestito} orderRes : ${JSON.stringify(orderRes)}`);
+        }
+        const url = `${shared.capitalManagerUrl}/capital/${strategy.id}`;
+        logger.trace(`[handleSell] Chiusura posizione ${strategy.id} DELETE: ${url} con CapitaleInvestito ${CapitaleInvestito}`);
+        await axios.delete(url, {
+            params : {
+                CapitaleInvestito : CapitaleInvestito
+        }});
+        logger.log(`[handleSell] Update strategies ${strategy.id} con CapitaleInvestito ${CapitaleInvestito}`);
 
         rc = await tradeDbHelpers.updateStrategies(data, strategy, {} );            
         if (!rc) throw new Error('Transazione updateStrategies fallita');
@@ -172,10 +211,14 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
 
     async function richiestaCapitale(bar, strategy) {
         try {
-            const url = `${shared.capitalManagerUrl}/evaluate/${strategy.id}`;
-            logger.trace(`[richiestaCapitale] Richiesta capitale a: ${url}`);
+            const url = `${shared.capitalManagerUrl}/capital/${strategy.id}`;
+            logger.trace(`[richiestaCapitale] Richiesta capitale a GET: ${url}`);
 
-            const { data: evalResult } = await axios.get(url);
+            const { data: evalResult } = await axios.get(url,{
+                params : {
+                    closed : bar.c
+                }
+            });
             logger.trace(`[richiestaCapitale] Risposta: ${JSON.stringify(evalResult)}`);
 
             if (!evalResult || typeof evalResult.approved === 'undefined') {
@@ -184,7 +227,7 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
             }
 
             if (!evalResult.approved) {
-                logger.info(`[richiestaCapitale] Allocazione rifiutata per ${strategy.idSymbol} (${strategy.id})`);
+                logger.info(`[richiestaCapitale] Allocazione rifiutata per ${strategy.idSymbol} (${strategy.id}) eval ${JSON.stringify(evalResult)}`);
                 return;
             }
 
@@ -206,5 +249,7 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
 module.exports = {
   init,
   handleBuy,
-  handleSell
+  handleSell,
+  getLogLevel,
+  setLogLevel
 };

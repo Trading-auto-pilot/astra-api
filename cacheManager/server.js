@@ -7,9 +7,10 @@ require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 3006;
-const MODULE_NAME = 'CacheManager RESTServer';
+const MICROSERVICE='cacheManager'
+const MODULE_NAME = 'RESTServer';
 const MODULE_VERSION = '1.0';
-const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL || 'info');
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
 
 const dbManagerBaseUrl = process.env.DBMANAGER_URL || 'http://dbmanager:3002'; // URL del microservizio DBManager
@@ -100,14 +101,14 @@ app.get('/info', (req, res) => {
 
 // Endpoint per ottenere candele dal simbolo e range
 app.get('/candles', async (req, res) => {
-  const { symbol, startDate, endDate } = req.query;
+  const { symbol, startDate, endDate, tf } = req.query;
 
   if (!symbol || !startDate || !endDate) {
     return res.status(400).json({ error: 'Parametri richiesti: symbol, startDate, endDate' });
   }
 
   try {
-    const candles = await cacheManager.retrieveCandles(symbol, startDate, endDate);
+    const candles = await cacheManager.retrieveCandles(symbol, startDate, endDate, tf);
     res.json(candles);
   } catch (err) {
     logger.error(`[CACHE] Errore nel recupero candele: ${err.message}`);

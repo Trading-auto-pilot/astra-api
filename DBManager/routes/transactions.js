@@ -1,19 +1,32 @@
 // routes/transactions.js
 const express = require('express');
+const cache = require('../../shared/cache');
 const router = express.Router();
 
 module.exports = (dbManager) => {
   router.get('/:orderId', async (req, res) => {
+
+    const cacheKey = 'transactions:all';
+    const id = req.params.id;
+
     try {
-      const result = await dbManager.getTransaction(req.params.orderId);
+      let data = await cache.get(cacheKey);
+      if (!data) {
+        const data = await dbManager.getTransaction(req.params.orderId);
+        await cache.set(cacheKey, data);
+      }
+      const result = data.find(s => s.orderid === req.params.orderid);
+      if (!result) return res.status(404).json({ error: 'Order not found' });
       res.json(result);
     } catch (err) {
-      console.error('[GET /transactions] Errore: '+ err.message);
+      console.error('[GET /transactions/:orderId] Errore: '+ err.message);
       res.status(500).json({ error: 'Errore nel recupero della transazione '+ err.message, module:"[GET /transactions]" });
     }
   });
 
   router.post('/', async (req, res) => {
+    await cache.del('transactions:all');
+    await cache.del('transactions:open');
     try {
       const result = await dbManager.insertTransazione(req.body);
       res.json(result);
@@ -24,6 +37,8 @@ module.exports = (dbManager) => {
   });
 
   router.put('/:id', async (req, res) => {
+    await cache.del('transactions:all');
+    await cache.del('transactions:open');
     try {
       const result = await dbManager.updateTransaction(req.params.id,req.body);
       res.json(result);
@@ -35,6 +50,8 @@ module.exports = (dbManager) => {
 
 
   router.post('/buy', async (req, res) => {
+    await cache.del('transactions:all');
+    await cache.del('transactions:open');
     try {
       const result = await dbManager.insertBuyTransaction(req.body);
       res.json(result);
@@ -45,6 +62,8 @@ module.exports = (dbManager) => {
   });
 
   router.post('/sell', async (req, res) => {
+    await cache.del('transactions:all');
+    await cache.del('transactions:open');
     try {
       const result = await dbManager.insertSellTransaction(req.body);
       res.json(result);
@@ -56,6 +75,8 @@ module.exports = (dbManager) => {
 
 
   router.post('/countByStrategyAndOrder', async (req, res) => {
+    await cache.del('transactions:all');
+    await cache.del('transactions:open');
     try {
       const result = await dbManager.countTransactionsByStrategyAndOrders(req.body);
       res.json(result);
@@ -75,7 +96,29 @@ module.exports = (dbManager) => {
     }
   });
 
+  router.get('/open/:scenario_id', async (req, res) => {
+    const cacheKey = 'transactions:open';
+    const id = req.params.scenario_id;
+
+    try {
+      let data = await cache.get(cacheKey);
+      if (!data) {
+        const data = await dbManager.getOpenTransactions();
+        await cache.set(cacheKey, data);
+      }
+      const result = data.find(s => s.ScenarioID === id);
+      if (!result) return res.status(200).json({ open: 0 });
+
+      res.status(200).json({ open: 1 });
+    } catch (err) {
+      console.error('[GET /transactions/open/:scenario_id] Errore: '+ err.message);
+      res.status(500).json({ error: 'Errore durante il recupero delle transazioni aperte per scenario id '+ err.message, module:"[GET /transactions/open/:scenario_id]" });
+    }
+  });
+
   router.delete('/all', async (req, res) => {
+    await cache.del('transactions:all');
+    await cache.del('transactions:open');
     try {
       const result = await dbManager.deleteAllTransactions();
       res.json(result.data);

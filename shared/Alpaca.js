@@ -17,10 +17,14 @@ const REDIS_ORDERS_KEY = 'alpaca:orders';
 
 
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
+let instance = null;
 
 class AlpacaApi {
 
     constructor(){
+        if (instance) return instance;
+        this.initialized = false;
+        instance = this;
         this.redisClient = redis.createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
         this.REDIS_CACHE_TTL = 300;
         this.orders = [];
@@ -29,27 +33,33 @@ class AlpacaApi {
 
     async init()
     {
+        if (this.initialized) return;
         logger.info(`[init] Inizializzazione...`);
 
         await initializeSettings(dbManagerUrl);
         this.REDIS_CACHE_TTL = getSetting('REDIS_CACHE_TTL') || 300;               // secondi
         this.AlpacaUrl = getSetting(`ALPACA-`+process.env.ENV_ORDERS+`-BASE`);
+        logger.log(" >> this.AlpacaUrl :"+ this.AlpacaUrl);
         await this.redisClient.connect();
+        this.initialized = true;
     }
 
     hasActiveOrder(symbol = null) {
+        if (!this.initialized) throw new Error('Alpaca non inizializzato');
         if (!Array.isArray(this.orders) || this.orders.length === 0) return false;
         if (!symbol) return this.orders.length > 0;
         return this.orders.some(order => order.symbol === symbol);
     }
 
     hasActivePosition(symbol = null) {
+        if (!this.initialized) throw new Error('Alpaca non inizializzato');
         if (!Array.isArray(this.positions) || this.positions.length === 0) return false;
         if (!symbol) return this.positions.length > 0;
         return this.positions.some(pos => pos.symbol === symbol);
     }
 
     async refreshCacheActiveOrders() {
+        if (!this.initialized) throw new Error('Alpaca non inizializzato');
         logger.log(`[refreshCache] Forzo aggiornamento ordini da Alpaca`);
         this.redisClient.del(REDIS_ORDERS_KEY);
         await this.loadActiveOrders();
@@ -58,6 +68,7 @@ class AlpacaApi {
     }
 
     async refreshCacheActivePositions() {
+        if (!this.initialized) throw new Error('Alpaca non inizializzato');
         logger.log(`[refreshCache] Forzo aggiornamento posizioni da Alpaca`);
         this.redisClient.del(REDIS_POSITIONS_KEY);
         await publishCommand({type:"positions",positions:this.positions},REDIS_POSITIONS_KEY);
@@ -65,6 +76,7 @@ class AlpacaApi {
     }
 
     getOrderCount() {
+        if (!this.initialized) throw new Error('Alpaca non inizializzato');
         return Array.isArray(this.orders) ? this.orders.length : 0;
     }
 
@@ -73,11 +85,13 @@ class AlpacaApi {
     }
 
     async close() {
+        if (!this.initialized) throw new Error('Alpaca non inizializzato');
         await this.redisClient.quit();
         logger.log(`[close] Connessione Redis chiusa`);
     }
 
     async closePosition(symbol){
+        if (!this.initialized) throw new Error('Alpaca non inizializzato');
         // Chiusura di tutte le posizioni di symbol
         let orderRes;
         try {
@@ -92,6 +106,7 @@ class AlpacaApi {
     }
 
     async loadActiveOrders({ symbol = null, order_id = null, side = null } = {}) {
+        if (!this.initialized) throw new Error('Alpaca non inizializzato');
         const alpacaAPIServer = this.AlpacaUrl + '/v2/orders?status=open';
         logger.log(`[loadActiveOrders] variabile alpacaAPIServer ${alpacaAPIServer} con symbol ${symbol} e order_id ${order_id}`);
 
@@ -136,6 +151,7 @@ class AlpacaApi {
 
 
     async loadActivePositions(symbol = null) {
+        if (!this.initialized) throw new Error('Alpaca non inizializzato');
         const alpacaAPIServer = this.AlpacaUrl + '/v2/positions';
         logger.log(`[loadActivePosition] variabile alpacaAPIServer ${alpacaAPIServer} con symbol ${symbol}`);
 
@@ -174,9 +190,8 @@ class AlpacaApi {
     }
 
     async placeOrder(symbol, qty, side, type = 'limit', time_in_force = 'gtc', limit_price = null, stop_price = null,trail_price = null, extended_hours = false, client_order_id, /*order_class, take_profit, stop_loss*/) {
-
+        if (!this.initialized) throw new Error('Alpaca non inizializzato');
         const alpacaAPIServer = this.AlpacaUrl + '/v2/orders';
-        //console.log('Place Orders APCA_API_KEY_ID'+APCA_API_KEY_ID);
         try {
             const body = {
                 //symbol, asset ID, or currency pair to identify the asset to trade, 
@@ -251,15 +266,33 @@ class AlpacaApi {
                 }
             );
             await this.refreshCacheActiveOrders();
-
-            //console.log(`[ORDER] Success: Order placed`, response.data);
             return response.data;
 
         } catch (error) {
-            console.error('[ORDER] Failed to place order:', error.message);
+            logger.error('[ORDER] Failed to place order:', error.message);
             throw error;
         }
 
+    } 
+
+    async getAvailableCapital() {
+        if (!this.initialized) throw new Error('Alpaca non inizializzato');
+        const alpacaAPIServer = this.AlpacaUrl + '/v2/account';
+        logger.log(`[getAvailableCapital] Recupero capitale disponibile da Alpaca : ${alpacaAPIServer}`);
+        
+        try {
+            const res = await axios.get(alpacaAPIServer, {
+                headers: {
+                'APCA-API-KEY-ID': process.env.APCA_API_KEY_ID,
+                'APCA-API-SECRET-KEY': process.env.APCA_API_SECRET_KEY
+                }
+            });
+            logger.log(`[getAvailableCapital] Recuperato capitale ${res.data.cash}`);
+            return(parseFloat(res.data.cash));
+        } catch (err) {
+            logger.error(`[getAvailableCapital] Errore Alpaca:`, err.message);
+        throw err;
+        }
     }
 
 }

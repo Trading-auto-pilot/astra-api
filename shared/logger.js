@@ -1,4 +1,5 @@
 const axios = require('axios');
+
 const levels = ['trace', 'log', 'info', 'warning', 'error'];
 const dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
 const enableDbLog = process.env.ENABLE_DB_LOG === 'true';
@@ -37,11 +38,11 @@ setInterval(async () => {
     logQueue = [...batch, ...logQueue];
     console.error('[logger] Failed to send logs:', err.message);
   }
-}, 100);
+}, 1000);
 
 
 function createLogger(microservice = '', moduleName = '', moduleVersion = '', level = 'info') {
-  const currentIndex = levels.indexOf(level);
+  let currentIndex = levels.indexOf(level);
 
 
   const logToConsoleAndQueue = (levelKey, color, ...args) => {
@@ -88,13 +89,25 @@ function createLogger(microservice = '', moduleName = '', moduleVersion = '', le
 
 
 
-  return {
+  const logger =  {
     trace: (...args) => currentIndex <= 0 && logToConsoleAndQueue('trace', COLORS.trace, ...args),
     log: (...args) => currentIndex <= 1 && logToConsoleAndQueue('log', COLORS.log, ...args),
     info: (...args) => currentIndex <= 2 && logToConsoleAndQueue('info', COLORS.info, ...args),
     warning: (...args) => currentIndex <= 3 && logToConsoleAndQueue('warning', COLORS.warning, ...args),
-    error: (...args) => currentIndex <= 4 && logToConsoleAndQueue('error', COLORS.error, ...args)
+    error: (...args) => currentIndex <= 4 && logToConsoleAndQueue('error', COLORS.error, ...args),
+
+    setLevel: (newLevel) => {
+      if (!levels.includes(newLevel)) {
+        console.warn(`[logger] Livello "${newLevel}" non valido`);
+        return;
+      }
+      currentLevel = newLevel;
+      currentIndex = levels.indexOf(currentLevel);
+      console.log(`[logger] Livello di log aggiornato a: ${newLevel}`);
+    }
   };
+
+  return logger;
 }
 
 module.exports = createLogger;

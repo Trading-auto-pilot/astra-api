@@ -166,7 +166,7 @@ async function simul_closePosition(symbol) {
   logger.trace(`[closePosition] Chiudo posizioni ${symbol}`);
   try {
     const [positions] = await connection.execute(
-      'SELECT * FROM Simul.Positions WHERE symbol = ? AND softDel != 1',
+      'SELECT * FROM Simul.Positions WHERE symbol = ?',
       [symbol]
     );
     
@@ -184,7 +184,7 @@ async function simul_closePosition(symbol) {
     console.log(totalReleased);
 
     await connection.execute(
-      'UPDATE Simul.Positions SET softDel = 1 WHERE symbol = ? AND softDel != 1',
+      'DELETE from Simul.Positions WHERE symbol = ?',
       [symbol]
     );
 

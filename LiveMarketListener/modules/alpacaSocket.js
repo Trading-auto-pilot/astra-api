@@ -7,9 +7,6 @@ const MICROSERVICE = 'LiveMarketListener';
 const MODULE_NAME = 'alpacaSocket';
 const MODULE_VERSION = '2.0';
 
-const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
- 
-
 class AlpacaSocket {
   constructor(settings, symbolStrategyMap, processBar) {
     this.settings = settings;
@@ -19,34 +16,46 @@ class AlpacaSocket {
     this.retryDelay = 5000; // ms
     this.maxRetries = 10;
     this.retryCount = 0;
+    this.delayProcess = this.settings('PROCESS_DELAY_BETWEEN_MESSAGES') || 500;
+    this.logLevel = process.env.LOG_LEVEL || 'info';
+    this.logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, this.logLevel);
   }
+
+    getLogLevel(){
+        return this.logLevel;
+    }
+
+    setLogLevel(level) {
+        this.logLevel=level;
+        this.logger.setLevel(level);
+    }
 
   async connect() {
     const baseUrl = this.settings([`ALPACA-${process.env.ENV_MARKET}-MARKET`]);
     const wsUrl = `${baseUrl}/${process.env.FEED}`;
-    logger.info(`[connect] Connessione a: ${wsUrl}`);
+    this.logger.info(`[connect] Connessione a: ${wsUrl}`);
 
     this.ws = new WebSocket(wsUrl);
 
     // Apro la connessione websocket
     this.ws.on('open', () => {
-      logger.info(`[connect] WebSocket connesso. Autenticazione in corso...`);
+      this.logger.info(`[connect] WebSocket connesso. Autenticazione in corso...`);
       this.ws.send(JSON.stringify({
         action: 'auth',
         key: process.env.APCA_API_KEY_ID,
         secret: process.env.APCA_API_SECRET_KEY
-      }));
+      })); 
     });
 
     // Connessione su websocket, autenticazione e sottoscrizione
     this.ws.on('message', async (data) => {
-      logger.trace(`[connect] messaggio ricevuto ${data}`);
+      this.logger.trace(`[connect] messaggio ricevuto ${data}`);
 
       let messages;
       try {
         messages = JSON.parse(data);
       } catch (err) {
-        logger.error('[connect] Errore parsing JSON:', err.message);
+        this.logger.error('[connect] Errore parsing JSON:', err.message);
         return;
       }
 
@@ -55,29 +64,29 @@ class AlpacaSocket {
 
       for (const msg of messages) {
         if (msg.T === 'success' && msg.msg === 'authenticated') {
-          logger.info('[connect] Autenticato. Passo alla sottoscrizione dei simboli');
+          this.logger.info('[connect] Autenticato. Passo alla sottoscrizione dei simboli');
           const symbols = Object.keys(this.symbolStrategyMap);
           this.ws.send(JSON.stringify({ action: 'subscribe', bars: symbols }));
-          logger.info(`[connect] Sottoscritto ai simboli: ${symbols.join(', ')}`);
+          this.logger.info(`[connect] Sottoscritto ai simboli: ${symbols.join(', ')}`);
           this.retryCount = 0; // reset
         }
 
         if (msg.T === 'b' && !this.orderActive.includes(msg.S)) {
           await this.processBar(msg);
+          await new Promise(resolve => setTimeout(resolve, this.delayProcess)); 
         } else if (msg.T === 'b') {
-          logger.trace(`[connect] Candela non processata per ordine già attivo`);
+          this.logger.trace(`[connect] Candela non processata per ordine già attivo`);
         }
       }
     });
 
-
     this.ws.on('close', () => {
-      logger.warning(`[connect] Connessione chiusa. Tentativo di riconnessione in ${this.retryDelay / 1000}s`);
+      this.logger.warning(`[connect] Connessione chiusa. Tentativo di riconnessione in ${this.retryDelay / 1000}s`);
       this.scheduleReconnect();
     });
 
     this.ws.on('error', (err) => {
-      logger.error(`[connect] Errore WebSocket: ${err.message}`);
+      this.logger.error(`[connect] Errore WebSocket: ${err.message}`);
       // Qui in futuro si potrà pubblicare un messaggio su Redis per notificare l'errore
       this.scheduleReconnect();
     });
@@ -87,12 +96,12 @@ class AlpacaSocket {
     let attempt=0;
     while (true) {
       try {
-        logger.info(`[reconnect] Tentativo ${attempt}`);
+        this.logger.info(`[reconnect] Tentativo ${attempt}`);
         await this.connect(); // deve essere async
-        logger.info('[reconnect] Connessione riuscita');
+        this.logger.info('[reconnect] Connessione riuscita');
         break; // esce se la connessione ha successo
       } catch (err) {
-        logger.warn(`[reconnect] Connessione fallita (tentativo ${attempt}): ${err.message}`);
+        this.logger.warning(`[reconnect] Connessione fallita (tentativo ${attempt}): ${err.message}`);
         attempt++;
         await new Promise(res => setTimeout(res, this.retryDelay));
       }
@@ -102,7 +111,6 @@ class AlpacaSocket {
   setActiveOrders(symbols) {
     this.orderActive = symbols;
   }
-
 
   // GETTER E SETTER PER PARAMETRI DI RICONNESSIONE
     // Getter e Setter per retryDelay
@@ -131,7 +139,6 @@ class AlpacaSocket {
     resetRetryCount() {
       this.retryCount = 0;
     }
-
 }
 
 module.exports = AlpacaSocket;

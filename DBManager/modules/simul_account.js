@@ -50,7 +50,7 @@ async function simul_updateAccount(accountUpdate) {
 
 async function simul_getAccountAsJson() {
   const connection = await getDbConnection();
-  try {
+  try { 
     const [rows] = await connection.execute('SELECT * FROM Simul.Account LIMIT 1');
     if (rows.length === 0) return null;
     const row = rows[0];

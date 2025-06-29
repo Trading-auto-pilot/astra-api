@@ -16,21 +16,21 @@ const app = express();
 app.use(express.json());
 
 const port = process.env.PORT || 3003;
-const simulator = new MarketSimulator();
+const marketSimulator = new MarketSimulator();
 const server = http.createServer(app);
 
 // WebSocket binding
-simulator.attachWebSocketServer(server);
+marketSimulator.attachWebSocketServer(server);
 
 // Endpoint: Avvia la simulazione
 app.post('/start', async (req, res) => {
-  const { startDate, endDate, tf } = req.body;
+  const { startDate, endDate, tf, stopCandles } = req.body;
   if ( !startDate || !endDate) {
     return res.status(400).json({ error: 'startDate e endDate sono richiesti' });
   }
 
   try {
-    await simulator.startSimulation(startDate, endDate, tf);
+    await marketSimulator.startSimulation(startDate, endDate, tf, stopCandles);
     res.json({ status: 'Simulazione avviata' });
   } catch (err) {
     logger.error(`[start] Errore: ${err.message}`);
@@ -40,12 +40,14 @@ app.post('/start', async (req, res) => {
 
 // Endpoint: Ferma la simulazione
 app.post('/stop', (req, res) => {
-  simulator.stopSimulation();
+  marketSimulator.stopSimulation();
   res.json({ status: 'Simulazione fermata' });
 });
 
 app.post('/restart', (req, res) => {
-  lastDate = simulator.restartSimulation();
+  const { startDate, endDate, tf, stopCandles } = req.body;
+
+  lastDate = marketSimulator.restartSimulation(startDate, endDate, tf, stopCandles);
   res.json({ status: 'Simulazione Riavviata da data '+lastDate });
 });
 
@@ -56,14 +58,36 @@ app.post('/send', (req, res) => {
     return res.status(400).json({ error: 'Payload mancante' });
   }
 
-  simulator.broadcastMessage(payload);
+  marketSimulator.broadcastMessage(payload);
   res.status(200).json({ status: 'inviato', payload });
+});
+
+app.get('/loglevel', (req, res) => {
+  res.json({ 
+    marketSimulator : marketSimulator.getLogLevel()
+  });
+});
+
+app.put('/loglevel/:module', (req, res) => {
+
+  const moduleMap = {
+    marketSimulator
+  };
+
+  const targetModule = moduleMap[req.params.module];
+
+  if (!targetModule || typeof targetModule.setLogLevel !== 'function') {
+    return res.status(400).json({ success: false, error: `Modulo ${req.params.module} non esistente` });
+  }
+
+  targetModule.setLogLevel(req.body.logLevel);
+  res.status(200).json({ success: true, msg: `Nuovo livello ${req.body.logLevel} log per modulo ${req.params.module}` });
 });
 
 
 // Endpoint: Info modulo
 app.get('/info', (req, res) => {
-  res.json(simulator.getInfo());
+  res.json(marketSimulator.getInfo());
 });
 
 // Endpoint: Healthcheck
@@ -90,7 +114,7 @@ server.listen(port, () => {
     try {
       const parsed = JSON.parse(message);
       if (parsed.action === 'loadSettings') {
-        simulator.loadSettings();
+        marketSimulator.loadSettings();
         logger.log('✔️  Eseguito comando:', parsed.action);
       }
     } catch (err) { 

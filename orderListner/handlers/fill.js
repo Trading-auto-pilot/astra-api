@@ -14,7 +14,8 @@ module.exports = async (data, event_type, AlpacaEnv, AlpacaApi) => {
 
   const dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
   const alertingUrl = process.env.ALERTINGMANAGER_URL || 'http://localhost:3008';
-  let transazioni, strategia, myStrategy, dettOrder, cache;
+  const capitalManagerUrl = process.env.CAPITALMANAGER_URL || 'http://localhost:3009';
+  let transazioni, strategia, myStrategy, capitali;
 
   /**  ***************************************************************************************** */
   // Recupero transazioni
@@ -108,6 +109,15 @@ module.exports = async (data, event_type, AlpacaEnv, AlpacaApi) => {
 
    /**  ***************************************************************************************** */
 
+   // Recupero capitali usati
+   try {
+      const url = `${capitalManagerUrl}/capital`;
+      logger.trace(`[FILL] Recupero Capitali da capitalManager ${url}`);
+      capitali = await axios.get(`${url}`);
+   } catch (error) {
+    logger.error(`[FILL] Errore durante il recupero dei capitali da ${url} erro : ${error.message}`);
+    return null;
+   }
 
   /**  ***************************************************************************************** */
   // Recupero gli ordini ancora aperti per verificare se esistono altri ordini su questo symbol
@@ -147,7 +157,7 @@ module.exports = async (data, event_type, AlpacaEnv, AlpacaApi) => {
 
 
   // Istanzio la calsse comune e gli passo le transazioni e la strategia.
-  const fillComm = new fillOrder(event_type, data, transazioni.data, strategia.data[0], /*cache,*/ openOrders.data.count, strategy_runs);
+  const fillComm = new fillOrder(event_type, data, transazioni.data, strategia.data[0], /*cache,*/ openOrders.data.count, strategy_runs, capitali.data);
 
   logger.trace(`[FILL] Calcolo update KPIs`);
   fillComm.updateKPIs();
@@ -167,10 +177,17 @@ module.exports = async (data, event_type, AlpacaEnv, AlpacaApi) => {
     const { idBotIn, idBotOut, idSymbol, ...cleanedStrategy } = updStrategy;
     logger.trace(`[FILL] Aggiorno Tabella Strategies PUT ${dbManagerUrl}/strategies/${fillComm.getStrategia().id} con ${JSON.stringify(cleanedStrategy)}`);
     const ret = await axios.put(`${dbManagerUrl}/strategies/${fillComm.getStrategia().id}`, cleanedStrategy);
+    // Aggiornamento capitali 
+    const url = `${capitalManagerUrl}/capital/${fillComm.getStrategia().id}`;
+    await axios.put(url,{used : fillComm.getStrategia().CapitaleInvestito, approved : strategia.data[0].CapitaleInvestito});
+    logger.trace(`[FILL] Aggiorno Capitali in CapitalManager used : ${fillComm.getStrategia().CapitaleInvestito} approved:${strategia.data[0].CapitaleInvestito}`);
   } catch (error) {
     logger.trace(`[FILL] Errore nell'aggiornamento della tabella strategies ${error.message}`);
     //return null;
   }
+
+
+
 
   // Aggiorno la tabella Strategy_runs
   if(fillComm.isNewStrategyRuns()) {

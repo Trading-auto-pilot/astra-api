@@ -37,7 +37,7 @@ class CacheManager {
       status: 'OK'
     };
   }
-
+ 
   _getCacheFilePath(symbol, year, month) {
     return path.join(this.cacheBasePath, symbol, `${year}-${String(month).padStart(2, '0')}_${this.tf}.json`);
   }
@@ -76,9 +76,10 @@ class CacheManager {
     }
   }
 
-  async retrieveCandles(symbol, startDate, endDate) {
+  async retrieveCandles(symbol, startDate, endDate, tf) {
     let start = new Date(startDate);
     let end = new Date(endDate);
+    this.tf=tf;
 
 
     let allBars = [];

@@ -1,14 +1,17 @@
 // modules/strategies.js
 
 const { getDbConnection, formatDateForMySQL } = require('./core');
-const { resolveBotIdByName } = require('./bots');
-const { resolveSymbolIdByName } = require('./symbols');
+// const { resolveBotIdByName } = require('./bots');
+// const { resolveSymbolIdByName } = require('./symbols');
 const createLogger = require('../../shared/logger');
 const { publishCommand } = require('../../shared/redisPublisher');
+
 
 const MICROSERVICE = 'DBManager';
 const MODULE_NAME = 'strategies';
 const MODULE_VERSION = '2.0';
+
+
 
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
@@ -35,6 +38,56 @@ async function getActiveStrategies(symbol = null) {
   }
 }
 
+async function getStrategiesCapital() {
+  const conn = await getDbConnection();
+  try {
+    const [rows] = await conn.execute(`
+      SELECT id, share, CapitaleInvestito, OpenOrders
+      FROM strategies WHERE status = 'active'
+    `);
+    return rows
+  } catch (error) {
+    logger.error(`[getStrategiesCapital] Errore recupero parametri Capital :`, error.message);
+    throw error;
+  } finally {
+     conn.release();
+  }
+}
+
+async function setStrategiesCapital(capitalData) {
+  const conn = await getDbConnection();
+  let rc=[];
+  try {
+      for (const [id, row] of Object.entries(capitalData)) {
+
+        const investito = Number(row.CapitaleInvestito) || 0;
+        const ordini = Number(row.OpenOrders) || 0;
+
+        if (investito < 0) {
+          logger.error(`[setStrategiesCapital] Valori negativo non ammesso per la strategia ${id}: CapitaleInvestito=${investito} imposto a zero`);
+          investito = 0;
+          //throw new Error(`[setStrategiesCapital] Valori negativi non ammessi per la strategia ${id}: CapitaleInvestito=${investito}, OpenOrders=${ordini}`);
+        }
+        if (ordini < 0) {
+          logger.error(`[setStrategiesCapital] Valori negativo non ammesso per la strategia ${id}: OpenOrder=${ordini} imposto a zero`);
+          ordini = 0;
+        }
+
+        const res = await conn.execute(
+          `UPDATE strategies SET CapitaleInvestito = ?, OpenOrders = ? WHERE id = ?`,
+          [investito, ordini, id]
+        );
+        rc.push(res);
+      }
+      return(rc);
+  } catch (error) {
+    logger.error(`[setStrategiesCapital] Errore impostazione parametri Capital ${JSON.stringify(capitalData)} Error :`, error.message);
+    throw error;
+  } finally {
+     conn.release();
+  }
+}
+
 async function updateStrategies(id, update) {
   if (!id) {
     logger.error('[updateStrategies] ID mancante');
@@ -49,9 +102,20 @@ async function updateStrategies(id, update) {
   const excluded = ['id', 'TotalCommitted'];
   const fields = Object.keys(update).filter(f => !excluded.includes(f));
   if (fields.length === 0) {
-    logger.warn('[updateStrategies] Nessun campo valido da aggiornare');
+    logger.warning('[updateStrategies] Nessun campo valido da aggiornare');
     return { success: false, reason: 'Nessun campo aggiornabile' };
   }
+
+  // Controllo valori negativi
+  if ('CapitaleInvestito' in update && update.CapitaleInvestito < 0) {
+    logger.error(`[updateStrategies] CapitaleInvestito negativo per strategia ${id}, impostato a 0`);
+    update.CapitaleInvestito = 0;
+  }
+  if ('OpenOrders' in update && update.OpenOrders < 0) {
+    logger.error(`[updateStrategies] OpenOrders negativo per strategia ${id}, impostato a 0`);
+    update.OpenOrders = 0;
+  }
+  
 
   const values = fields.map(f => (f === 'params' ? JSON.stringify(update[f]) : update[f]));
   const sql = `UPDATE strategies SET ${fields.map(f => `${f} = ?`).join(', ')} WHERE id = ?`;
@@ -118,7 +182,7 @@ async function insertStrategyRun(strategyRun) {
 
 
 async function updateStrategyRun(strategy_runs_id, updates) {
-  if (!strategy_runs_id) {
+  if (!strategy_runs_id || strategy_runs_id === 'OFF') {
     logger.error('[updateStrategyRun] strategy_runs_id mancante');
     return { success: false, error: 'strategy_runs_id richiesto' };
   }
@@ -153,12 +217,12 @@ async function updateStrategyRun(strategy_runs_id, updates) {
 
 
 
-
-
 module.exports = {
   getActiveStrategies,
   updateStrategies,
   getStrategiesRun,
   insertStrategyRun,
-  updateStrategyRun
+  updateStrategyRun,
+  getStrategiesCapital,
+  setStrategiesCapital
 };
