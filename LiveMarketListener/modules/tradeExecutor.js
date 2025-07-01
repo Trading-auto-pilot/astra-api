@@ -156,7 +156,7 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION,logLevel);
 
         if (!orderRes) throw new Error('SELL failed');
 
-        const statoOrdine = Number(strategy_runs.numAzioniBuy) === Number(strategy_runs.numAzioniSell) + Number(orderRes.qty) 
+        const statoOrdine = Number(strategy_runs.numAzioniBuy) <= Number(strategy_runs.numAzioniSell) + Number(orderRes.qty) 
             ? "CHIUSO"
             : "APERTO";
 
@@ -188,8 +188,8 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION,logLevel);
         if(CapitaleInvestito < 0 ){
             logger.error(`[handleSell] ATTENZIONE!!! CapitaleInvestito negativo Capitale Investito precedente ${strategy.CapitaleInvestito} CapitaleInvestito : $CapitaleInvestito} orderRes : ${JSON.stringify(orderRes)}`);
             // Fermare la simulazione
-            await axios.post(`${marketSimulatorUrl}/stop`);
-            throw new Error(`[handleSell] ATTENZIONE!!! CapitaleInvestito negativo Capitale Investito precedente ${strategy.CapitaleInvestito} CapitaleInvestito : ${CapitaleInvestito} orderRes : ${JSON.stringify(orderRes)}`);
+            //await axios.post(`${marketSimulatorUrl}/stop`);
+            //throw new Error(`[handleSell] ATTENZIONE!!! CapitaleInvestito negativo Capitale Investito precedente ${strategy.CapitaleInvestito} CapitaleInvestito : ${CapitaleInvestito} orderRes : ${JSON.stringify(orderRes)}`);
         }
         const url = `${shared.capitalManagerUrl}/capital/${strategy.id}`;
         logger.trace(`[handleSell] Chiusura posizione ${strategy.id} DELETE: ${url} con CapitaleInvestito ${CapitaleInvestito}`);
@@ -199,8 +199,8 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION,logLevel);
         }});
         logger.log(`[handleSell] Update strategies ${strategy.id} con CapitaleInvestito ${CapitaleInvestito}`);
 
-        rc = await tradeDbHelpers.updateStrategies(data, strategy, {} );            
-        if (!rc) throw new Error('Transazione updateStrategies fallita');
+        // rc = await tradeDbHelpers.updateStrategies(data, strategy, {} );            
+        // if (!rc) throw new Error('Transazione updateStrategies fallita');
 
         // logger.trace(`[handleSell] Update strategy runs ${shared.dbManagerUrl}/strategies/runs/strategy/${strategy.posizioneMercato} | ${JSON.stringify(strategy_runs_update)}`);
         // rc = await axios.put(`${shared.dbManagerUrl}/strategies/runs/strategy/${strategy.posizioneMercato}`,strategy_runs_update);

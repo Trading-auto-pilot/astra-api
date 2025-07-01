@@ -5,9 +5,11 @@ const routeEvent = require('./router');
 const createLogger = require('../shared/logger');
 const Alpaca = require('../shared/Alpaca');
 
+const MICROSERVICE= "OrderListener"
 const MODULE_NAME = 'OrderListener';
 const MODULE_VERSION = '1.2';
-const logger = createLogger(MODULE_NAME, process.env.LOG_LEVEL);
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
+const PROCESS_INTERVAL = 200;
 
 class OrderListener {
   constructor() {
@@ -18,6 +20,7 @@ class OrderListener {
     this.timeout = 10000;
     this.AlpacaEnv=null;
     this.AlpacaApi = new Alpaca();
+    this.tradeUpdateQueue = [];
   }
    
   async init() {
@@ -82,6 +85,21 @@ connect(retry = true) {
 
   this.ws = new WebSocket(wsUrl);
 
+    setInterval( () => {
+      if (this.tradeUpdateQueue.length === 0) return;
+
+      const tradeUpdate = this.tradeUpdateQueue.shift();
+      logger.trace(`[queue] Processo trade_update | ${JSON.stringify(tradeUpdate)}`);
+      routeEvent(tradeUpdate.event, tradeUpdate, this.AlpacaEnv, this.AlpacaApi);
+
+
+      // Nel caso sia un messaggio relativo a una chiusura di una posizione DELETE positions, lo giro al liveMarketListner
+      //await axios.post(`${this.liveMarketListnerUrl}/addOrdertoOrderTable`,msg.data.order); 
+
+      // Richiamo aggiornaCapitaliImpegnati di LiveMarketListner 
+    }, PROCESS_INTERVAL);
+
+
   this.ws.on('open', () => {
     logger.info(`[${MODULE_NAME}][connect] WebSocket connesso. Autenticazione in corso...`);
 
@@ -119,13 +137,8 @@ connect(retry = true) {
     }
 
     if (msg.stream === 'trade_updates') {
-      logger.trace(`[update] Evento trade: ${JSON.stringify(msg.data, null, 2)}`);
-      // Processo il messaggio
-      routeEvent(msg.data.event, msg.data, this.AlpacaEnv, this.AlpacaApi);
-      // Nel caso sia un messaggio relativo a una chiusura di una posizione DELETE positions, lo giro al liveMarketListner
-      //await axios.post(`${this.liveMarketListnerUrl}/addOrdertoOrderTable`,msg.data.order); 
-
-      // Richiamo aggiornaCapitaliImpegnati di LiveMarketListner 
+      logger.trace(`[update] Accodato trade_update in coda| ${JSON.stringify(msg.data)}`);
+      this.tradeUpdateQueue.push(msg.data);
     } else {
       logger.warning(`[connect] Evento sconosciuto: ${JSON.stringify(msg)}`);
     }
@@ -149,12 +162,16 @@ connect(retry = true) {
 }
 
 
+
   getInfo() {
     return {
+      microservice: MICROSERVICE,
       module: MODULE_NAME,
       version: MODULE_VERSION,
       environment: this.isPaper ? 'PAPER' : 'LIVE',
-      status: this.ws && this.ws.readyState === 1 ? 'connected' : 'disconnected'
+      status: this.ws && this.ws.readyState === 1 ? 'connected' : 'disconnected',
+      logLevel : process.env.LOG_LEVEL,
+      lengthQueue : this.tradeUpdateQueue.length
     };
   }
 

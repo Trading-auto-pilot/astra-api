@@ -183,7 +183,7 @@ async function insertStrategyRun(strategyRun) {
 
 async function updateStrategyRun(strategy_runs_id, updates) {
   if (!strategy_runs_id || strategy_runs_id === 'OFF') {
-    logger.error('[updateStrategyRun] strategy_runs_id mancante');
+    logger.warning('[updateStrategyRun] strategy_runs_id mancante');
     return { success: false, error: 'strategy_runs_id richiesto' };
   }
 

@@ -41,6 +41,23 @@ const dbManagerBaseUrl = process.env.DBMANAGER_URL || 'http://dbmanager:3002';
     }
   });
 
+  app.put('/capital/calcolaAlloc', async (req, res) => {
+
+    const { data, alpacaCache, freeUp } = req.body; 
+    if (!data || !alpacaCache) {
+      return res.status(400).json({ error: 'Invalid input: data and alpacaChace required' });
+    }
+
+    try {
+      const result = await allocCapital.calcolaAlloc(data, alpacaCache, freeUp);
+      if (!result.success) return res.status(404).json({ error: 'Error running calcolaAlloc |'+JSON.stringify(result.data) });
+      res.json(result);
+    } catch (error) {
+      console.error('[PUT /capital/calcolaAlloc] Errore: '+ error.message);
+      res.status(500).json({ error: `Errore calcolaAlloc : ${error.message}`, module:"[PUT /capital/calcolaAlloc]" });
+    }
+  });
+
   app.get('/capital/:strategy_id(\\d+)', async (req, res) => {
 
     try {
@@ -70,6 +87,7 @@ const dbManagerBaseUrl = process.env.DBMANAGER_URL || 'http://dbmanager:3002';
   });
 
   app.put('/capital/:strategy_id(\\d+)', async (req, res) => {
+    console.log(`[HTTP] ${req.method} ${req.originalUrl} at ${Date.now()}`);
 
     if (isNaN(req.body.approved) || isNaN(req.body.used)) {
       return res.status(400).json({ error: 'Invalid input: approved and used must be numbers' });

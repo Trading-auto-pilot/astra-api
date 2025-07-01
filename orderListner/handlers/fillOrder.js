@@ -8,7 +8,7 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.e
 class fiilOrders {
     constructor(caller, filledOrder, transazioni, strategia, /*cache,*/ openOrders, strategy_runs, capitali) {
         this.caller = caller;
-        this.transazioni = transazioni;
+        //this.transazioni = transazioni;
         this.strategia = strategia;
         //this.cache=cache;
         this.filledOrder=filledOrder;

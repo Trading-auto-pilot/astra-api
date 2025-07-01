@@ -16,6 +16,8 @@ class AlpacaSocket {
     this.retryDelay = 5000; // ms
     this.maxRetries = 10;
     this.retryCount = 0;
+    this.messageQueue = [];
+    this.processing = false;
     this.delayProcess = this.settings('PROCESS_DELAY_BETWEEN_MESSAGES') || 500;
     this.logLevel = process.env.LOG_LEVEL || 'info';
     this.logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, this.logLevel);
@@ -47,6 +49,23 @@ class AlpacaSocket {
       })); 
     });
 
+    // Gestione Sincrona dei messaggi
+    setInterval(async () => {
+      if (this.processing || this.messageQueue.length === 0) return;
+
+      
+      const msg = this.messageQueue.shift();
+      this.processing = true;
+      this.logger.trace(`[connect] Elaborazione messaggio T ricevuto ${JSON.stringify(msg)} `);
+      try {
+        await this.processBar(msg);
+      } catch (err) {
+        this.logger.error('[queue] Errore in processBar:', err.message);
+      } finally {
+        this.processing = false;
+      }
+    }, this.delayProcess || 500);
+
     // Connessione su websocket, autenticazione e sottoscrizione
     this.ws.on('message', async (data) => {
       this.logger.trace(`[connect] messaggio ricevuto ${data}`);
@@ -63,6 +82,8 @@ class AlpacaSocket {
       if (!Array.isArray(messages)) messages = [messages];
 
       for (const msg of messages) {
+
+        /*
         if (msg.T === 'success' && msg.msg === 'authenticated') {
           this.logger.info('[connect] Autenticato. Passo alla sottoscrizione dei simboli');
           const symbols = Object.keys(this.symbolStrategyMap);
@@ -70,12 +91,21 @@ class AlpacaSocket {
           this.logger.info(`[connect] Sottoscritto ai simboli: ${symbols.join(', ')}`);
           this.retryCount = 0; // reset
         }
+          */
 
         if (msg.T === 'b' && !this.orderActive.includes(msg.S)) {
-          await this.processBar(msg);
-          await new Promise(resolve => setTimeout(resolve, this.delayProcess)); 
+          this.logger.trace(`[connect] messaggio T ricevuto ${data} accodo per elaborazione processBar`);
+          this.messageQueue.push(msg);
+          //await this.processBar(msg);
+          //await new Promise(resolve => setTimeout(resolve, this.delayProcess)); 
         } else if (msg.T === 'b') {
           this.logger.trace(`[connect] Candela non processata per ordine già attivo`);
+        } else if (msg.T === 'success' && msg.msg === 'authenticated') {
+            this.logger.info('[connect] Autenticato. Passo alla sottoscrizione dei simboli');
+            const symbols = Object.keys(this.symbolStrategyMap);
+            this.ws.send(JSON.stringify({ action: 'subscribe', bars: symbols }));
+            this.logger.info(`[connect] Sottoscritto ai simboli: ${symbols.join(', ')}`);
+            this.retryCount = 0; // reset
         }
       }
     });

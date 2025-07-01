@@ -106,6 +106,7 @@ module.exports = (dbManager) => {
         const data = await dbManager.getOpenTransactions();
         await cache.set(cacheKey, data);
       }
+      if(!data) return res.status(200).json({ open: 0 });
       const result = data.find(s => s.ScenarioID === id);
       if (!result) return res.status(200).json({ open: 0 });
 

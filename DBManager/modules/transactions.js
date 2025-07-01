@@ -24,7 +24,7 @@ async function insertBuyTransaction(body) {
     await publishCommand(body,'transactions:update' );
 
   } catch (err) {
-    logger.error(`[insertBuyTransaction] Errore insert:`, err.message);
+    logger.error(`[insertBuyTransaction] Errore insert: ${err.message} body | ${JSON.stringify(body)}`);
     throw err;
   } finally {
       connection.release();

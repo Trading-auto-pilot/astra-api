@@ -147,7 +147,7 @@ function setLogLevel(level) {
     let CapitaleInvestito = Number(capitalData[strategy_id].CapitaleInvestito);
     let OpenOrder = Number(capitalData[strategy_id].OpenOrders);
     // aggiorna Documento
-    CapitaleInvestito += used;
+    CapitaleInvestito = used;
     OpenOrder -= Math.round(approved);
     if(OpenOrder + CapitaleInvestito < 0){
       logger.warning(`[setStrategyCapitalAcceptedOrder] OpenOrder negativo. OpenOrder : ${capitalData[strategy_id].OpenOrders} approved : ${approved}`);
@@ -177,8 +177,6 @@ function setLogLevel(level) {
     // Aggiorno AvailableCapital
     alpacaCache = await AlpacaApi.getAvailableCapital();
     await cache.setp(`strategy:capital:availableCache`, alpacaCache);
-    setReadNeeded();
-    setFlushNeeded();
 
     const capitalData = await cache.get('strategy:capital');
     //  Azzero capitaleInvestito
@@ -188,8 +186,10 @@ function setLogLevel(level) {
     if(!rc.success)
       return ({ approved : false, reason : rc.Error });
     // salva il documento aggiornato in Redis
+    logger.log(`[freeupCapital] Salvataggio struttura post chiusura | ${JSON.stringify(capitalData)}`);
     await cache.setp('strategy:capital',capitalData);
-
+    setReadNeeded();
+    setFlushNeeded();
     return({success:true})
 
   }
@@ -205,6 +205,7 @@ function setLogLevel(level) {
    */
 
   async function reserveCapitalForStrategy(strategy_id, closed) {
+      logger.trace(`[reserveCapitalForStrategy] chiamata con strategy_id : ${strategy_id}`);
 
       if((getCapitaleDisponibile() && getCapitaleDisponibile() < 0) ) 
         return ({ approved : false , Error: ` Capitale disponibile  ${getCapitaleDisponibile()} negativo o nullo`});
@@ -217,6 +218,7 @@ function setLogLevel(level) {
       return null;
     }
     const strategyData = capitalData[strategy_id];
+    logger.trace(`[reserveCapitalForStrategy] strategyData for strategyId ${strategy_id} | ${JSON.stringify(strategyData)}`);
 
     const rimanente = Number(strategyData.rimanente) || 0;
     const openOrders = Number(strategyData.OpenOrders) || 0;
@@ -224,7 +226,7 @@ function setLogLevel(level) {
 
     if(closed > Math.round(openOrders + rimanente)){
       capitalData[strategy_id].OpenOrders = 0;
-      logger.warning(`Prezo security ${closed} maggiore del capitale residuo ${Math.round(openOrders + rimanente)} azzero openOrders`);
+      logger.warning(`[reserveCapitalForStrategy] Prezo security ${closed} maggiore del capitale residuo ${Math.round(openOrders + rimanente)}. Strategy id ${strategy_id} azzero openOrders`);
       await cache.setp('strategy:capital',capitalData);
       return ({ approved : false , Error: `Prezo security ${closed} maggiore del capitale residuo ${Math.round(openOrders + rimanente)}`});
     }
@@ -232,7 +234,7 @@ function setLogLevel(level) {
 
     // aggiorna OpenOrders nel documento
     capitalData[strategy_id].OpenOrders = Math.round(openOrders + rimanente);
-
+    logger.trace(`[reserveCapitalForStrategy] capitalData prima di calcolaAlloc  | ${JSON.stringify(capitalData)}`);
 
     // Ricalcola i capitali disponibili
     const rc = await calcolaAlloc(capitalData, AlpacaCache);
@@ -240,16 +242,19 @@ function setLogLevel(level) {
       return ({ approved : false, reason : rc.Error });
     // salva il documento aggiornato in Redis
     await cache.setp('strategy:capital',capitalData);
+    logger.trace(`[reserveCapitalForStrategy] capitalData dopo calcolaAlloc  | ${JSON.stringify(capitalData)}`);
     // salva availableCapital su REDIS
     //await cache.setp('strategy:capital:availableCache',AlpacaCache);
 
     setFlushNeeded();
     setReadNeeded();
+
     if(capitalData[strategy_id].OpenOrders > 0)
         return {
             approved : true,
             grantedAmount :capitalData[strategy_id].OpenOrders,
-            cacheResiduo : AlpacaCache
+            cacheResiduo : AlpacaCache,
+            capitalData : capitalData[strategy_id]
         };
    
     return { approved : false }
@@ -314,7 +319,13 @@ function setLogLevel(level) {
     azzeraContatori();
     // 1. Calcolo del capitale Originale (Disponibile + Impegnato)
     for (const row of Object.values(data)) {
-      setTotaleCapitaleInvestito( getTotaleCapitaleInvestito() + Number(row.CapitaleInvestito));
+      // This is only for debugging the Simulation --- Remove in prod
+      if(Number(row.CapitaleInvestito) > 36000){
+        await axios.post('http://localhost:3003/stop');
+      }
+
+      //*********************************************************** */
+      freUp? setTotaleCapitaleInvestito(Number(row.CapitaleInvestito)) : setTotaleCapitaleInvestito( getTotaleCapitaleInvestito() + Number(row.CapitaleInvestito));
       setTotaleOrdiniAperti(getTotaleOrdiniAperti() + Number(row.OpenOrders));
     }
     setTotaleCapitaleImpegnato(getTotaleCapitaleInvestito() + getTotaleOrdiniAperti());
@@ -445,5 +456,6 @@ module.exports = {
   setStrategyCapitalAcceptedOrder,
   getLogLevel,
   setLogLevel,
-  freeupCapital
+  freeupCapital,
+  calcolaAlloc
 };
