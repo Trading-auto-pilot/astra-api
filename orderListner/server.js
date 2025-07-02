@@ -40,11 +40,7 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/info', (req, res) => {
-  res.json({
-    module: 'orderEventListener',
-    version: '1.0',
-    environment: process.env.ENVIRONMENT || 'UNSET'
-  });
+  res.json(orderlistner.getInfo());
 });
 
 

@@ -305,6 +305,7 @@ async  updatePositionFromCandle(candle) {
 
   getInfo() {
     return {
+      microservice : MICROSERVICE,
       module: MODULE_NAME,
       version: MODULE_VERSION,
       status: 'OK',

@@ -1,0 +1,53 @@
+devo gestire l'allocazione del Capitale e leggere e scrivere da DB e' troppo lento rispetto alle richieste che arrivano.
+Va bene gestire il flusso in questi 4 steps?
+
+
+1.  Init CapitalManager (inizzializzato all'avvio dei processi)
+    ----------------------------------------------------------------------------------------------------
+   a. Inizializza AlpacaAPI
+   b. Recupera tutti gli ordini aperti e investiti da DB
+   c. Recupera capitale disponibile
+   d. Crea la struttura documento
+   e. Chaima funzione calcolo e passa struttura documento e capitale disponibile
+   f. Memorizza risultato su REDIS
+   g. Ogni 10 sec. scrive buffer su DB (se flag modifica == true) dopo flush su DB imposta flag modifica == false
+
+2.  getStrategyCapitalById (Viene chiamato per prelevare il capitale disponibile per una strategia) PARAMETRI IN strategy_id
+     ----------------------------------------------------------------------------------------------------
+     a. Recupera struttura documento e capitale disponibile da REDIS
+     b. Mette in openOrders il capitale rimanente (considero che venga usato tutto)
+     c. Decremento il capitale totale disponibile con quanto appena usato
+     d. Salvo tutto su REDIS
+     e. Ritorno il capitale da poter usare al chiamante (capitale rimanente per strategia)
+     --- Ora il documento con OpenOrders e e capitale disponibile riglettono quanto approvato per ordine ---
+
+3.  setStrategyCapitalInsertOrder (Viene chiamato a inserimento ordine) PARAMETRI IN strategu_id, richiesto, approvato
+    ----------------------------------------------------------------------------------------------------
+    a. Recupera struttura documento e capitale disponibile da REDIS
+    b. Decrementa da openOrders il capitale approvato e aggiunge quello richiesto (capitale inserito nell'ordine)
+    c. Decrementa da capitale disponibile il capitale approvato e aggiunge quello richiesto (capitale inserito nell'ordine)
+    d. Salvo tutto su REDIS
+       --- Ora il documento con OpenOrders e il capitale disponibile riflette l'ordine immesso ---
+       Imposta flag modifica a true --> Permetter il flush su DB
+
+4.  setStrategyCapitalAcceptedOrder (Viene chiamato a Ordine Filled) PARAMETRI IN strategy_id, approvato, usato
+    ----------------------------------------------------------------------------------------------------
+    a. Recupera struttura documento e capitale disponibile da REDIS
+    b. Decrementa da openOrders il capitale richiesto (capitale inserito in STEP 3)
+    c. Aggiunge a CapitaleInvestito il capitale usato
+    d. Incrementa da capitale disponibile il capitale richiesto e decrementa di capitale usato
+    e. Salvo tutto su REDIS
+    --- Ora il documento con OpenOrders, CapitaleInvestito e il capitale disponibile riflette l'ordine eseguito ---
+    Imposta flag modifica a true --> Permetter il flush su DB
+
+
+    Quando viene riciesto il capitale tenere conto dell'amount gia in OpenOrders o azzerarlo se non usato.
+    Problema 1. Quando viene decrementato Alapca Cache REDIS non eredita immediatamente
+    Problema 2. Ci sono tanti Ordini che rimangono in BUY NEW
+
+
+    Verificare Transazione non scritta in DB
+    OrderListner deve accodare i messaggi in arrivo, serializzarli e inpostare un delay tra uno e l'altro, come fa LiveMarketManager
+
+    Non vengono gestite le vendite parziali. Viene chiusa posizione. NON chiudere
+    

@@ -193,11 +193,16 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION,logLevel);
         }
         const url = `${shared.capitalManagerUrl}/capital/${strategy.id}`;
         logger.trace(`[handleSell] Chiusura posizione ${strategy.id} DELETE: ${url} con CapitaleInvestito ${CapitaleInvestito}`);
-        await axios.delete(url, {
-            params : {
-                CapitaleInvestito : CapitaleInvestito
-        }});
-        logger.log(`[handleSell] Update strategies ${strategy.id} con CapitaleInvestito ${CapitaleInvestito}`);
+
+        
+        if(statoOrdine === "CHIUSO") {
+            await axios.delete(url, {
+                params : {
+                    CapitaleInvestito : CapitaleInvestito
+            }});
+            logger.log(`[handleSell] Update strategies ${strategy.id} con CapitaleInvestito ${CapitaleInvestito}`);
+        }
+
 
         // rc = await tradeDbHelpers.updateStrategies(data, strategy, {} );            
         // if (!rc) throw new Error('Transazione updateStrategies fallita');
