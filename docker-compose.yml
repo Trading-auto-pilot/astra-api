@@ -168,6 +168,8 @@ services:
         condition: service_healthy
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
+      - MARKETSIMULATOR_URL=http://marketsimulator:3003
+      - ORDERSIMULATOR_URL=http://ordersimulator:3004
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV_ORDERS=${ENV_ORDERS}
       - REDIS_URL=redis://redis:6379

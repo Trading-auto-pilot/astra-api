@@ -29,7 +29,7 @@ let capitaleTotale,                     // Totale del cache di Alpaca piu il cap
 let totaleCapitale, OpenOrders;
 
 const dbManagerUrl =process.env.DBMANAGER_URL || 'http://localhost:3002'
-const marketSimulator = process.env.MARKETSIMULATOR_URL || 'http://localhost:3003/stop'    // Usato solo per simulazione
+const marketSimulator = process.env.MARKETSIMULATOR_URL || 'http://localhost:3003'    // Usato solo per simulazione
 
 let logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, logLevel || 'info');
 
@@ -320,9 +320,9 @@ function setLogLevel(level) {
     // 1. Calcolo del capitale Originale (Disponibile + Impegnato)
     for (const row of Object.values(data)) {
       // This is only for debugging the Simulation --- Remove in prod
-      if(Number(row.CapitaleInvestito) > 36000){
-        await axios.post('http://localhost:3003/stop');
-      }
+      // if(Number(row.CapitaleInvestito) > 36000){
+      //   await axios.post('http://localhost:3003/stop');
+      // }
 
       //*********************************************************** */
       freUp? setTotaleCapitaleInvestito(Number(row.CapitaleInvestito)) : setTotaleCapitaleInvestito( getTotaleCapitaleInvestito() + Number(row.CapitaleInvestito));
