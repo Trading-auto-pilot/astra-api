@@ -20,4 +20,4 @@ RUN npm install
 EXPOSE 3000
 
 # Start the service
-CMD [ "node", "server.js" ]
+CMD [ "node", "alertingService/server.js" ]
