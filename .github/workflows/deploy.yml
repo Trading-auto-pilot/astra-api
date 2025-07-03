@@ -201,6 +201,9 @@ jobs:
           echo "📥 Scarico docker-compose.yml..."
           curl -s -H "Authorization: token $GH_TOKEN" -o docker-compose.yml https://raw.githubusercontent.com/expovin/trading-system/refs/heads/PAPER/docker-compose.yml
 
+          echo "📥 Scarico docker-compose.build.yml..."
+          curl -s -H "Authorization: token $GH_TOKEN" -o docker-compose.build.yml https://raw.githubusercontent.com/expovin/trading-system/refs/heads/PAPER/docker-compose.build.yml
+
           echo "📥 Scarico db_update.sql..."
           curl -H "Authorization: token $GH_TOKEN" -s -o db_update.sql https://raw.githubusercontent.com/expovin/trading-system/refs/heads/PAPER/db/db_update.sql
 
