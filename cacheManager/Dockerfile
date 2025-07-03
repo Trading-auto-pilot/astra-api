@@ -19,4 +19,4 @@ RUN npm install
 EXPOSE 3000
 
 # Default command
-CMD [ "node", "server.js" ]
+CMD [ "node", "cacheManager/server.js" ]
