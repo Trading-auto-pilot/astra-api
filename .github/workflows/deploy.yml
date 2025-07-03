@@ -134,6 +134,7 @@ jobs:
         echo "MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}" >> .env
         echo "MYSQL_DATABASE=${{ vars.MYSQL_DATABASE }}" >> .env
         echo "MYSQL_USER=${{ vars.MYSQL_USER }}" >> .env
+        echo "MYSQL_HOST=${{vars.MYSQL_HOST}}" >> .env
         echo "ALPACA_MARKET_FEED=${{ vars.ALPACA_MARKET_FEED }}" >> .env
         echo "ENV_MARKET=${{ vars.ENV_MARKET }}" >> .env
         echo "ENV_ORDERS=${{ vars.ENV_ORDERS }}" >> .env
@@ -268,7 +269,7 @@ jobs:
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -s" <<'EOF'
           cd ~/deploy
           LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
-          docker compose -f /home/$GCP_USER/deploy/docker-compose.yml --env-file /home/$GCP_USER/deploy/.env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans --no-recreate
+          docker compose --env-file .env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans --no-recreate
           docker image prune -a -f
         EOF
 
