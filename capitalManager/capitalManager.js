@@ -7,7 +7,7 @@ const alloc = require('./allocCapital');
 
 const MICROSERVICE = "CapitalManager";
 const MODULE_NAME = 'Core'; 
-const MODULE_VERSION = '1.2';
+const MODULE_VERSION = '2.0';
  
 class CapitalManager {
 

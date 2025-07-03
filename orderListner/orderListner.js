@@ -7,7 +7,7 @@ const Alpaca = require('../shared/Alpaca');
 
 const MICROSERVICE= "OrderListener"
 const MODULE_NAME = 'OrderListener';
-const MODULE_VERSION = '1.2';
+const MODULE_VERSION = '2.0';
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 const PROCESS_INTERVAL = 200;
 

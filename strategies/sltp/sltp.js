@@ -5,7 +5,7 @@ const createLogger = require('../../shared/logger');
 const Alpaca = require('../../shared/Alpaca');
 const MICROSERVICE = 'STRATEGIES';
 const MODULE_NAME = 'SLTP';
-const MODULE_VERSION = '1.0';
+const MODULE_VERSION = '2.0';
 
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
