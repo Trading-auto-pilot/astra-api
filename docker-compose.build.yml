@@ -14,54 +14,6 @@
 #   ENV_TRADING : ${{ vars.ENV_TRADING }}
 #   LOG_LEVEL : ${{ vars.LOG_LEVEL }}
 
-
-services:
-  mysql:
-    image: mysql:8.0
-    container_name: mysql
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-      MYSQL_PORT : ${MYSQL_PORT}
-      MYSQL_HOST : ${MYSQL_HOST}
-    ports:
-      - "3306:3306"
-    networks:
-      - trading-net
-    depends_on:
-      redis:
-          condition: service_healthy
-    volumes:
-      - mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
-  redis:
-    image: redis:7-alpine
-    container_name: redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    networks:
-      - trading-net
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - redis-data:/data
-    environment:
-      - DBMANAGER_URL=http://dbmanager:3002
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
-
   dbmanager:
     build:
       context: .
