@@ -139,6 +139,14 @@ jobs:
         echo "ENV_ORDERS=${{ vars.ENV_ORDERS }}" >> .env
         echo "ENV_TRADING=${{ vars.ENV_TRADING }}" >> .env
         echo "NETWORK=${{ vars.NETWORK }}" >> .env
+        echo "DBMANAGER_VERSION=${{ vars.DBMANAGER_VERSION }}" >> .env
+        echo "CACHEMANAGER_VERSION=${{ vars.CACHEMANAGER_VERSION }}" >> .env
+        echo "CAPITALMANAGER_VERSION=${{ vars.CAPITALMANAGER_VERSION }}" >> .env
+        echo "ALERTINGSERVICE_VERSION=${{ vars.ALERTINGSERVICE_VERSION }}" >> .env
+        echo "LIVEMARKETLISTENER_VERSION=${{ vars.LIVEMARKETLISTENER_VERSION }}" >> .env
+        echo "ORDERLISTNER_VERSION=${{ vars.ORDERLISTNER_VERSION }}" >> .env
+        echo "SMA_VERSION=${{ vars.SMA_VERSION }}" >> .env
+        echo "SLTP_VERSION=${{ vars.SLTP_VERSION }}" >> .env
 
     - name: Add .env with container versions from JS files
       run: |
@@ -254,7 +262,7 @@ jobs:
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -s" <<'EOF'
           cd ~/deploy
           LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
-          docker compose --env-file .env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans --no-recreate
+          docker compose --env-file .env. -p "$LOWER_PROJECT_NAME" up -d --remove-orphans --no-recreate
           docker image prune -a -f
         EOF
 

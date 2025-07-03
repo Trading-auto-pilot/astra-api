@@ -1,7 +1,4 @@
 
-.env
-
-
 # Ignora tutti i node_modules in qualsiasi sottocartella
 **/node_modules/
 
