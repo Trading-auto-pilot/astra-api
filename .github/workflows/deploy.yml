@@ -67,7 +67,7 @@ jobs:
           exit 0
         fi
 
-        for service in DBManager cacheManager capitalManager alertingService strategyUtils LiveMarketListener orderListner orderSimulator MarketSimulator strategies/sma; do
+        for service in DBManager cacheManager capitalManager alertingService strategyUtils LiveMarketListener orderListner orderSimulator MarketSimulator strategies/sma strategies/sltp; do
           name=$(basename "$service" | tr '[:upper:]' '[:lower:]')
 
           # Trova il file .js con lo stesso nome della cartella (confronto in lowercase)
