@@ -273,7 +273,7 @@ jobs:
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -s" <<'EOF'
           cd ~/deploy
           LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
-          docker compose -f docker-compose.yml -f docker-compose.build.yml --env-file .env."$LOWER_PROJECT_NAME" -p "$LOWER_PROJECT_NAME" up -d --remove-orphans --no-recreate
+          docker compose -f docker-compose.yml -f docker-compose.build.yml --env-file .env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans --no-recreate
           docker image prune -a -f
         EOF
 

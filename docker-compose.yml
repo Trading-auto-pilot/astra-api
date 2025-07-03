@@ -65,9 +65,6 @@ services:
   dbmanager:
     image: expovin/dbmanager:${DBMANAGER_VERSION}
     container_name: dbmanager
-    build:
-      context: .
-      dockerfile: DBManager/Dockerfile
     restart: unless-stopped
     ports:
       - "3002:3002"
@@ -95,9 +92,6 @@ services:
   cachemanager:
     image: expovin/cachemanager:${CACHEMANAGER_VERSION}
     container_name: cachemanager
-    build:
-      context: .
-      dockerfile: cacheManager/Dockerfile
     restart: unless-stopped
     ports:
       - "3006:3006"
@@ -126,9 +120,6 @@ services:
   alertingservice:
     image: expovin/alertingservice:${ALERTINGSERVICE_VERSION}
     container_name: alertingservice
-    build:
-      context: .
-      dockerfile: alertingService/Dockerfile
     restart: unless-stopped
     ports:
       - "3008:3008"
@@ -153,9 +144,6 @@ services:
   capitalmanager:
     image: expovin/capitalmanager:${CAPITALMANAGER_VERSION}
     container_name: capitalmanager
-    build:
-      context: .
-      dockerfile: capitalManager/Dockerfile
     restart: unless-stopped
     ports:
       - "3009:3009"
@@ -185,9 +173,6 @@ services:
   livemarketlistener:
     image: expovin/livemarketlistener:${LIVEMARKETLISTENER_VERSION}
     container_name: livemarketlistener
-    build:
-      context: .
-      dockerfile: LiveMarketListener/Dockerfile
     restart: unless-stopped
     ports:
       - "3012:3012"
@@ -225,9 +210,6 @@ services:
   orderlistner:
     image: expovin/orderlistner:${ORDERLISTNER_VERSION}
     container_name: orderlistner
-    build:
-      context: .
-      dockerfile: orderListner/Dockerfile
     restart: unless-stopped
     ports:
       - "3005:3005"
@@ -257,9 +239,6 @@ services:
   sma:
     image: expovin/sma:${SMA_VERSION}
     container_name: sma
-    build:
-      context: .
-      dockerfile: strategies/sma/Dockerfile
     restart: unless-stopped
     ports:
       - "3010:3010"
@@ -284,9 +263,6 @@ services:
   sltp:
     image: expovin/sltp:${SLTP_VERSION}
     container_name: sltp
-    build:
-      context: .
-      dockerfile: strategies/sltp/Dockerfile
     restart: unless-stopped
     ports:
       - "3011:3011"
