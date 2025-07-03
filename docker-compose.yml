@@ -208,10 +208,6 @@ services:
         condition: service_healthy
       alertingservice:
         condition: service_healthy
-      marketsimulator:
-        condition: service_healthy
-      ordersimulator:
-        condition: service_healthy
     environment:
       - LOG_LEVEL=${LOG_LEVEL}
       - DBMANAGER_URL=http://dbmanager:3002
@@ -245,10 +241,6 @@ services:
       redis:
         condition: service_healthy
       alertingservice:
-        condition: service_healthy
-      marketsimulator:
-        condition: service_healthy
-      ordersimulator:
         condition: service_healthy
     environment:
       - LOG_LEVEL=${LOG_LEVEL}
@@ -320,60 +312,6 @@ services:
 
 
   # Sezione docker per la simulazione
-  ordersimulator:
-    image: expovin/ordersimulator:${ORDERSIMULATOR_VERSION}
-    container_name: ordersimulator
-    build:
-      context: .
-      dockerfile: orderSimulator/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "3004:3004"
-    networks:
-      - trading-net
-    environment:
-      - LOG_LEVEL=${LOG_LEVEL}
-      - DBMANAGER_URL=http://dbmanager:3002
-      - REDIS_URL=redis://redis:6379
-      - LIVEMARKETMANAGER_URL=http://livemarketlistener:3012
-      - FEED=${ALPACA_MARKET_FEED}
-      - ENV_MARKET=${ENV_MARKET}
-      - APCA_API_KEY_ID=${APCA_API_KEY_ID}
-      - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
-    depends_on:
-      dbmanager:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-
-
-  marketsimulator:
-    image: expovin/marketsimulator:${MARKETSIMULATOR_VERSION}
-    container_name: marketsimulator
-    build:
-      context: .
-      dockerfile: marketsimulator/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "3003:3003"
-    networks:
-      - trading-net
-    environment:
-      - LOG_LEVEL=${LOG_LEVEL}
-      - DBMANAGER_URL=http://dbmanager:3002
-      - REDIS_URL=redis://redis:6379
-      - CACHEMANAGER_URL=http://cachemanager:3006
-    depends_on:
-      dbmanager:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
 
 volumes:
   mysql_data:
