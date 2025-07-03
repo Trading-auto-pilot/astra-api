@@ -1,5 +1,5 @@
 #!/bin/bash
-        for service in DBManager cacheManager capitalManager alertingService strategyUtils LiveMarketListener orderListner orderSimulator marketsimulator strategies/sma; do
+        for service in DBManager cacheManager capitalManager alertingService strategyUtils LiveMarketListener orderListner orderSimulator marketsimulator strategies/sma strategies/sltp; do
           name=$(basename "$service" | tr '[:upper:]' '[:lower:]')
 
           # Trova il file .js con lo stesso nome della cartella (confronto in lowercase)
