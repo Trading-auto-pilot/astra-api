@@ -19,4 +19,4 @@ RUN npm install
 EXPOSE 3000
 
 # Comando di avvio
-CMD ["npm", "capitalManager/start"]
+CMD ["node", "capitalManager/server.js"]
