@@ -103,13 +103,5 @@ services:
       context: .
       dockerfile: strategies/sltp/Dockerfile
 
-  # Sezione docker per la simulazione
-  ordersimulator:
-    build:
-      context: .
-      dockerfile: orderSimulator/Dockerfile
 
-  marketsimulator:
-    build:
-      context: .
-      dockerfile: marketsimulator/Dockerfile
+
