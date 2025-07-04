@@ -3,7 +3,7 @@
 **/node_modules/
 
 # Ignora tutte le cartelle cache in qualsiasi sottocartella
-#**/cache/
+**/cache/
 
 #Ignora la cartella logs
 logs/
