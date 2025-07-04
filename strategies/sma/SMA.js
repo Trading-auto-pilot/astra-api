@@ -63,7 +63,7 @@ async getMediaMobile(symbol, periodDays, currentDate, tf) {
 }
 
 
-  // 📥 Recupera ultima transazione dal DB per inizializzare lo stato interno
+  // 📥 Recupera ultima transazione dal DB per inizializzare lo stato interno 
 async loadLastPosition(scenarioId) {
     try {
         logger.log(`[loadLastPosition] Richiamo ${this.dbManagerURL}/lastTransaction/${scenarioId}`);

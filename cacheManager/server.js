@@ -9,85 +9,41 @@ const app = express();
 const port = process.env.PORT || 3006;
 const MICROSERVICE='cacheManager'
 const MODULE_NAME = 'RESTServer';
-const MODULE_VERSION = '1.0';
-const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
+const MODULE_VERSION = '2.0';
 
 
 const dbManagerBaseUrl = process.env.DBMANAGER_URL || 'http://dbmanager:3002'; // URL del microservizio DBManager
 let cacheManager = null;
+let logLevel = process.env.LOG_LEVEL || 'info';
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, logLevel);
 
+function getLogLevel() {
+  return logLevel;
+}
+
+function setLogLevel(level) {
+  logLevel = level;
+  logger.setLevel(logLevel);
+}
 // Configurazione REDIS
 // Redis Pub/Sub Integration
 (async () => {
-  const settings = await loadSettings();
-        cacheManager = new CacheManager({
-        cacheBasePath: './cache',
-        tf: settings['TF-DEFAULT'],
-        feed: settings['ALPACA-HISTORICAL-FEED'],
-        apiKey: process.env.APCA_API_KEY_ID,
-        apiSecret: process.env.APCA_API_SECRET_KEY,
-        restUrl: settings['ALPACA-LIVE-BASE'],
-        timeout: settings['ALPACA-API-TIMEOUT']
-      });
 
-      const subscriber = redis.createClient({ url: process.env.REDIS_URL || 'redis://redis:6379' });
-      subscriber.on('error', (err) => logger.error('❌ Redis error:', err));
+  cacheManager = new CacheManager();
+  cacheManager.init();
 
-      await subscriber.connect();
-      logger.info('✅ Connesso a Redis per Pub/Sub');
-
-      await subscriber.subscribe('commands', async (message) => {
-        logger.log(`📩 Ricevuto su 'commands':`, message);
-        try {
-          const parsed = JSON.parse(message);
-          if (parsed.action === 'loadSettings') {
-            await loadSettings();
-            logger.log('✔️  Eseguito comando:', parsed.action);
-          }
-        } catch (err) {
-          logger.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
-        }
-      });
-
-      // Avvio del server REST
-      try {
-        app.listen(port, () => {
-          logger.log(`[cacheManager] Server avviato sulla porta ${port}`);
-        });
-      } catch (err) {
-        logger.error('[STARTUP] Errore nell\'inizializzazione del servizio:', err.message);
-        logger.log(err);
-        process.exit(1);
-      }
-    
+  // Avvio del server REST
+  try {
+    app.listen(port, () => {
+      logger.log(`[cacheManager] Server avviato sulla porta ${port}`);
+    });
+  } catch (err) {
+    logger.error('[STARTUP] Errore nell\'inizializzazione del servizio:', err.message);
+    logger.log(err);
+    process.exit(1);
+  }  
 })();
 
-// Funzione per leggere i parametri di configurazione da DBManager
-async function loadSettings() {
-  const keys = [
-    'ALPACA-LIVE-MARKET',
-    'ALPACA-HISTORICAL-FEED',
-    'TF-DEFAULT',
-    'ALPACA-API-TIMEOUT'
-  ];
-
-  const settings = {};
-  for (const key of keys) {
-    try {
-      const res = await axios.get(`${dbManagerBaseUrl}/settings/${key}`);
-      settings[key] = res.data.value;
-      logger.trace(`[loadSetting] Setting variavile ${key} : ${settings[key]}`);
-    } catch (err) {
-        logger.error(`[SETTINGS] Errore nel recupero della chiave '${key}': ${err.message}`);
-      throw err;
-    }
-  }
-
-  for (const [key, value] of Object.entries(process.env)) {
-    logger.trace(`Environment variable ${key}=${value}`);
-  }
-  return settings;
-}
 
 // Endpoint REST per il test del servizio
 app.get('/health', (req, res) => {
@@ -96,8 +52,80 @@ app.get('/health', (req, res) => {
 
 // Endpoint informazioni sul modulo
 app.get('/info', (req, res) => {
-    res.status(200).json(cacheManager.getInfo());
+  res.status(200).json(cacheManager.getInfo());
 });
+
+
+app.get('/stats/L2', async (req, res) => {
+  const result = await cacheManager.getDirStatsL2();
+  res.status(200).json({success:true, params: result});
+});
+
+app.delete('/stats/L2', async (req, res) => {
+  await cacheManager.deleteAllCacheL2(req.params.symbol);
+  const result = await cacheManager.getDirStatsL2();
+  res.status(200).json({success:true, params: result});
+});
+
+app.get('/stats/L2/:symbol', async (req, res) => {
+  const result = await cacheManager.listFilesL2(req.params.symbol);
+  res.status(200).json({success:true, params: result});
+});
+
+app.delete('/stats/L2/:symbol', async (req, res) => {
+  const body = {Anno:req.query.Anno, Mese:req.query.Mese, TF:req.query.TF};
+  console.log(body);
+  await cacheManager.deleteMatchingFiles(req.params.symbol, body );
+  const result = await cacheManager.getDirStatsL2(req.params.symbol);
+  res.status(200).json({success:true, params: result});
+});
+
+app.get('/stats/L1', async (req, res) => {
+  const result = await cacheManager.getStatL1();
+  res.status(200).json({success:true, params: result});
+});
+
+app.delete('/stats/L1', async (req, res) => {
+  await cacheManager.deleteCandlesKeysL1({symbol:req.query.symbol, tf:req.query.tf, week:req.query.week, year:req.query.year});
+  res.status(200).json({success:true, params: cacheManager.getStatL1()});
+});
+
+app.get('/stats/L1/info', async (req, res) => {
+  const result = await cacheManager.getRedisInfo();
+  res.status(200).json({success:true, params: result});
+});
+
+// Endpoint informazioni sul modulo
+app.get('/logLevel', (req, res) => {
+    res.status(200).json({success:true, cacheManager:cacheManager.getLogLevel(), RESTServer: getLogLevel()});
+});
+// Endpoint informazioni sul modulo
+app.put('/logLevel/:logLevel', (req, res) => {
+  cacheManager.setLogLevel(req.params.logLevel)
+  setLogLevel(req.params.logLevel);
+  res.status(200).json({success:true});
+});
+
+app.get('/paramsSetting', (req, res) => {
+  const result = cacheManager.getParams();
+  res.status(200).json({success:true, params: result});
+});
+
+app.post('/paramsSetting/:paramName', async (req, res) => {
+  await cacheManager.setParamSetting(req.params.paramName);
+  res.status(200).json({success:true, params: cacheManager.getParams()});
+});
+
+app.get('/cacheHits', (req, res) => {
+  const result = cacheManager.getCacheHits();
+  res.status(200).json({success:true, Hits: result});
+});
+
+app.put('/cacheHits', (req, res) => {
+  const result = cacheManager.resetCacheHits();
+  res.status(200).json({success:true, Hits: cacheManager.getCacheHits()});
+});
+
 
 // Endpoint per ottenere candele dal simbolo e range
 app.get('/candles', async (req, res) => {
@@ -108,7 +136,7 @@ app.get('/candles', async (req, res) => {
   }
 
   try {
-    const candles = await cacheManager.retrieveCandles(symbol, startDate, endDate, tf);
+    const candles = await cacheManager.retrieveCandlesFromL1(symbol, startDate, endDate, tf);
     res.json(candles);
   } catch (err) {
     logger.error(`[CACHE] Errore nel recupero candele: ${err.message}`);

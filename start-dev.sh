@@ -10,7 +10,7 @@ else
 fi
 
 #Avvio mysql e Redis
-docker-compose start mysql redis
+docker-compose -f docker-compose.yml --env-file .env start mysql redis
 
 # Ordine dei servizi da avviare
 SERVICES=(

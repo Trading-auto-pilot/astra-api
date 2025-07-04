@@ -36,5 +36,15 @@ module.exports = {
   },
   hgetall: async (key) => {
     return await client.hGetAll(key); // restituisce oggetto con tutti i campi dell'hash
-  }
+  },
+  lPush: async (key, ...values) => {
+    return await client.lPush(key, ...values);
+  },
+  lTrim: async (key, start, stop) => {
+    return await client.lTrim(key, start, stop);
+  },
+  lRange: async (key, start, stop) => {
+    return await client.lRange(key, start, stop);
+  },
+  client
 };
