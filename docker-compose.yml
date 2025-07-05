@@ -50,7 +50,7 @@ services:
       - "6379:6379"
     networks:
       - trading-net
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--save", "300", "10","--dir","/data"]
     volumes:
       - redis-data:/data
     environment:

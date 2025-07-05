@@ -166,6 +166,7 @@ const isLocal = process.env.ENV_NAME === 'DEV';
         this.lastTimestampProcessed = bar.t;
         let sell_decision;
 
+        this.loadActiveStrategies();
         this.updateDrawdownFromBar(bar);
 
         // Prendo decisioni esecutive solo con segnale attivo.

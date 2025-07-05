@@ -72,7 +72,8 @@ class LiveMarketListener {
 
   getInfo() {
     return {
-      module: MICROSERVICE,
+      microservice : MICROSERVICE,
+      module: MODULE_NAME,
       version: MODULE_VERSION,
       paused: !this.active,
       subscribedSymbols: Object.keys(this.symbolStrategyMap),

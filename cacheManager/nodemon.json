@@ -1,5 +1,5 @@
 {
-  "watch": ["server.js", "cacheManager.js"],
+  "watch": ["server.js", "cacheManager.js", "shared/cache.js","shared/logger"],
   "ignore": ["*.test.js", "node_modules","cache","Dockerfile","README.md","release.json"],
   "exec": "node server.js"
 }
