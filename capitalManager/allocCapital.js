@@ -308,7 +308,7 @@ function setLogLevel(level) {
     if(alpacaCache < 0) {
       logger.error(`[calcolaAlloc] ERRORE!!! alpacaCache ${alpacaCache} negativo!`);
       // Solo in simulazione
-      await axios.post(`${marketSimulator}/stop`);
+      //await axios.post(`${marketSimulator}/stop`);
 
       // Aggiungere alerting
 
@@ -384,7 +384,7 @@ function setLogLevel(level) {
     
     // 1. Recupera i dati da MySQL
     logger.trace(`[initCapitalManager] Richiamo in GET  ${dbManagerUrl}/strategies/capital`);
-    const res = await axios.get(`${dbManagerUrl}/strategies/capital`);
+    const res = await axios.get(`${dbManagerUrl}/strategies`);
     const rows = res.data;
     logger.trace(`[initCapitalManager] Recuperato dati da DB = ${JSON.stringify([rows])}}`);
 

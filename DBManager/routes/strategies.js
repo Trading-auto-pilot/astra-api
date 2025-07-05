@@ -1,13 +1,34 @@
 // routes/strategies.js
 
 const express = require('express');
-const cache = require('../../shared/cache');
 const router = express.Router();
 
 module.exports = (dbManager) => {
 
+  // Capital cache (tutti e uno specifico)
+  router.get('/logLevel', async (req, res) => {
+    const result = {success:true, logLevel:dbManager.getLogLevel() }
+    res.json(result);
+  });
 
-   // Capital cache (tutti e uno specifico)
+  router.put('/logLevel/:value', async (req, res) => {
+    dbManager.setLogLevel(req.params.value);
+    const result = {success:true, logLevel:dbManager.getLogLevel() }
+    res.json(result);
+  });
+
+  router.get('/flushDBSec', async (req, res) => {
+    const result = {success:true, value:dbManager.getFlushDBSec()}
+    res.json(result);
+  });
+
+  router.put('/flushDBSec/:value', async (req, res) => {
+    dbManager.setFlushDBSec(req.params.value);
+    const result = {success:true, value:Number(dbManager.getFlushDBSec())}
+    res.json(result);
+  });
+
+
   router.get('/capital', async (req, res) => {
 
     try {
@@ -20,7 +41,7 @@ module.exports = (dbManager) => {
     }
   });
 
-     // Capital cache (tutti e uno specifico)
+  // Capital cache (tutti e uno specifico)
   router.put('/capital', async (req, res) => {
 
     try {
@@ -34,36 +55,31 @@ module.exports = (dbManager) => {
   });
 
   // Capital + Orders per strategy
-  router.get('/capitalAndOrder/:strategy_id(\\d+)', async (req, res) => {
-    try {
-      const result = await dbManager.getStrategyCapitalAndOrders(req.params.strategy_id);
-      res.json(result);
-    } catch (error) {
-      console.error('[GET /strategies/capitalAndOrder/:strategy_id] Errore: '+ error.message);
-      res.status(500).json({ error: 'Errore durante l\'aggiornamento della strategia '+ error.message, module:"[GET /strategies/capitalAndOrder/:strategy_id]" });
-    }
-  });
+  // router.get('/capitalAndOrder/:strategy_id(\\d+)', async (req, res) => {
+  //   try {
+  //     const result = await dbManager.getStrategyCapitalAndOrders(req.params.strategy_id);
+  //     res.json(result);
+  //   } catch (error) {
+  //     console.error('[GET /strategies/capitalAndOrder/:strategy_id] Errore: '+ error.message);
+  //     res.status(500).json({ error: 'Errore durante l\'aggiornamento della strategia '+ error.message, module:"[GET /strategies/capitalAndOrder/:strategy_id]" });
+  //   }
+  // });
 
-  router.put('/capitalAndOrder', async (req, res) => {
-    try {
-      const result = await dbManager.updateStrategyCapitalAndOrders(req.body);
-      res.json(result);
-    } catch (error) {
-      console.error('[PUT /strategies/capitalAndOrder] Errore: '+ error.message);
-      res.status(500).json({ error: 'Errore durante l\'aggiornamento della strategia '+ error.message, module:"[PUT /strategies/capitalAndOrder]" });
-    }
-  });
+  // router.put('/capitalAndOrder', async (req, res) => {
+  //   try {
+  //     const result = await dbManager.updateStrategyCapitalAndOrders(req.body);
+  //     res.json(result);
+  //   } catch (error) {
+  //     console.error('[PUT /strategies/capitalAndOrder] Errore: '+ error.message);
+  //     res.status(500).json({ error: 'Errore durante l\'aggiornamento della strategia '+ error.message, module:"[PUT /strategies/capitalAndOrder]" });
+  //   }
+  // });
 
   // Runs (storico esecuzioni strategia)
   router.get('/runs/strategy', async (req, res) => {
-    const cacheKey = 'strategy_runs:all';
 
     try {
-      let data = await cache.get(cacheKey);
-      if (!data) {
-        data = await dbManager.getStrategiesRun(); // deve restituire tutte
-        await cache.set(cacheKey, data);
-      }
+      data = await dbManager.getStrategiesRun(); // deve restituire tutte
 
       res.json(data);
     } catch (error) {
@@ -73,15 +89,10 @@ module.exports = (dbManager) => {
   });
 
   router.get('/runs/strategy/:strategy_runs_id', async (req, res) => {
-    const cacheKey = 'strategy_runs:all';
     const strategy_runs_id = req.params.strategy_runs_id;
 
     try {
-      let data = await cache.get(cacheKey);
-      if (!data) {
-        data = await dbManager.getStrategiesRun(); // deve restituire tutte
-        await cache.set(cacheKey, data);
-      }
+      data = await dbManager.getStrategiesRun(); // deve restituire tutte
 
       const result = data.find(s => s.strategy_runs_id === strategy_runs_id);
       if (!result) return res.status(404).json({ error: 'Strategy_run not found' });
@@ -96,7 +107,6 @@ module.exports = (dbManager) => {
   router.post('/runs/strategy', async (req, res) => {
     try {
       const result = await dbManager.insertStrategyRun(req.body);
-      await cache.del('strategy_runs:all');
       res.json(result);
     } catch (error) {
       console.error('[POST /strategies/strategy_runs] Errore: '+ error.message);
@@ -106,7 +116,6 @@ module.exports = (dbManager) => {
 
   router.put('/runs/strategy/:strategy_runs_id', async (req, res) => {
     const strategy_runs_id = req.params.strategy_runs_id;
-
     try {
       const result = await dbManager.updateStrategyRun(strategy_runs_id, req.body);
       res.json(result);
@@ -118,12 +127,8 @@ module.exports = (dbManager) => {
 
   // Ricerca per symbol
   router.get('/symbol/:symbol', async (req, res) => {
-    const cacheKey = 'strategies:all';
-    let data = await cache.get(cacheKey);
-    if (data) return res.json(data);
     try {
       const result = await dbManager.getActiveStrategies(req.params.symbol);
-      await cache.set(cacheKey, data);
       res.json(result);
     } catch (error) {
       console.error('[GET /strategies] Errore: '+ error.message);
@@ -133,12 +138,8 @@ module.exports = (dbManager) => {
 
   // Strategy base (all, one, insert, update)
   router.get('/', async (req, res) => {
-    const cacheKey = 'strategies:all';
-    let data = await cache.get(cacheKey);
-    if (data) return res.json(data);
     try {
       const result = await dbManager.getActiveStrategies();
-      await cache.set(cacheKey, data);
       res.json(result);
     } catch (error) {
       console.error('[GET /strategies] Errore: '+ error.message);
@@ -146,24 +147,20 @@ module.exports = (dbManager) => {
     }
   });
 
+  router.delete('/', async (req, res) => {
+    await dbManager.resetStrategiesCache();
+    res.json({success:true});
+  });
+
   router.get('/:strategy_id(\\d+)', async (req, res) => {
-    const cacheKey = 'strategies:all';
-    const strategyId = req.params.strategy_id;
-    let data = await cache.get(cacheKey);
-    if (!data) //return res.json(data);
-    {
+    try {
+      data = await dbManager.getActiveStrategies(); // deve restituire tutte
+    } catch (error) {
+      console.error('[GET /strategies/:strategy_id] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore durante il recupero della strategia '+ error.message, module:"[GET /strategies/:strategy_id]" });
+    }  
 
-      try {
-        data = await dbManager.getActiveStrategies(); // deve restituire tutte
-        await cache.set(cacheKey, data);
-
-      } catch (error) {
-        console.error('[GET /strategies/:strategy_id] Errore: '+ error.message);
-        res.status(500).json({ error: 'Errore durante il recupero della strategia '+ error.message, module:"[GET /strategies/:strategy_id]" });
-      }  
-    }
-
-    const result = data.find(s => Number(s.id) === Number(strategyId));
+    const result = data.find(s => Number(s.id) === Number(req.params.strategy_id));
     if (!result) return res.status(404).json({ error: 'Strategy not found' });
 
     res.json(result);
@@ -174,7 +171,6 @@ module.exports = (dbManager) => {
   router.post('/', async (req, res) => {
     try {
       const result = await dbManager.insertStrategy(req.body);
-      await cache.del('strategies:all');
       res.json(result);
     } catch (error) {
       console.error('[POST /strategies] Errore: '+ error.message);
@@ -186,7 +182,16 @@ module.exports = (dbManager) => {
   router.put('/:strategy_id(\\d+)', async (req, res) => {
     try {
       const result = await dbManager.updateStrategies(req.params.strategy_id, req.body);
-      await cache.del('strategies:all');
+      res.json(result);
+    } catch (error) {
+      console.error('[PUT /strategies/:strategy_id] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore durante l\'aggiornamento della strategia '+ error.message, module:"[PUT /strategies/:strategy_id]" });
+    }
+  });
+
+  router.put('/singlefield/:strategy_id(\\d+)', async (req, res) => {
+    try {
+      const result = await dbManager.updateSingleStrategyField(req.params.strategy_id, req.body.key, req.body.value);
       res.json(result);
     } catch (error) {
       console.error('[PUT /strategies/:strategy_id] Errore: '+ error.message);

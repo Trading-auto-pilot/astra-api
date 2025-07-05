@@ -21,7 +21,7 @@ class OrderSimulator {
     this.wsServer = null;
     this.sharedClock=null;
   } 
- 
+
   async loadSettings() {
     logger.info('[loadSettings] Lettura configurazione da DBManager...');
     const keys = [
