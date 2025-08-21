@@ -2,6 +2,7 @@ const WebSocket = require('ws');
 const axios = require('axios');
 const { publishCommand } = require('../shared/redisPublisher');
 const createLogger = require('../shared/logger');
+const crypto = require('crypto');
 
 const MICROSERVICE = "MarketSimulator"
 const MODULE_NAME = 'core';
@@ -14,14 +15,18 @@ class MarketSimulator {
     this.wsClients = [];
     this.dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
     this.cacheManagerUrl = process.env.CACHEMANAGER_URL || 'http://localhost:3006';
+    this.capitalManagerUrl = process.env.CAPITALMANAGER_URL || 'http://localhost:3009';
+    this.liveMarketListenerUrl = process.env.LIVEMARKETLISTENER_URL || 'http://localhost:3012';
     this.interval = null;
     this.saveLastDate = null;
     this.nextDate = null;
     this.saveEndDate = null;
+    this.simulationStatus = 'STOP';
     this.saveTf = null;
     this.intervals = {};
     this.logLevel = process.env.LOG_LEVEL;
     this.logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, this.logLevel || 'info');
+    this.path = null;
 
     // Log delle variabili definite nell'istanza
     for (const key of Object.keys(this)) {
@@ -55,18 +60,63 @@ class MarketSimulator {
     }
   }
 
+  async disconnect (targetId) {
+    const clientToKill = [...this.wss.clients].find(ws => ws.id === targetId);
+    if (clientToKill) {
+      clientToKill.close(1000, 'Disconnected by server');
+    }
+  }
+
+
+  getParams() {
+    const clientInfo = [];
+
+    this.wss.clients.forEach((ws) => {
+      clientInfo.push({
+        id: ws.id,
+        isAlive: ws.isAlice ,                            // flag personalizzato
+        path : ws.path,
+        ip: ws._socket?.remoteAddress || 'unknown',             // indirizzo IP
+        authenticated: ws.isAuthenticated || false,             // stato autenticazione
+        subscribedSymbols: ws.subscribedSymbols || [],          // simboli sottoscritti
+        readyState: ws.readyState                                // stato della connessione (0=connecting, 1=open, ecc.)
+      });
+    });
+    return({
+      simulationStatus : this.simulationStatus,
+      nextDate: this.nextDate,
+      wssServer : this.path,
+      wsClientnumber : this.wsClients.length,
+      clientInfo : clientInfo
+
+    })
+  }
+
   attachWebSocketServer(server) {
+    
     const path = '/v2/iex';
+    this.path = path
     this.wss = new WebSocket.Server({ server, path });
     this.logger.info(`[WebSocket] WebSocket server avviato su path: ${path}`);
 
-    this.wss.on('connection', (ws) => {
-      this.logger.info(`[WebSocket] Nuovo client connesso`);
+    this.wss.on('connection', (ws, request) => {
+      ws.id = crypto.randomUUID();
+      ws.path = request.url; 
+      this.logger.info(`[WebSocket] Nuovo client connesso ${ws.path}`);
       this.wsClients.push(ws);
+      ws.isAlive = true;
 
-      ws.on('close', () => {
+      ws.on('pong', () => {
+        ws.isAlive = true;
+      });
+
+      ws.on('close', (code, reason) => {
         this.wsClients = this.wsClients.filter(c => c !== ws);
-        this.logger.info(`[WebSocket] Client disconnesso`);
+        this.logger.info(`[WebSocket] Client disconnesso. Codice: ${code}, Motivo: ${reason.toString()}`);
+      });
+
+      ws.on('error', (err) => {
+        this.logger.error(`[WebSocket] Errore su client: ${err.message}`);
       });
 
       ws.on('message', (message) => {
@@ -104,21 +154,105 @@ class MarketSimulator {
       });
 
     });
+
+    setInterval(() => {
+    this.wss.clients.forEach((ws) => {
+      if (!ws.isAlive) {
+        this.logger.warning('[WebSocket] Nessun PONG ricevuto. Chiudo connessione inattiva.');
+        return ws.terminate();
+      }
+
+      ws.isAlive = false;
+      ws.ping(); // invia ping al client
+    });
+  }, 30000); // ogni 30 secondi
+
   }
  
+  async resetSimulation(){
+    this.logger.info(`[resetSimulation] cancello ordini con DELETE [${this.dbManagerUrl}/simul/orders]`);
+    const orders = await axios.delete(`${this.dbManagerUrl}/simul/orders`);
+    this.logger.info(`[resetSimulation] cancello posizioni con DELETE [${this.dbManagerUrl}/simul/positions]`);
+    const position = await axios.delete(`${this.dbManagerUrl}/simul/positions`);
+    this.logger.info(`[resetSimulation] cancello strategy runs con DELETE [${this.dbManagerUrl}/strategies]`);
+    let strategies = await axios.delete(`${this.dbManagerUrl}/strategies`);
+    this.logger.info(`[resetSimulation] sincronizzo account con POST [${this.dbManagerUrl}/simul/account]`);
+    let account = await axios.post(`${this.dbManagerUrl}/simul/account`);
+
+    this.logger.info(`[resetSimulation] rinizzializzo capital manager con PUT [${this.capitalManagerUrl}/initCapitalManager]`);
+    await axios.put(`${this.capitalManagerUrl}/initCapitalManager`);
+
+    // Riazzero strategies
+    strategies = await axios.get(`${this.dbManagerUrl}/strategies`);
+    strategies = strategies.data;
+    this.logger.info(`[resetSimulation] Azzero i valori di strategies ${JSON.stringify(strategies)}`);
+    for (let i = 0; i < strategies.length; i++) {
+      let strategy = strategies[i];
+      this.logger.info(`[resetSimulation] Azzero strategy id ${strategy.id}`);
+
+      strategy.CapitaleInvestito = 0;
+      strategy.OpenOrders = 0;
+      strategy.NumeroOperazioni = 0;
+      strategy.NumeroOperazioniVincenti = 0;
+      strategy.ggCapitaleInvestito = 0;
+      strategy.MaxDay = 0;
+      strategy.MinDay = 0;
+      strategy.posizioneMercato = 'OFF';
+      strategy.CapitaleResiduo = 0;
+
+      // Salva la modifica se serve (es. in DB o array aggiornato)
+      //strategies[i] = strategy;
+      await axios.put(`${this.dbManagerUrl}/strategies/${strategy.id}`,strategy);
+    }
+    // this.logger.info(`[resetSimulation] Inizzializzazione LiveMarketListener ${this.liveMarketListenerUrl}/init}`);
+    // await axios.post(`${this.liveMarketListenerUrl}/init`);
+  }
+ 
+  async getCandles( params ) {
+    this.logger.log(`[getCandles] Chiamo [GET] ${this.cacheManagerUrl}/candles con params ${JSON.stringify(params)}`);
+    const res = await axios.get(`${this.cacheManagerUrl}/candles`, params);
+    this.logger.log(`[getCandles] Numero Candele ricevute : ${res.data.length}`);
+    return res.data;
+  }
+ 
+  async pauseSimulation() {
+    // this.saveLastDate = startDate;
+    // this.saveEndDate = endDate;
+    // this.saveTf = tf;
+    this.simulationStatus = 'PAUSED';
+    for (const key in this.intervals) {
+      this.logger.info(`[stopSimulation] Interrompo simulazione per ${key}`);
+      clearInterval(this.intervals[key]);
+      delete this.intervals[key];
+    }
+    this.flushDB();
+  }
+  
+
   async startSimulation(startDate, endDate, tf = '15Min', stopCandles = 0) {
 
-    this.saveLastDate = startDate;
-    this.saveEndDate = endDate;
-    this.saveTf = tf;
+    if(this.nextDate)
+         startDate = this.nextDate;
+
+    if(this.saveEndDate)
+      endDate = this.saveEndDate
+  
+    if(this.saveTf)
+      tf = this.saveTf;
+
     let candlesProcessed = 0;
+    this.simulationStatus = 'STARTED';
+    const simulationStartTime = Date.now();
+    this.logger.log(`[startSimulation] Avvio simulazione con startDate ${startDate} endDate ${endDate} tf ${tf} stopCandles ${stopCandles} simulationStartTime ${simulationStartTime} numero Client connessi ${this.wsClients.length}`);
 
     for (const ws of this.wsClients) {
-        if (!ws.isAuthenticated || !ws.subscribedSymbols || ws.subscribedSymbols.length === 0) {
-          this.logger.warning('[startSimulation] Client non autenticato o senza simboli sottoscritti');
-          continue;  
-        }
 
+        if (!ws.isAuthenticated || !ws.subscribedSymbols || ws.subscribedSymbols.length === 0) {
+          this.logger.warning(`[startSimulation] non autenticato o senza simboli sottoscritti`);
+          continue;  
+        } 
+
+        this.logger.log(`ws.subscribedSymbols ${ws.subscribedSymbols}`)
         for (const symbol of ws.subscribedSymbols) {
             this.logger.log(`[startSimulation] Simulazione per ${symbol} da ${startDate} a ${endDate} con TF ${tf}`);
             await this.loadSettings();
@@ -129,16 +263,17 @@ class MarketSimulator {
                   startDate,
                   endDate,
                   tf
-              }}
-            this.logger.log(`[startSimulation] Chiamo : ${this.cacheManagerUrl}/candles con body ${JSON.stringify(body)}`);
-            const res = await axios.get(`${this.cacheManagerUrl}/candles`, body);
+              }} 
+            const candles = await this.getCandles(body);
+            // this.logger.log(`[startSimulation] Chiamo : ${this.cacheManagerUrl}/candles con body ${JSON.stringify(body)}`);
+            // const res = await axios.get(`${this.cacheManagerUrl}/candles`, body);
         
-            const candles = res.data;
+            //const candles = res.data;
             if (!Array.isArray(candles) || candles.length === 0) {
               this.logger.warning(`[startSimulation] Nessuna candela trovata per ${symbol}`);
               return;
             }
-        
+ 
             const delay = parseInt(this.settings['STREAM-SIMULATION-DELAY']) || 500;
             let index = 0;
         
@@ -146,9 +281,16 @@ class MarketSimulator {
 
             this.intervals[intervalKey] = setInterval(() => {
               if (index >= candles.length) {
-                this.logger.info(`[startSimulation] Fine simulazione per ${symbol} con chiave ${intervalKey}`);
+                const elapsedMs = Date.now() - simulationStartTime;
+                const totalSeconds = Math.floor(elapsedMs / 1000);
+                const hours = Math.floor(totalSeconds / 3600);
+                const minutes = Math.floor((totalSeconds % 3600) / 60);
+                const seconds = totalSeconds % 60;
+
+                this.logger.info(`[startSimulation] Fine simulazione per ${symbol} con chiave ${intervalKey} - Tempo impiegato: ${hours}h ${minutes}m ${seconds}s`);
                 clearInterval(this.intervals[intervalKey]);
                 delete this.intervals[intervalKey];
+                this.flushDB();
                 return;
               }              
 
@@ -165,8 +307,8 @@ class MarketSimulator {
               this.logger.trace(`[startSimulation] Inviata candela: ${JSON.stringify(candle)}`);
               
 
-              if(stopCandles !== 0 && (candlesProcessed < stopCandles))
-                this.stopSimulation();
+              if(stopCandles !== 0 && (candlesProcessed < stopCandles)){}
+                this.pauseSimulation();
               candlesProcessed++;
 
             }, delay);
@@ -175,12 +317,18 @@ class MarketSimulator {
   }
  
   stopSimulation() {
+    this.saveLastDate = null;
+    this.saveEndDate = null;
+    this.saveTf = null;
+    this.nextDate=null;
+    this.simulationStatus = 'STOP';
     this.logger.info(`[stopSimulation] Interrompo simulazione intervals`);
     for (const key in this.intervals) {
       this.logger.info(`[stopSimulation] Interrompo simulazione per ${key}`);
       clearInterval(this.intervals[key]);
       delete this.intervals[key];
     }
+    this.flushDB();
   }
 
   async broadcastMessage(payload) {
@@ -199,6 +347,7 @@ class MarketSimulator {
   
   restartSimulation(startDate, endDate, tf = '15Min', stopCandles = 0) {
 
+    this.simulationStatus = 'STARTED';
     if(!this.nextDate)
         this.nextDate = startDate;
 
@@ -230,7 +379,6 @@ async recovery(candle) {
 
   this.restartSimulation();
 }
-
 
 async  updatePositionFromCandle(candle) {
   const symbol = candle[0].S;
@@ -302,6 +450,20 @@ async  updatePositionFromCandle(candle) {
 
   return { updated: true, symbol, updatedFields };
 }
+
+//{success:true, recordsStrategy:strategies.numStrategy, recordsStrategyRuns:numRecordSync, deletedStrategyRuns:numRecordDeleted}
+  async flushDB() {
+    try{
+      const orders = await axios.post(`${this.dbManagerUrl}/simul/orders/once`);
+      const positions = await axios.post(`${this.dbManagerUrl}/simul/positions/once`);
+      const strategies = await axios.post(`${this.dbManagerUrl}/strategies/once`);
+      this.logger.log(`[flushDB] Sync con DB. Ordini sincronizzati ${orders.ordersSynconDB} ordini chiusi ${orders.ordersClosed}. Posizioni sincronizzate ${positions.posizioniSynctoDB}`);
+      this.logger.log(`[flushDB] Sync con DB. Strategy sincronizzati ${strategies.recordsStrategy} strategy_runs ${strategies.recordsStrategyRuns}. strategy_runs chiuse ${strategies.deletedStrategyRuns}`);
+    } catch (error) {
+      this.logger.error(`[flushDB] Error flush DB ${error.message}`);
+    }
+
+  }
 
   getInfo() {
     return {

@@ -69,16 +69,19 @@ async function routeEvent(eventType, data, AlpacaEnv, AlpacaApi) {
     // Aggiorno la tabella Ordini in modo centrale anziche ripetere
     // questo codice per ogni router
     
-    const now = new Date();
-    data.order[updateDateFild[eventType]]= now.toISOString().slice(0, 19).replace('T', ' ');
-    logger.trace(`Campo data da aggiornare ${updateDateFild[eventType]} =  ${data.order[updateDateFild[eventType]]}`);
-    try{
-      logger.log(`[ROUTER] Aggiorno la tabella Ordini PUT ${dbManagerUrl}/orders/${data.order.id} con body ${JSON.stringify(data.order)}`);
-      await axios.put(`${dbManagerUrl}/orders/${data.order.id}`, data.order);
-    } catch (error) {
-      logger.error(`[ROUTER] Errore durante update tabella ordini ${error.message}`);
-      return null;
+    if(!process.env.FAST_SIMUL){
+      const now = new Date();
+      data.order[updateDateFild[eventType]]= now.toISOString().slice(0, 19).replace('T', ' ');
+      logger.trace(`Campo data da aggiornare ${updateDateFild[eventType]} =  ${data.order[updateDateFild[eventType]]}`);
+      try{
+        logger.log(`[ROUTER] Aggiorno la tabella Ordini PUT ${dbManagerUrl}/orders/${data.order.id} con body ${JSON.stringify(data.order)}`);
+        await axios.put(`${dbManagerUrl}/orders/${data.order.id}`, data.order);
+      } catch (error) {
+        logger.error(`[ROUTER] Errore durante update tabella ordini ${error.message}`);
+        return null;
+      }
     }
+
 
     // Forzo il ricarico degli ordini in tutte le strategie
     //await publishCommand({ action: 'loadActiveOrders' });

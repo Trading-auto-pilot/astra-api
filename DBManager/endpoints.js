@@ -18,7 +18,11 @@ const MODULE_NAME = 'RESTServer';
 const MODULE_VERSION = '2.0';
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173', // indirizzo frontend
+  credentials: true // se usi cookie o auth
+}));
+
 app.use(express.json());
 
 // 🔁 Healthcheck
@@ -29,6 +33,7 @@ app.get('/health', (req, res) => {
 // ℹ️ Info endpoint
 app.get('/info', (req, res) => {
   res.json({
+    microservice:MICROSERVICE,
     module: MODULE_NAME,
     version: MODULE_VERSION,
     environment: process.env.NODE_ENV || 'development',

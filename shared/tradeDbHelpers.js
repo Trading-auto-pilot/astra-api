@@ -145,14 +145,17 @@ const tradeDbHelpers = (dbManagerUrl) => ({
             PLOperazionePerc: 0.00
         };
 
-        logger.trace(`[insertBuyTransaction] calling endpoint POST ${dbManagerUrl}/transactions/buy with payload | ${JSON.stringify(payload)}`);
-        try {
-            const res = await axios.post(`${dbManagerUrl}/transactions/buy`, payload);
-            return res.data;
-        } catch (err) {
-            logger.error(`[insertBuyTransaction] ${err.message}`);
-            return { success: false, error: err.message };
+        if(!process.env.FAST_SIMUL){
+            logger.trace(`[insertBuyTransaction] calling endpoint POST ${dbManagerUrl}/transactions/buy with payload | ${JSON.stringify(payload)}`);
+            try {
+                const res = await axios.post(`${dbManagerUrl}/transactions/buy`, payload);
+                return res.data;
+            } catch (err) {
+                logger.error(`[insertBuyTransaction] ${err.message}`);
+                return { success: false, error: err.message };
+            }
         }
+
     }
 
 });

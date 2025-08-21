@@ -16,49 +16,58 @@ module.exports = async (data,event_type,AlpacaEnv) => {
   let retData, myStrategy;
 
   // Recupero scenario id
-  logger.trace(`[NEW] Recupero ScenarioId con  ${dbManagerUrl}/transactions/scenarioIdByOrderId/${data.order.id}`);
-  try {
-    retData = await axios.get(`${dbManagerUrl}/transactions/scenarioIdByOrderId/${data.order.id}`);
-  }
-  catch (error) {
-    logger.error(`[NEW] Errore durante il recupero della strategy id ${error.message}`);
-    return null;
-  }
+  // logger.trace(`[NEW] Recupero ScenarioId con  ${dbManagerUrl}/transactions/scenarioIdByOrderId/${data.order.id}`);
+  // try {
+  //   retData = await axios.get(`${dbManagerUrl}/transactions/scenarioIdByOrderId/${data.order.id}`);
+  // }
+  // catch (error) {
+  //   logger.error(`[NEW] Errore durante il recupero della strategy id ${error.message}`);
+  //   return null;
+  // }
+
+  // Recupero ScenarioID dal symbol
   
-    // Recupero i dettagli della strategia da modificare
-    logger.trace(`[NEW] Recupero i dettagli della strategia da modificare ${dbManagerUrl}/strategies`);
+// Recupero i dettagli della strategia da modificare recuperandola dal symbol che si trova nel messaggio
+logger.trace(`[NEW] Recupero i dettagli della strategia da modificare ${dbManagerUrl}/strategies/symbol/${data.order.symbol}`);
 try {
-    const strategyDetails = await axios.get(`${dbManagerUrl}/strategies`);
-    myStrategy = strategyDetails.data.filter( s => s.id === Number(retData.data.ScenarioID));
+  myStrategy = await axios.get(`${dbManagerUrl}/strategies/symbol/${data.order.symbol}`);
+  myStrategy = myStrategy.data;
+  //myStrategy = strategyDetails.data.filter( s => s.id === Number(retData.data.ScenarioID));
 } catch (error) {
-    logger.error(`[NEW] Errore durante recupero dettagli strategia ${error.message}`);
-    return null;
+  logger.error(`[NEW] Errore durante recupero dettagli strategia ${error.message}`);
+  return null;
 }
 
-logger.trace(`[NEW] Strategy details | ${JSON.stringify(myStrategy)}`)
-  // Aggiorno la tabella transazioni
-  const now = new Date();
-  retData.data.operationDate = now.toISOString().slice(0, 19).replace('T', ' ');
-  if(data.order.side === 'buy') 
-    retData.data.operation = 'BUY NEW';
-  else
-    retData.data.operation = 'SELL NEW';
-  logger.trace(`[NEW] Aggiorno tabella transazioni PUT ${dbManagerUrl}/transactions/${retData.data.id} | ${JSON.stringify(retData.data)}`);
-  try{
-    const rc = await axios.put(`${dbManagerUrl}/transactions/${retData.data.id}`, retData.data);
-  } catch (error) {
-    logger.error(`[NEW] Errore durante aggiornamento tabella transazioni ${error.message}`);
-    return null;
+  logger.trace(`[NEW] Strategy details | ${JSON.stringify(myStrategy)}`)
+  if(!process.env.FAST_SIMUL){
+    // Aggiorno la tabella transazioni
+    const now = new Date();
+    retData.data.operationDate = now.toISOString().slice(0, 19).replace('T', ' ');
+    if(data.order.side === 'buy') 
+      retData.data.operation = 'BUY NEW';
+    else
+      retData.data.operation = 'SELL NEW';
+    logger.trace(`[NEW] Aggiorno tabella transazioni PUT ${dbManagerUrl}/transactions/${retData.data.id} | ${JSON.stringify(retData.data)}`);
+    try{
+      const rc = await axios.put(`${dbManagerUrl}/transactions/${retData.data.id}`, retData.data);
+    } catch (error) {
+      logger.error(`[NEW] Errore durante aggiornamento tabella transazioni ${error.message}`);
+      return null;
+    }
   }
 
+
   // Aggiorno la tabella Ordini
-  try{
-    logger.trace(`[NEW] Aggiorno Tabella Ordini PUT ${dbManagerUrl}/orders/${data.order.id}`);
-    const ret = await axios.put(`${dbManagerUrl}/orders/${data.order.id}`, data.order);
-  } catch (error) {
-    logger.trace(`[NEW] Errore nell'aggiornamento della tabella Ordini ${error.message}`);
-    return null;
+  if(!process.env.FAST_SIMUL){
+    try{
+      logger.trace(`[NEW] Aggiorno Tabella Ordini PUT ${dbManagerUrl}/orders/${data.order.id}`);
+      const ret = await axios.put(`${dbManagerUrl}/orders/${data.order.id}`, data.order);
+    } catch (error) {
+      logger.trace(`[NEW] Errore nell'aggiornamento della tabella Ordini ${error.message}`);
+      return null;
+    }
   }
+
 
 
   // Invio comunicazione di Ordine eseguito

@@ -6,7 +6,7 @@ const MODULE_VERSION = '1.0';
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
  
 class fiilOrders {
-    constructor(caller, filledOrder, transazioni, strategia, /*cache,*/ openOrders, strategy_runs, capitali) {
+    constructor(caller, filledOrder, /*transazioni,*/ strategia, /*cache,*/ openOrders, strategy_runs, capitali) {
         this.caller = caller;
         //this.transazioni = transazioni;
         this.strategia = strategia;
@@ -16,7 +16,7 @@ class fiilOrders {
         this.openOrders = openOrders;
         this.capitali = capitali;
 
-        this.transactionUpdate = transazioni;
+        //this.transactionUpdate = transazioni;
         this.strategiaUpdate = strategia;
         this.strategyrunsUpdate = strategy_runs;
         this.newStrategyRuns = false;
@@ -28,9 +28,9 @@ class fiilOrders {
         return this.strategyrunsUpdate;
     }
 
-    getTransazioni() {
-        return this.transactionUpdate;
-    }
+    // getTransazioni() {
+    //     return this.transactionUpdate;
+    // }
 
     getStrategia(){
         return this.strategiaUpdate;
@@ -42,7 +42,7 @@ class fiilOrders {
         logger.trace(`[updateKPIs] this.filledOrder ${JSON.stringify(this.filledOrder)}`);
         logger.trace(`[updateKPIs] this.strategyrunsUpdate ${JSON.stringify(this.strategyrunsUpdate)}`);
         logger.trace(`[updateKPIs] this.openOrders : ${JSON.stringify(this.openOrders)}`);
-        logger.trace(`[updateKPIs] this.transactionUpdate : ${JSON.stringify(this.transactionUpdate)}`);
+        //logger.trace(`[updateKPIs] this.transactionUpdate : ${JSON.stringify(this.transactionUpdate)}`);
         logger.trace(`[updateKPIs] this.capitali : ${JSON.stringify(this.capitali)}`);
 
         // Caso Acquisto
@@ -58,7 +58,7 @@ class fiilOrders {
             this.strategyrunsUpdate['CapitaleInvestito'] = Number(this.strategiaUpdate.CapitaleInvestito);
             //this.strategiaUpdate.CapitaleResiduo +=   Number((parseFloat(this.filledOrder.order.filled_qty) * parseFloat(this.filledOrder.order.filled_avg_price)).toFixed(2));            // Aggiorno capitale residuo
             
-            this.transactionUpdate['operation']='BUY'
+            //this.transactionUpdate['operation']='BUY'
             if(Number(this.openOrders) === 0 && this.caller === "fill")
                 // Se e' l'unico ordine aperto e viene fatto fill completo mi aspetto che OpenOrder vada a zero o quasi. Porebbe
                 // esserci una piccola differenza tra il prezzo dell'ordine e quello di acquisto che potrebbe far non azzerare OpenOrders
@@ -71,11 +71,11 @@ class fiilOrders {
             if(this.strategiaUpdate.posizioneMercato==="OFF"){
 
                 const strategy_runs_id = uuidv4();
-                this.transactionUpdate.idOperazione = strategy_runs_id;
+                //this.transactionUpdate.idOperazione = strategy_runs_id;
                 this.strategiaUpdate.posizioneMercato=strategy_runs_id
                 this.strategyrunsUpdate['strategy_runs_id']=strategy_runs_id;
                 this.strategyrunsUpdate['strategy_id'] = this.strategiaUpdate.id;
-                logger.log(`[updateKPIs] Ciclo di vendita per strategia ${this.strategiaUpdate.id} iniziato con idOperazione ${this.transactionUpdate.idOperazione}`);
+                //logger.log(`[updateKPIs] Ciclo di vendita per strategia ${this.strategiaUpdate.id} iniziato con idOperazione ${this.transactionUpdate.idOperazione}`);
                 this.newStrategyRuns = true;
             } else {
                 this.newStrategyRuns = false;

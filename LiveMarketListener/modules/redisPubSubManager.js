@@ -23,6 +23,11 @@ class RedisPubSubManager extends EventEmitter {
     this.connected = false;
     this.logLevel = process.env.LOG_LEVEL || 'info';
     this.logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION,this.logLevel );
+    this.connectionStatus = "NOT CONNECTED";
+  }
+
+  getConnectionStatus() {
+    return this.connectionStatus;
   }
 
     getLogLevel(){
@@ -33,6 +38,18 @@ class RedisPubSubManager extends EventEmitter {
         this.logLevel=level;
         this.logger.setLevel(level);
     }
+
+    getParams() {
+      return ({
+        Url : this.url,
+        retryDelay : this.retryDelay,
+        maxRetries : this.maxRetries,
+        retryCount : this.retryCount,
+        subscriber : this.subscriber.length,
+        subscriber : this.subscriber.length
+      })
+    }
+
 
   async init() {
     await this._initSubscriber();
@@ -55,11 +72,18 @@ class RedisPubSubManager extends EventEmitter {
     client.on('connect', () => this.logger.info(`[${label}] Connessione a Redis in corso...`));
     client.on('ready', () => {
       this.logger.info(`[${label}] ✅ Connessione a Redis pronta`);
+      this.connectionStatus = "CONNECTED";
       this.retryCount = 0;
       this.connected = true;
     });
-    client.on('end', () => this.logger.warning(`[${label}] ❌ Connessione Redis terminata`));
-    client.on('error', err => this.logger.error(`[${label}] Errore Redis: ${err.message}`));
+    client.on('end', () => {
+      this.logger.warning(`[${label}] ❌ Connessione Redis terminata`);
+      this.connectionStatus = "NOT CONNECTED";
+    });
+    client.on('error', err => {
+      this.logger.error(`[${label}] Errore Redis: ${err.message}`);
+      this.connectionStatus = "ERROR";
+    });
   }
 
   async _connectWithRetry(client, label) {

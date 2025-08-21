@@ -1,11 +1,18 @@
 const express = require('express');
 const redis = require('redis');
+const cors = require('cors');
 const SMA = require('./SMA');
 require('dotenv').config();
 
 const REDIS_POSITIONS_KEY = 'alpaca:positions';
 
 const app = express();
+
+app.use(cors({
+  origin: 'http://localhost:5173', // indirizzo frontend
+  credentials: true // se usi cookie o auth
+}));
+
 const port = process.env.PORT || 3010;
 
 const strategy = new SMA();
@@ -21,18 +28,6 @@ app.use(express.json());
   await subscriber.connect();
   console.log('✅ Connesso a Redis per Pub/Sub');
 
-  // await subscriber.subscribe('commands', async (message) => {
-  //   console.log(`📩 Ricevuto su 'commands':`, message);
-  //   try {
-  //     const parsed = JSON.parse(message);
-  //     if (parsed.action === 'registerBot') {
-  //       strategy.registerBot();
-  //       console.log('✔️  Eseguito comando:', parsed.action);
-  //     }
-  //   } catch (err) {
-  //     console.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
-  //   }
-  // });
 
   await subscriber.subscribe(REDIS_POSITIONS_KEY, async (message) => {
     console.log(`📩 Ricevuto su ${REDIS_POSITIONS_KEY}: `, message);
@@ -54,15 +49,36 @@ app.use(express.json());
 
 
 // Configurazione REST
-// 🔁 Healthcheck
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK', service: 'SMA', uptime: process.uptime() });
-});
+    // 🔁 Healthcheck
+    app.get('/health', (req, res) => {
+      res.json({ status: 'OK', service: 'SMA', uptime: process.uptime() });
+    });
 
-// ℹ️ Info del modulo
-app.get('/info', (req, res) => {
-  res.json(strategy.getSMAInfo());
-});
+    // ℹ️ Info del modulo
+    app.get('/info', (req, res) => {
+      res.json(strategy.getSMAInfo());
+    });
+
+    app.get('/loglevel', (req, res) => {
+      res.json({SMA:strategy.getLogLevel()});
+    });
+
+    app.put('/loglevel/:module', (req, res) => {
+
+      const moduleMap = {
+        SMA:strategy
+      };
+
+      const targetModule = moduleMap[req.params.module];
+
+      if (!targetModule || typeof targetModule.setLogLevel !== 'function') {
+        return res.status(400).json({ success: false, error: `Modulo ${req.params.module} non esistente` });
+      }
+
+      targetModule.setLogLevel(req.body.logLevel);
+      res.status(200).json({ success: true, logLevel: {SMA : strategy.getLogLevel()}});
+    });
+
 
 // ⚙️ Endpoint per ricevere segnali di trading
 app.post('/processCandle', async (req, res) => {

@@ -1,6 +1,7 @@
 // server.js
 const express = require('express');
 const dotenv = require('dotenv');
+const cors = require ('cors');
 const LiveMarketListener = require('./modules/main');
 const createLogger = require('../shared/logger');
 
@@ -17,6 +18,12 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
+app.use(cors({
+  origin: 'http://localhost:5173', // indirizzo frontend
+  credentials: true // se usi cookie o auth
+}));
+
+
 const port = process.env.PORT || 3012;
 let liveMarketListner;
 
@@ -29,7 +36,22 @@ let liveMarketListner;
     logger.error(`Errore durante l'inizializzazione: ${err.message}`);
     process.exit(1);
   }
-})();
+})(); 
+  
+app.get('/params', (req, res) => {
+  res.json(liveMarketListner.getModuleParams());
+});
+
+app.put('/connect', async (req, res) => {
+  await liveMarketListner.connect();
+  res.json({success:true});
+});
+
+app.delete('/connect', async (req, res) => {
+  await liveMarketListner.disconnect();
+  res.json({success:true});
+});
+
 
 app.get('/loglevel', (req, res) => {
   res.json({ 
@@ -45,13 +67,19 @@ app.get('/loglevel', (req, res) => {
 
 app.put('/loglevel/:module', (req, res) => {
 
-
   if(req.params.module === "RESTServer") 
     logLevel = req.body.logLevel;
   else
     liveMarketListner.setLogLevel(req.body.logLevel, req.params.module);
 
-  res.status(200).json({ success: true, msg: `Nuovo livello ${req.body.logLevel} log per modulo ${req.params.module}` });
+  res.status(200).json({ success: true, logLevel :{
+    liveMarketListner : liveMarketListner.getLogLevel(),
+    processCandles : liveMarketListner.getLogLevel('processCandles'),
+    redisPubSubManager : liveMarketListner.getLogLevel('redisPubSubManager'),
+    alpacaSocket : liveMarketListner.getLogLevel('alpacaSocket'),
+    tradeExecutor : liveMarketListner.getLogLevel('tradeExecutor'),
+    RESTServer : logLevel
+  }});
 });
 
 
@@ -73,6 +101,15 @@ app.post('/resume', (req, res) => {
   liveMarketListner.resume();
   res.json({ status: 'resumed' });
 });
+
+app.post('/init', (req, res) => {
+  liveMarketListner.init();
+  res.json({ status: 'init' });
+});
+
+app.get('/connection', (req, res) => {
+  res.json(liveMarketListner.getConnectionStatus());
+})
 
 app.post('/addOrdertoOrderTable', (req, res) => {
   liveMarketListner.addOrdertoOrderTable(req.body);

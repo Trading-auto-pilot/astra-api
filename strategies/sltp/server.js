@@ -1,6 +1,7 @@
 // server.js
 const express = require('express');
 const redis = require('redis');
+const cors = require('cors');
 const dotenv = require('dotenv');
 const SLTP = require('./sltp');
 
@@ -8,19 +9,18 @@ const REDIS_POSITIONS_KEY = 'alpaca:positions';
 
 dotenv.config();
 const app = express();
+
+app.use(cors({
+  origin: 'http://localhost:5173', // indirizzo frontend
+  credentials: true // se usi cookie o auth
+}));
+
 app.use(express.json());
 
 const port = process.env.PORT || 3011;
 const sltp = new SLTP();
 
-// const commands = {
-//   registerBot: sltp.registerBot.bind(sltp),
-//   //loadActiveOrders:  sltp.loadActiveOrders.bind(sltp),
-//   loadSettings:  sltp.loadSettings.bind(sltp),
-//   loadActivePosition: sltp.loadActivePosition.bind(sltp)
-// };
-// Configurazione REDIS
-// Redis Pub/Sub Integration
+
 (async () => {
   const subscriber = redis.createClient({ url: process.env.REDIS_URL || 'redis://redis:6379' });
   subscriber.on('error', (err) => console.error('❌ Redis error:', err));
@@ -28,20 +28,6 @@ const sltp = new SLTP();
   await subscriber.connect();
   console.log('✅ Connesso a Redis per Pub/Sub');
 
-  // await subscriber.subscribe('commands', async (message) => {
-  //   console.log(`📩 Ricevuto su 'commands':`, message);
-  //   try {
-  //     const parsed = JSON.parse(message);
-  //       if (typeof commands[parsed.action] === 'function') {
-  //         await commands[parsed.action]();
-  //         console.log('✔️  Elaborazione completata', parsed.action);
-  //       } else {
-  //         console.error('❌ Comando non valido o mancante:', parsed.action);
-  //       }
-  //   } catch (err) {
-  //     console.error('❌ Errore nel parsing o nell’esecuzione:', err.message);
-  //   }
-  // });
 
   await subscriber.subscribe(REDIS_POSITIONS_KEY, async (message) => {
     console.log(`📩 Ricevuto su ${REDIS_POSITIONS_KEY}: `, message);
@@ -83,6 +69,28 @@ app.get('/info', (req, res) => {
   const info = sltp.getInfo();
   res.json(info);
 });
+
+
+    app.get('/loglevel', (req, res) => {
+      res.json({SLTP:sltp.getLogLevel()});
+    });
+
+    app.put('/loglevel/:module', (req, res) => {
+
+      const moduleMap = {
+        SLTP:sltp
+      };
+
+      const targetModule = moduleMap[req.params.module];
+
+      if (!targetModule || typeof targetModule.setLogLevel !== 'function') {
+        return res.status(400).json({ success: false, error: `Modulo ${req.params.module} non esistente` });
+      }
+
+      targetModule.setLogLevel(req.body.logLevel);
+      res.status(200).json({ success: true, logLevel: {SLTP : sltp.getLogLevel()}});
+    });
+
 
 // Carica ordini attivi da Alpaca 
 app.post('/loadActiveOrders', async (req, res) => {

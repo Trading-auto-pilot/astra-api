@@ -3,11 +3,9 @@
 const axios = require('axios');
 const createLogger = require('../../shared/logger');
 const Alpaca = require('../../shared/Alpaca');
-const MICROSERVICE = 'STRATEGIES';
+const MICROSERVICE = 'STRATEGY SLTP';
 const MODULE_NAME = 'SLTP';
 const MODULE_VERSION = '2.0';
-
-const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
 
 class SLTP {
@@ -17,21 +15,35 @@ class SLTP {
         this.positions=[];
         this.settings = {};
         this.AlpacaApi = new Alpaca();
+        this.logLevel = process.env.LOG_LEVEL || 'info';
+        this.logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, this.logLevel);
+
     }
 
     getInfo() {
         return {
+          microservice:MICROSERVICE,
           module: MODULE_NAME,
           version: MODULE_VERSION,
           positions: this.positions
         };
     }
 
+    getLogLevel() {
+      return this.logLevel;
+    }
+
+    setLogLevel(level) {
+        this.logLevel=level;
+        this.logger.setLevel(level);
+    }
+  
+
     setPositions(newPositions) { this.positions = newPositions; }
     async getPositions() { this.positions = await this.AlpacaApi.loadActivePositions()}
 
     async loadSettings() {
-        logger.info(`[loadSetting] Lettura setting da repository...`);
+        this.logger.info(`[loadSetting] Lettura setting da repository...`);
         const keys = [
             'ALPACA-API-TIMEOUT',
             'ALPACA-PAPER-BASE',
@@ -43,9 +55,9 @@ class SLTP {
         for (const key of keys) {
             const res = await axios.get(`${this.dbManagerUrl}/settings/${key}`);
             this.settings[key] = res.data;
-            logger.trace(`[loadSetting] Setting variavile ${key} : ${this.settings[key]}`);
+            this.logger.trace(`[loadSetting] Setting variavile ${key} : ${this.settings[key]}`);
         }
-        logger.info(`[loadSetting] Lettura setting da repository...`);
+        this.logger.info(`[loadSetting] Lettura setting da repository...`);
     }
 
   // 🔁 Registra il bot nel DB se non esiste, altrimenti aggiorna la data
@@ -55,15 +67,15 @@ class SLTP {
             name: MODULE_NAME,
             ver: MODULE_VERSION
         });
-        logger.info(`[registerBot] Bot registrato`);
+        this.logger.info(`[registerBot] Bot registrato`);
         } catch (err) {
-            logger.error(`[registerBot][registerBot] Errore: ${err.message}`);
+            this.logger.error(`[registerBot][registerBot] Errore: ${err.message}`);
         } 
     }
 
 
     async init(){
-        logger.info(`[init] Inizializzazione...`);
+        this.logger.info(`[init] Inizializzazione...`);
 
         await this.AlpacaApi.init();
 
@@ -79,12 +91,12 @@ class SLTP {
         for (const key of Object.keys(this)) {
             // Esclude i metodi (funzioni)
             if (typeof this[key] !== 'function') {
-            logger.trace(`[init] Variabile ${key} =`, this[key]);
+            this.logger.trace(`[init] Variabile ${key} =`, this[key]);
             }
         }
 
         for (const [key, value] of Object.entries(process.env)) {
-        logger.trace(`Environment variable ${key}=${value}`);
+        this.logger.trace(`Environment variable ${key}=${value}`);
         }
 
         this.registerBot();
@@ -92,23 +104,23 @@ class SLTP {
 
 async processCandle(bar, StrategyParams) {
   let position;
-  logger.trace(`[processCandle] bar: ${JSON.stringify(bar)}`); 
+  this.logger.trace(`[processCandle] bar: ${JSON.stringify(bar)}`); 
 
   try { 
     position = this.positions.find(p => p.symbol === bar.S);
   } catch (error) {
     this.positions = await this.AlpacaApi.loadActivePositions();
-    logger.error(`[processCandle] Errore nel recupero della posizione. Richiamo loadActivePositions() posizioni ${JSON.stringify(this.positions)}`);
+    this.logger.error(`[processCandle] Errore nel recupero della posizione. Richiamo loadActivePositions() posizioni ${JSON.stringify(this.positions)}`);
   }
   
 
   
-  logger.trace(`[processCandle] posizione trovata: ${position ? position.symbol : 'Nessuna'}`);
-  logger.trace(`[processCandle] posizione locale ${JSON.stringify(position)}`);
+  this.logger.trace(`[processCandle] posizione trovata: ${position ? position.symbol : 'Nessuna'}`);
+  this.logger.trace(`[processCandle] posizione locale ${JSON.stringify(position)}`);
   
 
   if (!position) {
-    logger.trace(`[processCandle] Nessuna posizione attiva per ${bar.S}, ritorno HOLD`);
+    this.logger.trace(`[processCandle] Nessuna posizione attiva per ${bar.S}, ritorno HOLD`);
     return {
       action: 'HOLD',
       reason: 'no_active_position',
@@ -121,10 +133,10 @@ async processCandle(bar, StrategyParams) {
   const tp = parseFloat(StrategyParams.params.TP);
   const sl = parseFloat(StrategyParams.params.SL);
 
-  logger.log(`[processCandle] unrealized_plpc: ${plpc} | TP: ${tp} | SL: ${sl} `);
+  this.logger.log(`[processCandle] unrealized_plpc: ${plpc} | TP: ${tp} | SL: ${sl} `);
 
   if (plpc >= tp) {
-    logger.log(`[processCandle] 🟢 Triggerato TP per ${position.symbol}: ${plpc}`);
+    this.logger.log(`[processCandle] 🟢 Triggerato TP per ${position.symbol}: ${plpc}`);
     return {
       action: 'SELL',
       trigger: 'TP',
@@ -136,7 +148,7 @@ async processCandle(bar, StrategyParams) {
   }
 
   if (plpc < sl) {
-    logger.log(`[processCandle] 🔴 Triggerato SL per ${position.symbol}: ${plpc}`);
+    this.logger.log(`[processCandle] 🔴 Triggerato SL per ${position.symbol}: ${plpc}`);
     return {
       action: 'SELL',
       trigger: 'SL',
@@ -147,7 +159,7 @@ async processCandle(bar, StrategyParams) {
     };
   }
 
-  logger.log(`[processCandle] 🟡 HOLD per ${position.symbol} | P&L: ${plpc} | TP: ${tp} | SL: ${sl}`);
+  this.logger.log(`[processCandle] 🟡 HOLD per ${position.symbol} | P&L: ${plpc} | TP: ${tp} | SL: ${sl}`);
   return {
     action: 'HOLD',
     SL: sl,

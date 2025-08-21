@@ -2,10 +2,12 @@ const axios = require('axios');
 const createLogger = require('../../shared/logger');
 const StrategyUtils = require('../../shared/strategyUtils');
 const Alpaca = require('../../shared/Alpaca');
-const MICROSERVICE = 'STRATEGIES';
+
+
+const MICROSERVICE = 'STRATEGY SMA';
 const MODULE_NAME = 'SMA';
 const MODULE_VERSION = '2.0';
-const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
+
 const utils = new StrategyUtils();
 
 class SMA {
@@ -15,19 +17,32 @@ class SMA {
     this.capitaleInvestito = 0;
     this.dbManagerURL = process.env.DBMANAGER_URL || 'http://dbmanager:3002';
     this.AlpacaApi = new Alpaca();
+    this.logLevel = process.env.LOG_LEVEL || 'info';
+    this.logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, this.logLevel);
 
     this.registerBot();
   }
 
 getSMAInfo() {
   return {
+      microservice:MICROSERVICE,
       module: MODULE_NAME,
       version: MODULE_VERSION,
       status: 'OK',
-      logLevel: process.env.LOG_LEVEL || 'info',
+      logLevel: this.logLevel,
       strategyUtil : utils.getInfo()
   };
 }
+
+  getLogLevel() {
+    return this.logLevel;
+  }
+
+  setLogLevel(level) {
+      this.logLevel=level;
+      this.logger.setLevel(level);
+  }
+
 
   // 🔁 Registra il bot nel DB se non esiste, altrimenti aggiorna la data
 async registerBot() {
@@ -36,14 +51,14 @@ async registerBot() {
         name: MODULE_NAME,
         ver: MODULE_VERSION
       });
-      logger.info(`[registerBot] Bot registrato`);
+      this.logger.info(`[registerBot] Bot registrato`);
     } catch (err) {
-        logger.error(`[registerBot] Errore: ${err.message}`);
+        this.logger.error(`[registerBot] Errore: ${err.message}`);
     }
   }
 
 async getMediaMobile(symbol, periodDays, currentDate, tf) {
-    logger.log(`[getMediaMobile] Richiamata con parametri : ${symbol} ${periodDays} ${currentDate} ${tf}`);
+    this.logger.log(`[getMediaMobile] Richiamata con parametri : ${symbol} ${periodDays} ${currentDate} ${tf}`);
     try {
 
         const mediaMobile = await utils.calcMediaMobile({
@@ -54,10 +69,10 @@ async getMediaMobile(symbol, periodDays, currentDate, tf) {
         });
       
 
-      logger.info('[getMediaMobile] Media Mobile ricevuta : '+mediaMobile);
+      this.logger.info('[getMediaMobile] Media Mobile ricevuta : '+mediaMobile);
       return mediaMobile;
     } catch (err) {
-        logger.error('[SMA][getMediaMobile] Errore durante la richiesta:', err.message);
+        this.logger.error('[SMA][getMediaMobile] Errore durante la richiesta:', err.message);
       return null;
     }
 }
@@ -66,12 +81,12 @@ async getMediaMobile(symbol, periodDays, currentDate, tf) {
   // 📥 Recupera ultima transazione dal DB per inizializzare lo stato interno 
 async loadLastPosition(scenarioId) {
     try {
-        logger.log(`[loadLastPosition] Richiamo ${this.dbManagerURL}/lastTransaction/${scenarioId}`);
+        this.logger.log(`[loadLastPosition] Richiamo ${this.dbManagerURL}/lastTransaction/${scenarioId}`);
         const response = await axios.get(`${this.dbManagerURL}/lastTransaction/${scenarioId}`);
         
 
         const last = response.data;
-        logger.log(`[loadLastPosition]Recuperata posizione ${JSON.stringify(last)}`);
+        this.logger.log(`[loadLastPosition]Recuperata posizione ${JSON.stringify(last)}`);
 
         if (last) {
           this.lastOp = new Date(last.operationDate);
@@ -84,7 +99,7 @@ async loadLastPosition(scenarioId) {
           }
         }
       } catch (err) {
-        logger.error(`[loadLastPosition] Errore: ${err.message}`);
+        this.logger.error(`[loadLastPosition] Errore: ${err.message}`);
       }
   }
 
@@ -92,7 +107,7 @@ async loadLastPosition(scenarioId) {
   // ⚙️ Elabora una candela e genera un segnale BUY / SELL / HOLD
   async processCandle(candle, scenarioId, symbol, params) {
 
-    logger.log(`[processCandle] Funzione richiamata con parametri : ${JSON.stringify(candle)} ${scenarioId} ${symbol}`);
+    this.logger.log(`[processCandle] Funzione richiamata con parametri : ${JSON.stringify(candle)} ${scenarioId} ${symbol}`);
     const {SL, TP, MA, TF} = params;
     let mediaMobile , prezzo;
      
@@ -102,7 +117,7 @@ async loadLastPosition(scenarioId) {
         //await this.loadLastPosition(scenarioId);
     } 
     catch (err) {
-        logger.error(`[processCandle] Errore nel recupero loadLastPosition:`, err.message);
+        this.logger.error(`[processCandle] Errore nel recupero loadLastPosition:`, err.message);
         throw err;
     }
 
@@ -110,11 +125,11 @@ async loadLastPosition(scenarioId) {
         mediaMobile = await this.getMediaMobile(symbol, MA, candle.t, TF);
     }
     catch (err) {
-        logger.error(`[processCandle] Errore nel recupero della Media Mobile:`, err.message);
+        this.logger.error(`[processCandle] Errore nel recupero della Media Mobile:`, err.message);
         throw err;
     }
 
-    logger.log(`[processCandle] mediaMobile : ${mediaMobile}  prezzo : ${prezzo}`);
+    this.logger.log(`[processCandle] mediaMobile : ${mediaMobile}  prezzo : ${prezzo}`);
     // BUY se prezzo > media mobile e non ho già acquistato
     if (mediaMobile != null && prezzo > mediaMobile) {
       return {

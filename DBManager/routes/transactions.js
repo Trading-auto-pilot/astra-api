@@ -4,25 +4,75 @@ const cache = require('../../shared/cache');
 const router = express.Router();
 
 module.exports = (dbManager) => {
-  router.get('/:orderId', async (req, res) => {
 
+
+  router.get('/:id', async (req, res) => {
     const cacheKey = 'transactions:all';
     const id = req.params.id;
 
     try {
       let data = await cache.get(cacheKey);
       if (!data) {
-        const data = await dbManager.getTransaction(req.params.orderId);
+        const data = await dbManager.getTransaction(req.params.id);
         await cache.set(cacheKey, data);
       }
-      const result = data.find(s => s.orderid === req.params.orderid);
-      if (!result) return res.status(404).json({ error: 'Order not found' });
+      const result = data.find(s => s.id === req.params.id);
+      if (!result) return res.status(404).json({ error: 'Transaction not found' });
       res.json(result);
     } catch (err) {
-      console.error('[GET /transactions/:orderId] Errore: '+ err.message);
+      console.error('[GET /transactions/:id] Errore: '+ err.message);
+      res.status(500).json({ error: 'Errore nel recupero della transazione '+ err.message, module:"[GET /transactions/:id]" });
+    }
+  });
+
+  router.delete('/:id', async (req, res) => {
+    const id = req.params.id;
+    const redisKey = `transactions:all:all`;
+
+    try {
+      // 🔸 1. Cancella dal DB usando funzione esistente
+      const dbDeleted = await dbManager.deleteTransaction(id);
+
+      if (!dbDeleted) {
+        console.log(`[DELETE /${id}] Nessuna transazione trovata nel DB`);
+        return res.status(404).json({ message: `Transazione ${id} non trovata nel DB` });
+      }
+
+      // 🔸 2. Invalida la cache Redis
+      await cache.del('transactions:all');
+      await cache.del('transactions:open');
+      
+
+      return res.status(200).json({
+        message: `Transazione ${id} eliminata`
+      });
+
+    } catch (err) {
+      console.error(`[DELETE /${id}] Errore: ${err.message}`);
+      return res.status(500).json({ error: 'Errore interno' });
+    }
+  });
+
+
+
+  router.get('/', async (req, res) => {
+    const cacheKey = 'transactions:all';
+
+    try {
+      let data = await cache.get(cacheKey);
+      if (!data) {
+        const data = await dbManager.getTransaction();
+        await cache.set(cacheKey, data);
+      }
+      const result = data;
+      if (!result) return res.status(404).json({ error: 'Transaction not found' });
+      res.json(result);
+    } catch (err) {
+      console.error('[GET /transactions] Errore: '+ err.message);
       res.status(500).json({ error: 'Errore nel recupero della transazione '+ err.message, module:"[GET /transactions]" });
     }
   });
+
 
   router.post('/', async (req, res) => {
     await cache.del('transactions:all');

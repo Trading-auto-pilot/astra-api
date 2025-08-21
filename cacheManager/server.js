@@ -1,6 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const redis = require('redis');
+const cors = require ('cors');
 const CacheManager = require('./cacheManager');
 const createLogger = require('../shared/logger');
 require('dotenv').config();
@@ -10,6 +11,12 @@ const port = process.env.PORT || 3006;
 const MICROSERVICE='cacheManager'
 const MODULE_NAME = 'RESTServer';
 const MODULE_VERSION = '2.0';
+
+app.use(cors({
+  origin: 'http://localhost:5173', // indirizzo frontend
+  credentials: true // se usi cookie o auth
+}));
+app.use(express.json());
 
 
 const dbManagerBaseUrl = process.env.DBMANAGER_URL || 'http://dbmanager:3002'; // URL del microservizio DBManager
@@ -97,13 +104,20 @@ app.get('/stats/L1/info', async (req, res) => {
 
 // Endpoint informazioni sul modulo
 app.get('/logLevel', (req, res) => {
-    res.status(200).json({success:true, cacheManager:cacheManager.getLogLevel(), RESTServer: getLogLevel()});
+    res.status(200).json({cacheManager:cacheManager.getLogLevel(), RESTServer: getLogLevel()});
 });
 // Endpoint informazioni sul modulo
-app.put('/logLevel/:logLevel', (req, res) => {
-  cacheManager.setLogLevel(req.params.logLevel)
-  setLogLevel(req.params.logLevel);
-  res.status(200).json({success:true});
+app.put('/logLevel/:module', (req, res) => {
+  let success = true;
+  switch(req.params.module) {
+    case 'cacheManager' : cacheManager.setLogLevel(req.body.logLevel); break;
+    case 'RESTServer' : setLogLevel(req.body.logLevel); break;
+    default : success = false; rc = {success:false, modulo: 'PUT [/logLevel/'+req.params.module+']', error : "Modulo "+req.params.module+" non esistente"}
+  }
+  if(success)
+    res.status(200).json({success:success, logLevel : {cacheManager:cacheManager.getLogLevel(), RESTServer: getLogLevel()}});
+  else
+    res.status(200).json(rc);
 });
 
 app.get('/paramsSetting', (req, res) => {

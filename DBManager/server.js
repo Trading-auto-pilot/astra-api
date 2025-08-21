@@ -1,4 +1,5 @@
 const app = require('./endpoints');
+const cors = require('cors');
 const createLogger = require('../shared/logger');
 const port = process.env.PORT || 3002;
 

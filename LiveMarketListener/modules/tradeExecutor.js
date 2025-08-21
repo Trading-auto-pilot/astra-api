@@ -89,12 +89,25 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION,logLevel);
 
     async function handleBuy(strategy, bar) {
         logger.info(`[handleBuy] BUY con candela ${JSON.stringify(bar)}`);
-        logger.trace(`[handleBuy] Verifico se esiste un ordine appena immesso ${DBMANAGER_URL}/transactions/open/${strategy.id}`);  
-        const order = await axios.get(`${DBMANAGER_URL}/transactions/open/${strategy.id}`);
-        if(Number(order.open) === 1) {
-            logger.trace(`[handleBuy] Ordine BUY OPEN esistente. Non inserisco altro ordine`);  
-            return;
-        }
+        logger.trace(`[handleBuy] Verifico se esiste un ordine appena immesso ${DBMANAGER_URL}/transactions/open/${strategy.id}`);
+
+
+        // Controllo duplicato perche' lo chiamo solo se non ci sono ordini attivi. Non ha senso ricontrollare
+        const order = shared.AlpacaApi.hasActiveOrder(bar.S)
+        // if(Number(order.length) > 0) {
+        //     logger.trace(`[handleBuy] Ordine BUY OPEN esistente. Non inserisco altro ordine`);  
+        //     return;
+        // }
+
+        // if(!process.env.FAST_SIMUL) {
+        //     logger.trace(`[handleBuy] Verifico se esiste un ordine appena immesso ${DBMANAGER_URL}/transactions/open/${strategy.id}`);  
+        //     const order = await axios.get(`${DBMANAGER_URL}/transactions/open/${strategy.id}`);
+        //     if(Number(order.open) === 1) {
+        //         logger.trace(`[handleBuy] Ordine BUY OPEN esistente. Non inserisco altro ordine`);  
+        //         return;
+        //     }
+        // }
+
 
 
         const evalResult = await richiestaCapitale(bar, strategy);
@@ -117,12 +130,15 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION,logLevel);
         let rc = await tradeDbHelpers.updateStrategies(data, strategy);
         if (!rc) throw new Error('update Strategies fallita');
         // Aggiungo record in transaction insertBuyTransaction
-        rc = await tradeDbHelpers.insertBuyTransaction(orderRes, strategy, {} )
-        if (!rc) throw new Error('Insert New transaction fallita');
+        // rc = await tradeDbHelpers.insertBuyTransaction(orderRes, strategy, {} )
+        // if (!rc) throw new Error('Insert New transaction fallita');
 
         // Aggiungo record in tabella Ordini
-        rc = await tradeDbHelpers.insertOrder(orderRes)
-        if (!rc) throw new Error('Insert New transaction fallita');
+        if(!process.env.FAST_SIMUL){
+            rc = await tradeDbHelpers.insertOrder(orderRes)
+            if (!rc) throw new Error('Insert New transaction fallita');
+        }
+
 
         // Aggiungo il capitale alloccato in strategies come OpenOrders
         // rc = await tradeDbHelpers.buildPositionFromOrder(orderRes, strategy, {} )
@@ -132,6 +148,7 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION,logLevel);
     }
 
     async function handleSell(strategy, bar, orderActive) {
+        
         logger.info(`[handleSell] SELL con candela ${JSON.stringify(bar)}`);
         const exists = orderActive.some(o =>
             o.symbol === bar.S &&

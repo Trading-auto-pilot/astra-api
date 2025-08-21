@@ -34,17 +34,8 @@ module.exports = (dbManager) => {
 
   // 📊 ACCOUNT
   router.get('/account', async (req, res) => {
-    totalReq++;
-    const cacheKey = 'simul_account:all';
-    let data = await cache.get(cacheKey);
-    if (data) {
-      cacheHit++;
-      return res.json(data);
-    }
-
     try {
       const data = await dbManager.simul_getAccountAsJson();
-      await cache.set(cacheKey, data);
       res.json(data);
     } catch (error) {
       logger.error('[GET /simul/account] Errore: '+ error.message);
@@ -55,7 +46,6 @@ module.exports = (dbManager) => {
   router.put('/account', async (req, res) => {
     try {
       const data = await dbManager.simul_updateAccount(req.body);
-      await cache.del('simul_account:all');
       res.json(data);
     } catch (error) {
       logger.error('[PUT /simul/account] Errore: '+ error.message);
@@ -63,21 +53,62 @@ module.exports = (dbManager) => {
     }
   });
 
-  // 📈 POSITIONS
-  router.get('/positions', async (req, res) => {
-    logger.info('[GET /simul/positions] Richiesta ricevuta');
-    totalReq++;
-    const cacheKey = 'simul_position:all';
-    let data = await cache.get(cacheKey);
-    if (data) {
-      cacheHit++;
-      logger.info('[GET /simul/positions] [cache hit]');
-      return res.json(data);
+  router.post('/account', async (req, res) => {
+    try {
+      const data = await dbManager.syncAccountFromAlpaca(req.body);
+      res.json(data);
+    } catch (error) {
+      logger.error('[POST /simul/account] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore nel sync dell\'account '+ error.message, module:"[POST /simul/account]" });
     }
+  });
+
+  router.delete('/account', async (req, res) => {
+    try {
+      const data = await dbManager.deleteAccountCache();
+      res.json(data);
+    } catch (error) {
+      logger.error('[DELETE /simul/account] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore nella cancellazione dell\'account '+ error.message, module:"[DELETE /simul/account]" });
+    }
+  });
+
+  // 📈 POSITIONS
+
+  router.post('/positions/start', async (req, res) => {
+    try {
+      const rc = await dbManager.startSyncRedisToMySQL();
+      res.json(rc);
+    } catch (error) {
+      logger.error('[POST /simul/positions/start] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore avvio sincronizzazione '+error.message, module:"[POST /simul/positions/start]" });
+    }
+  });
+
+  router.post('/positions/stop', async (req, res) => {
+    try {
+      const rc = await dbManager.stopSyncRedisToMySQL();
+      res.json(rc);
+    } catch (error) {
+      logger.error('[POST /simul/positions/stop] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore interruzione sincronizzazione '+error.message, module:"[POST /simul/positions/stop]" });
+    }
+  });
+
+  router.post('/positions/once', async (req, res) => {
+    try {
+      const rc = await dbManager.syncRedisToMySQLOnce();
+      res.json(rc);
+    } catch (error) {
+      logger.error('[POST /simul/positions/once] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore sincronizzazione '+error.message, module:"[POST /simul/positions/once]" });
+    }
+  });
+
+
+  router.get('/positions', async (req, res) => {
     try {
       const data = await dbManager.simul_getAllPositionsAsJson();
-      await cache.set(cacheKey, data);
-      logger.info('[GET /simul/positions] Risposta pronta:', JSON.stringify(data));
       res.json(data);
     } catch (error) {
       logger.error('[GET /simul/positions] Errore: '+ error.message);
@@ -86,17 +117,10 @@ module.exports = (dbManager) => {
   });
 
   router.get('/positions/:symbol', async (req, res) => {
-    totalReq++;
-    const cacheKey = 'simul_position:all';
     const symbol = req.params.symbol;
 
     try {
-      let data = await cache.get(cacheKey);
-      if (!data) {
-        data = await dbManager.simul_getAllPositionsAsJson();
-        await cache.set(cacheKey, data);
-      } else cacheHit++;
-
+      data = await dbManager.simul_getAllPositionsAsJson();
       const position = data.find(p => p.symbol === symbol);
       if (!position) return res.status(404).json({ error: 'Symbol not found' });
 
@@ -111,7 +135,6 @@ module.exports = (dbManager) => {
   router.post('/positions', async (req, res) => {
     try {
       const data = await dbManager.simul_insertPosition(req.body);
-      await cache.del('simul_position:all');
       res.json(data);
     } catch (error) {
       logger.error('[POST /simul/positions] Errore: '+ error.message);
@@ -122,8 +145,7 @@ module.exports = (dbManager) => {
   router.put('/positions', async (req, res) => {
     try {
       const rc = await dbManager.simul_updatePosition(req.body);
-      await cache.del('simul_position:all');
-      res.json(rc.data);
+      res.json(rc);
     } catch (error) {
       logger.error('[PUT /simul/positions] Errore: '+ error.message);
       res.status(500).json({ error: 'Errore durante l\'aggiornamento della posizione '+error.message, module:"[PUT /simul/positions]" });
@@ -133,7 +155,6 @@ module.exports = (dbManager) => {
   router.delete('/positions/:symbol', async (req, res) => {
     try {
       const data = await dbManager.simul_closePosition(req.params.symbol);
-      await cache.del('simul_position:all');
       res.json(data);
     } catch (error) {
       logger.error('[DELETE /simul/positions/:symbol] Errore: '+ error.message);
@@ -141,11 +162,10 @@ module.exports = (dbManager) => {
     }
   });
 
-    router.delete('/positions/all', async (req, res) => {
+    router.delete('/positions', async (req, res) => {
     try {
       const rc = await dbManager.simul_deleteAllPositions();
-      await cache.del('simul_position:all');
-      res.json(rc.data);
+      res.json(rc);
     } catch (error) {
       logger.error('[DELETE /simul/positions] Errore: '+ error.message);
       res.status(500).json({ error: 'Errore durante l\'eliminazione delle posizioni '+error.message, module:"[DELETE /simul/positions]" });
@@ -154,18 +174,49 @@ module.exports = (dbManager) => {
 
 
   // 📈 ORDERS
-  router.get('/orders', async (req, res) => {
-    totalReq++;
-    const cacheKey = 'orders:all';
-    let data = await cache.get(cacheKey);
-    if (data) {
-      cacheHit++;
-      return res.json(data);
+    router.get('/orders/openBySymbol/:symbol', async (req, res) => {
+    try {
+      const data = await dbManager.getOpenOrdersBySymbol(req.params.symbol);
+      res.json({count : data});
+    } catch (error) {
+      logger.error('[GET /orders/openBySymbol/:symbol] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore durante il recupero degli ordini aperti'+ error.message, module:"[GET /orders/openBySymbol/:symbol]" });
     }
+  });
 
+  router.post('/orders/start', async (req, res) => {
+    try {
+      const data = await dbManager.startSyncOrders();
+      res.json(data);
+    } catch (error) {
+      logger.error('[POST /simul/orders/start] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore avvio sincronizzazione con DB '+ error.message, module:"[POST /simul/orders/start]" });
+    }
+  });
+
+  router.post('/orders/stop', async (req, res) => {
+    try {
+      const data = await dbManager.stopSyncOrders();
+      res.json(data);
+    } catch (error) {
+      logger.error('[POST /simul/orders/stop] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore interruzione sincronizzazione con DB '+ error.message, module:"[POST /simul/orders/stop]" });
+    }
+  });
+
+  router.post('/orders/once', async (req, res) => {
+    try {
+      const data = await dbManager.syncOrdersOnce();
+      res.json(data);
+    } catch (error) {
+      logger.error('[POST /simul/orders/once] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore  sincronizzazione con DB '+ error.message, module:"[POST /simul/orders/once]" });
+    }
+  });
+
+  router.get('/orders', async (req, res) => {
     try {
       const data = await dbManager.simul_getAllOrdersAsJson();
-      await cache.set(cacheKey, data);
       res.json(data);
     } catch (error) {
       logger.error('[GET /simul/orders] Errore: '+ error.message);
@@ -176,7 +227,6 @@ module.exports = (dbManager) => {
   router.put('/orders', async (req, res) => {
     try {
       const data = await dbManager.simul_updateOrder(req.body);
-      await cache.del('orders:all');
       res.json(data);
     } catch (error) {
       logger.error('[PUT /simul/orders] Errore: '+ error.message);
@@ -187,7 +237,6 @@ module.exports = (dbManager) => {
   router.post('/orders', async (req, res) => {
     try {
       const data = await dbManager.simul_insertOrder(req.body);
-      await cache.del('orders:all');
       res.json(data);
     } catch (error) {
       logger.error('[POST /simul/orders] Errore: '+ error.message);
@@ -195,10 +244,19 @@ module.exports = (dbManager) => {
     }
   });
 
-  router.delete('/orders/all', async (req, res) => {
+  router.delete('/orders/:orderId', async (req, res) => {
     try {
-      const data = await dbManager.simul_deleteAllOrders(req.body);
-      await cache.del('orders:all');
+      const data = await dbManager.simul_deleteOrderById(req.params.orderId);
+      res.json(data);
+    } catch (error) {
+      logger.error('[DELETE /simul/orders/:orderId] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore durante l\'eliminazione degli ordini '+ error.message, module:"[DELETE /simul/orders/:orderId]" });
+    }
+  });
+
+  router.delete('/orders', async (req, res) => {
+    try {
+      const data = await dbManager.simul_deleteAllOrders();
       res.json(data);
     } catch (error) {
       logger.error('[DELETE /simul/orders] Errore: '+ error.message);

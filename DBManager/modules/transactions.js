@@ -120,21 +120,52 @@ async function getOpenTransactions() {
   }
 }
 
-async function getTransaction(orderId) {
+async function getTransaction(orderId = null) {
   const connection = await getDbConnection();
   try {
-    const [rows] = await connection.execute(
-      `SELECT * FROM transazioni WHERE orderId = ?`,
-      [orderId]
-    );
+    let query = 'SELECT * FROM transazioni';
+    const params = [];
+
+    if (orderId) {
+      query += ' WHERE orderId = ?';
+      params.push(orderId);
+    }
+
+    const [rows] = await connection.execute(query, params);
     return rows;
   } catch (error) {
     logger.error('[getTransaction] Errore:', error.message);
     return [];
   } finally {
-      connection.release();
+    connection.release();
   }
 }
+
+async function deleteTransaction(id) {
+  const connection = await getDbConnection();
+  try {
+    const [result] = await connection.execute(
+      'DELETE FROM transazioni WHERE id = ?',
+      [id]
+    );
+
+    if (result.affectedRows > 0) {
+      logger.info(`[deleteTransaction] Transazione ${id} eliminata con successo`);
+      return true;
+    } else {
+      logger.info(`[deleteTransaction] Nessuna transazione trovata con ID ${id}`);
+      return false;
+    }
+  } catch (error) {
+    logger.error(`[deleteTransaction] Errore eliminazione transazione ${id}: ${error.message}`);
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+
+
 
 async function getScenarioIdByOrderId(orderId) {
   const connection = await getDbConnection();
@@ -195,5 +226,6 @@ module.exports = {
   getScenarioIdByOrderId,
   countTransactionsByStrategyAndOrders,
   deleteAllTransactions,
-  getOpenTransactions
+  getOpenTransactions,
+  deleteTransaction
 };

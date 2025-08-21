@@ -93,11 +93,11 @@ const isLocal = process.env.ENV_NAME === 'DEV';
 
     async loadActiveBots() {
         try {
-        const res = await axios.get(`${this.dbManagerUrl}/bots`);
-        this.bots = res.data || [];
-        this.logger.info(`[loadActiveBots] Caricati ${this.bots.length} bots attivi`);
+            const res = await axios.get(`${this.dbManagerUrl}/bots`);
+            this.bots = res.data || [];
+            this.logger.info(`[loadActiveBots] Caricati ${this.bots.length} bots attivi`);
         } catch (err) {
-        this.logger.error('[loadActiveBots] Errore nel caricamento ordini attivi:', err.message);
+            this.logger.error('[loadActiveBots] Errore nel caricamento ordini attivi:', err.message);
         }
     }
 
@@ -166,7 +166,10 @@ const isLocal = process.env.ENV_NAME === 'DEV';
         this.lastTimestampProcessed = bar.t;
         let sell_decision;
 
-        this.loadActiveStrategies();
+        //this.loadActiveStrategies();
+        // Verificare se possibile di aggiornarli su evento anziche' in tutte le candele
+        this.loadPositions();
+        this.loadOrderActive();
         this.updateDrawdownFromBar(bar);
 
         // Prendo decisioni esecutive solo con segnale attivo.

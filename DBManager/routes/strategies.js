@@ -80,7 +80,6 @@ module.exports = (dbManager) => {
 
     try {
       data = await dbManager.getStrategiesRun(); // deve restituire tutte
-
       res.json(data);
     } catch (error) {
       console.error('[GET /strategies/strategy_runs] Errore: '+ error.message);
@@ -129,10 +128,40 @@ module.exports = (dbManager) => {
   router.get('/symbol/:symbol', async (req, res) => {
     try {
       const result = await dbManager.getActiveStrategies(req.params.symbol);
-      res.json(result);
+      res.json(result[0]);
     } catch (error) {
       console.error('[GET /strategies] Errore: '+ error.message);
       res.status(500).json({ error: 'Errore durante il recupero delle strategie '+ error.message, module:"[GET /strategies]" });
+    }
+  });
+
+  router.post('/start', async (req, res) => {
+    try {
+      const result = await dbManager.syncStrategyStart();
+      res.json(result);
+    } catch (error) {
+      console.error('[POST /strategies/start] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore avvio sincronizzazione con DB '+ error.message, module:"[POST /strategies/start]" });
+    }
+  });
+
+  router.post('/stop', async (req, res) => {
+    try {
+      const result = await dbManager.syncStrategyStop();
+      res.json(result);
+    } catch (error) {
+      console.error('[POST /strategies/stop] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore interruzione sincronizzazione con DB '+ error.message, module:"[POST /strategies/stop]" });
+    }
+  });
+
+  router.post('/once', async (req, res) => {
+    try {
+      const result = await dbManager.syncStrategyOnce();
+      res.json(result);
+    } catch (error) {
+      console.error('[POST /strategies/once] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore sincronizzazione con DB '+ error.message, module:"[POST /strategies/once]" });
     }
   });
 

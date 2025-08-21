@@ -1,20 +1,64 @@
 const express = require('express');
 const redis = require('redis');
 const http = require('http');
+const cors = require('cors');
 const OrderSimulator = require('./orderSimulator');
 const createLogger = require('../shared/logger');
 
 const app = express();
 app.use(express.json());
+
+app.use(cors({
+  origin: 'http://localhost:5173', // indirizzo frontend
+  credentials: true // se usi cookie o auth
+}));
+
+
 const MICROSERVICE = 'OrderSimulator';
 const MODULE_NAME = 'OrderSimulator RESTServer';
 const MODULE_VERSION = '1.0';
+let logLevel = process.env.LOG_LEVEL || 'info';
  
-const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, logLevel);
 
 const server = http.createServer(app);
 const simulator = new OrderSimulator();
 simulator.attachWebSocketServer(server);
+
+  function getLogLevel() {
+    return logLevel;
+  }
+
+  function setLogLevel(level) {
+      logLevel=level;
+      logger.setLevel(level);
+  }
+
+  app.get('/loglevel', (req, res) => {
+    res.json({OrderSimulator:simulator.getLogLevel(), RESTServer : getLogLevel() });
+  });
+
+    app.put('/loglevel/:module', (req, res) => {
+
+      if(req.params.module === 'RESTServer')
+        setLogLevel(req.body.logLevel);
+      else {
+        const moduleMap = {
+          OrderSimulator:simulator
+        };
+
+        const targetModule = moduleMap[req.params.module];
+
+        if (!targetModule || typeof targetModule.setLogLevel !== 'function') {
+          return res.status(400).json({ success: false, error: `Modulo ${req.params.module} non esistente` });
+        }
+
+        targetModule.setLogLevel(req.body.logLevel);
+      }
+      res.status(200).json({ success: true, logLevel: {OrderSimulator : simulator.getLogLevel(), RESTServer:getLogLevel()}});
+    });
+
+  
 
 // Endpoint per inizializzare la simulazione
 app.post('/start', async (req, res) => {
@@ -102,6 +146,10 @@ app.get('/health', (req, res) => {
     module: 'OrderSimulator',
     uptime: process.uptime()
   });
+});
+
+app.get('/info', (req, res) => {
+  res.status(200).json(simulator.getInfo());
 });
 
 // Avvio server
