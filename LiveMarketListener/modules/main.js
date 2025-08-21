@@ -36,6 +36,12 @@ class LiveMarketListener {
     this.logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, this.logLevel);
   }
 
+  getConnectionStatus() {
+    const redisConnStatus = this.redisSubscriber.getConnectionStatus();
+    const alpacaConnStatus = this.alpacaWS.getConnectionStatus();
+    return ({Alpaca : alpacaConnStatus, Redis :redisConnStatus});
+  }
+
   getLogLevel(module){
     if(!module) return this.logLevel;
 
@@ -59,6 +65,12 @@ class LiveMarketListener {
     return;
   }
 
+  getModuleParams(){
+    return({
+      alpacaSocket : this.alpacaWS.getParams(),
+      redisSocket : this.redisSubscriber.getParams()
+    })
+  }
 
   pause() {
     this.active = false;
@@ -80,8 +92,8 @@ class LiveMarketListener {
       activeOrders : this.orderActive,
       processCandle : this.candleProcessor.getOperationalEnvironment()
     };
-  }
- 
+  }  
+   
   updateOrderActive(symbolsToRemove) {
     if (!Array.isArray(this.orderActive)) {
       this.orderActive = [];
@@ -92,6 +104,14 @@ class LiveMarketListener {
     ); 
 
     this.logger.trace(`[updateOrderActive] Rimosso: ${symbolsToRemove.join(', ')}`);
+  }
+ 
+  async connect() {
+    this.alpacaWS.connect();
+  }
+
+  async disconnect(){
+    this.alpacaWS.disconnect();
   }
   
   async init() {
@@ -120,7 +140,6 @@ class LiveMarketListener {
     await this.candleProcessor.loadActiveBots();
     this.symbolStrategyMap = await this.candleProcessor.loadActiveStrategies();
  
-
     // Inizzializzo il websocket Alpaca
     this.alpacaWS = new AlpacaWS( getSetting, 
                                   this.symbolStrategyMap, 
@@ -128,19 +147,19 @@ class LiveMarketListener {
 
 
     // Avvia il subscriber Redis per aggiornare Posizioni attive
-    this.redisSubscriber.on(REDIS_POSITIONS_KEY, async () => {
+    this.redisSubscriber.on(REDIS_POSITIONS_KEY, async (data) => {
       await this.candleProcessor.loadPositions();
-      this.logger.info('[Redis] Aggiornamento posizioni richiesto. caricate '+this.candleProcessor.getActivePositions().length+' posizioni');
+      this.logger.info('[Redis] Aggiornamento posizioni richiesto. caricate '+this.candleProcessor.getActivePositions().length+' posizioni. Ricevuto messaggio '+JSON.stringify(data));
     });
     // Avvia il subscriber Redis per aggiornare Ordini attivi
-    this.redisSubscriber.on(REDIS_ORDERS_KEY, async () => {
+    this.redisSubscriber.on(REDIS_ORDERS_KEY, async (data) => {
       await this.candleProcessor.loadOrderActive();
-      this.logger.info('[Redis] Aggiornamento ordini  richiesto. caticati '+this.candleProcessor.getActiveOrders().length+' ordini');
+      this.logger.info('[Redis] Aggiornamento ordini  richiesto. caticati '+this.candleProcessor.getActiveOrders().length+' ordini. Ricevuto messaggio '+JSON.stringify(data));
     });
     // Avvia il subscriber Redis per aggiornare Strategie attive
-    this.redisSubscriber.on('strategies:update', async () => {
+    this.redisSubscriber.on('strategies:update', async (data) => {
       await this.candleProcessor.loadActiveStrategies();
-      this.logger.info('[Redis] Aggiornamento strategie  richiesto '+this.candleProcessor.getActiveStrategies().length+' strategies');
+      this.logger.info('[Redis] Aggiornamento strategie  richiesto '+this.candleProcessor.getActiveStrategies().length+' strategies, ricevuto messaggio '+JSON.stringify(data));
     });
     // Avvia il subscriber Redis per aggiornare Bots attivi
     this.redisSubscriber.on('bots:update', async () => {

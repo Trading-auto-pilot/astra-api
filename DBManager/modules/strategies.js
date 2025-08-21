@@ -93,6 +93,7 @@ async function getStrategiesCapital() {
 
 async function setStrategiesCapital(capitalData) {
   let rc = [];
+  let records = [];
 
   try {
     for (const [idi, row] of Object.entries(capitalData)) {
@@ -118,12 +119,14 @@ async function setStrategiesCapital(capitalData) {
         record.OpenOrders = ordini;
         await cache.setp(redisKey, record);
         rc.push({ id, updated: true });
+        records.push(record);
       } else {
         logger.warning(`[setStrategiesCapital] Strategia ${id} non trovata in Redis`);
         rc.push({ id, updated: false, reason: 'not found in Redis' });
       }
     }
 
+    publishCommand('strategies:update',JSON.stringify(records));
     return rc;
   } catch (error) {
     logger.error(`[setStrategiesCapital] Errore aggiornando Redis con dati: ${JSON.stringify(capitalData)} → ${error.message}`);
@@ -175,23 +178,8 @@ async function updateStrategies(id, update) {
   await cache.setp(redisKey, record);
   logger.info(`[updateStrategies] Strategia ${id} aggiornata in Redis`);
 
+  publishCommand('strategies:update',JSON.stringify(record));
   return { success: true, id };
-}
-
-async function getDBStrategiesRun() {
-  const conn = await getDbConnection();
-  try {
-    let sql = `SELECT * FROM strategy_runs`;
-    const params = [];
-
-    const [rows] = await conn.execute(sql, params);
-    return rows;
-  } catch (err) {
-    logger.error(`[getDBStrategiesRun] Errore select: ${err.message}`);
-    throw err;
-  } finally {
-    conn.release();
-  }
 }
 
 async function getStrategiesRun() {
@@ -251,11 +239,13 @@ async function insertStrategyRun(strategyRun) {
 
 
     logger.info('[insertStrategyRun] Inserito strategy_run in Redis con successo');
+    publishCommand('strategy_run:update',sanitizedData);
     return { success: true, id };
   } catch (err) {
     logger.error('[insertStrategyRun] Errore Redis insert:', err.message);
     throw err;
   }
+
 }
 
 
@@ -286,6 +276,7 @@ async function updateStrategyRun(strategy_runs_id, updates) {
   // Scrive il record aggiornato
   await cache.hmset(key, updated);
   logger.info(`[updateStrategyRun] strategy_run ${strategy_runs_id} aggiornato su Redis`);
+  publishCommand('strategy_run:update',updated);
   return { success: true };
 }
 
@@ -306,7 +297,9 @@ async function resetStrategiesCache() {
 
   await getActiveStrategies(); // ripopola le strategie
   logger.log(`[resetStrategiesCache] Strategie ricaricate in cache`);
-  startAtSecondSec(flushDB);
+  syncStrategyOnce();
+  publishCommand('strategy_run:update',"reset");
+  publishCommand('strategies:update',"reset");
 }
 
 async function updateSingleStrategyField(strategy_id, column, value) {
@@ -326,6 +319,7 @@ async function updateSingleStrategyField(strategy_id, column, value) {
   record[column] = value;
   await cache.setp(key, record);
   logger.info(`[updateSingleStrategyField] Strategia ${strategy_id} aggiornata: ${column} = ${value}`);
+  publishCommand('strategies:update',JSON.stringifyrecord);
   return { success: true };
 } 
 /** Esecuzione in Loop al second sec di ogni minuto */
@@ -350,52 +344,60 @@ function startAtSecondSec(fn) {
 }
 
 async function syncStrategy() {
+  let numStrategySync = 0;
+  let records = [];
   const conn = await getDbConnection();
   try {
     const keys = await cache.keys('strategies:*');
+    numStrategySync = keys.length;
 
     for (const key of keys) {
-      const record = await cache.get(key);
-      if (!record || !record.id) {
+      const raw = await cache.get(key);
+      if (!raw || !raw.id) {
         logger.warning(`[syncStrategy] Chiave ${key} senza record valido`);
         continue;
       }
 
-      // Conversione dei botName in ID
+      // Copia del record originale per non mutare direttamente
+      const record = { ...raw };
+
       if (record.idBotIn && typeof record.idBotIn === 'string') {
         record.idBotIn = await resolveBotIdByName(record.idBotIn);
       }
       if (record.idBotOut && typeof record.idBotOut === 'string') {
         record.idBotOut = await resolveBotIdByName(record.idBotOut);
       }
-      //resolveSymbolIdByName
       if (record.idSymbol && typeof record.idSymbol === 'string') {
         record.idSymbol = await resolveSymbolIdByName(record.idSymbol);
       }
 
+      const data = sanitizeData("strategies", record); 
+
       const [existing] = await conn.execute(
         'SELECT id FROM strategies WHERE id = ?',
-        [record.id]
+        [data.id]
       );
 
-      const fields = Object.keys(record);
-      const values = fields.map(f => record[f]);
+      const fields = Object.keys(data);
+      const values = fields.map(f => data[f]);
       const placeholders = fields.map(() => '?').join(', ');
 
       if (existing.length > 0) {
         const setClause = fields.map(f => `${f} = ?`).join(', ');
         await conn.execute(
           `UPDATE strategies SET ${setClause} WHERE id = ?`,
-          [...values, record.id]
+          [...values, data.id]
         );
-        logger.info(`[syncStrategy] Updated strategy ${record.id}`);
+        logger.info(`[syncStrategy] Updated strategy ${data.id}`);
       } else {
         await conn.execute(
           `INSERT INTO strategies (${fields.join(', ')}) VALUES (${placeholders})`,
           values
         );
-        logger.info(`[syncStrategy] Inserted strategy ${record.id}`);
+        logger.info(`[syncStrategy] Inserted strategy ${data.id}`);
       }
+
+      records.push(data);
     }
 
     logger.info('[syncStrategy] Sincronizzazione completata');
@@ -405,39 +407,53 @@ async function syncStrategy() {
   } finally {
     conn.release();
   }
+
+  return { success: true, numStrategy: numStrategySync };
 }
 
+
 async function syncStrategyRuns() {
+  let numStrategyRuns = 0, numStrategyRunsClosed = 0;
   const keys = await cache.keys('strategy_runs:*');
   if (!keys.length) {
     logger.info('[syncStrategyRuns] Nessun record trovato in Redis');
     return;
   }
 
+  numStrategyRuns = keys.length;
   const conn = await getDbConnection();
+
   try {
     for (const key of keys) {
       const id = key.split(':')[1];
-      const data = await cache.hgetall(key);
-      const strategy_runs_id = data.strategy_runs_id;
-      //const sanitizedData = sanitizeData("strategy_runs",data);
-      delete data.id;
-      delete data.strategy_runs_id;
-      if (!data || Object.keys(data).length === 0) {
+      if (!id) {
+        logger.error(`[syncStrategyRuns] id non valido per chiave ${key}`);
+        continue;
+      }
+
+      const rawData = await cache.hgetall(key);
+      if (!rawData || Object.keys(rawData).length === 0) {
         logger.warning(`[syncStrategyRuns] Nessun dato per ${key}`);
         continue;
       }
-     
+
+      // Usa sempre id dalla chiave, ignora rawData.strategy_runs_id
+      delete rawData.id;
+      delete rawData.strategy_runs_id;
+
+      const data = sanitizeData("strategy_runs", rawData);
+      const fields = Object.keys(data);
+      const values = fields.map(f => data[f]);
+
+      // 🔍 Debug: verifica presenza di undefined nei valori
+      if (values.includes(undefined)) {
+        logger.error(`[syncStrategyRuns] Valore undefined trovato in ${key}:`, values);
+        continue;
+      }
+
       const [rows] = await conn.execute(
         'SELECT 1 FROM strategy_runs WHERE strategy_runs_id = ? LIMIT 1',
-        [strategy_runs_id]
-      );
-
-      const fields = Object.keys(data);
-      const values = fields.map(f =>
-        ['open_date', 'close_date', 'update_date'].includes(f)
-          ? new Date(data[f])
-          : data[f]
+        [id]
       );
 
       if (rows.length > 0) {
@@ -456,10 +472,11 @@ async function syncStrategyRuns() {
         logger.info(`[syncStrategyRuns] Inserito strategy_run ${id}`);
       }
 
-      // ✅ Elimina da Redis se chiuso (numAzioniBuy === numAzioniSell)
+      // ✅ Elimina da Redis se chiuso
       const numBuy = parseInt(data.numAzioniBuy || 0, 10);
       const numSell = parseInt(data.numAzioniSell || 0, 10);
       if (numBuy === numSell) {
+        numStrategyRunsClosed++;
         await cache.del(key);
         logger.info(`[syncStrategyRuns] Eliminato da Redis ${key} (chiuso: ${numBuy}==${numSell})`);
       }
@@ -470,14 +487,40 @@ async function syncStrategyRuns() {
   } finally {
     conn.release();
   }
+
+  publishCommand('strategy_runs:update', JSON.stringify({}));
+  return { success: true, numRecordSync: numStrategyRuns, numRecordDeleted: numStrategyRunsClosed };
 }
 
-async function flushDB() {
-  await syncStrategy();
-  await syncStrategyRuns();
+
+// IntervalFlush
+async function syncStrategyStart(){
+  if (IntervalFlush) {
+    logger.warning('[syncStrategyStart] Sync già attivo');
+    return;
+  }
+  IntervalFlush = startAtSecondSec(syncStrategyOnce);
+  logger.info('[syncStrategyStart] Sync attivato (ogni 30s)');
 }
 
-startAtSecondSec(flushDB);
+async function syncStrategyStop(){
+  if (IntervalFlush) {
+    clearInterval(IntervalFlush);
+    IntervalFlush = null;
+    logger.info('[syncStrategyStop] Sync fermato');
+  } else {
+    logger.warning('[syncStrategyStop] Sync non attivo');
+  }
+}
+
+async function syncStrategyOnce(){
+  const strategies = await syncStrategy();
+  const strategy_runs = await syncStrategyRuns();
+  return({success:true, recordsStrategy:strategies.numStrategy, recordsStrategyRuns:strategies.numRecordSync, deletedStrategyRuns:strategies.numRecordDeleted})
+}
+
+if(!process.env.FAST_SIMUL)
+  syncStrategyStart();
 
 module.exports = {
   getActiveStrategies,
@@ -493,5 +536,9 @@ module.exports = {
   setFlushDBSec,
   resetStrategiesCache,
   updateSingleStrategyField,
-  updateStrategyRun
+  updateStrategyRun,
+  syncStrategyStart,
+  syncStrategyStop,
+  syncStrategyOnce
+
 };

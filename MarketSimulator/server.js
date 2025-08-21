@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const redis = require('redis');
 const dotenv = require('dotenv');
+const cors = require('cors');
 const MarketSimulator = require('./marketSimulator');
 const createLogger = require('../shared/logger');
 
@@ -13,6 +14,11 @@ const MODULE_VERSION='1.2';
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
 const app = express();
+
+app.use(cors({
+  origin: 'http://localhost:5173', // indirizzo frontend
+  credentials: true // se usi cookie o auth
+}));
 app.use(express.json());
 
 const port = process.env.PORT || 3003;
@@ -21,6 +27,27 @@ const server = http.createServer(app);
 
 // WebSocket binding
 marketSimulator.attachWebSocketServer(server);
+
+app.get('/candle', async (req, res) => {
+  const { symbol, startDate, endDate } = req.query;
+  
+
+  if (!symbol || !startDate || !endDate) {
+    console.log("Qui manca qualcosa!");
+    return res.status(400).json({
+      success: false,
+      message: 'Missing required query parameters: symbol, startDate, endDate',
+    });
+  }
+
+  try {
+    const candle = await marketSimulator.getCandles(req.query);
+    res.json({ success: true, candle });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 
 // Endpoint: Avvia la simulazione
 app.post('/start', async (req, res) => {
@@ -42,6 +69,16 @@ app.post('/start', async (req, res) => {
 app.post('/stop', (req, res) => {
   marketSimulator.stopSimulation();
   res.json({ status: 'Simulazione fermata' });
+});
+
+app.post('/pause', (req, res) => {
+  marketSimulator.pauseSimulation();
+  res.json({ status: 'Simulazione fermata' });
+});
+
+app.post('/reset', (req, res) => {
+  marketSimulator.resetSimulation();
+  res.json({ status: 'Reset eseguito' });
 });
 
 app.post('/restart', (req, res) => {
@@ -81,14 +118,22 @@ app.put('/loglevel/:module', (req, res) => {
   }
 
   targetModule.setLogLevel(req.body.logLevel);
-  res.status(200).json({ success: true, msg: `Nuovo livello ${req.body.logLevel} log per modulo ${req.params.module}` });
+  res.status(200).json({ success: true, logLevel : {marketSimulator : marketSimulator.getLogLevel()} });
 });
 
 
-// Endpoint: Info modulo
-app.get('/info', (req, res) => {
-  res.json(marketSimulator.getInfo());
-});
+  app.get('/params', (req, res) => {
+    res.json(marketSimulator.getParams());
+  });
+
+  app.delete('/connect/:clientId', (req, res) => {
+    res.json(marketSimulator.disconnect(req.params.clientId));
+  });
+
+  // Endpoint: Info modulo
+  app.get('/info', (req, res) => {
+    res.json(marketSimulator.getInfo());
+  });
 
 // Endpoint: Healthcheck
 app.get('/health', (req, res) => {

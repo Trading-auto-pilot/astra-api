@@ -260,6 +260,20 @@ function setLogLevel(level) {
     return { approved : false }
   }
 
+
+  async function deleteCapital() {
+    const redisKey = "strategy:capital";
+    try {
+      const result = await cache.del(redisKey);
+        logger.info(`Key "${redisKey}" deleted successfully.`);
+        return ( {success:true});
+    } catch (error) {
+      logger.error("Error deleting key:", error);
+      return null;
+    }
+  }
+
+
   /**
    * 
    * @returns   Contenuto cache
@@ -271,7 +285,8 @@ function setLogLevel(level) {
       if (!capitalData) {
         logger.warning(`[getCapitalCache] errore nel recupero di strategy:capital da REDIS`);
         await initCapitalManager();
-        return null;
+        const capitalData = await cache.get(redisKey);
+        //return null;
       }
 
       redisKey = 'strategy:capital:availableCache';
@@ -457,5 +472,6 @@ module.exports = {
   getLogLevel,
   setLogLevel,
   freeupCapital,
-  calcolaAlloc
+  calcolaAlloc,
+  deleteCapital
 };

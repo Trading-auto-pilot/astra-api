@@ -39,6 +39,7 @@ class CapitalManager {
 
   getInfo() {
     return {
+      microservice : MICROSERVICE,
       module: MODULE_NAME,
       version: MODULE_VERSION,
       logLevel: "Call /loglevel",

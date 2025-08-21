@@ -1,4 +1,5 @@
 const express = require('express');
+const cors = require('cors');
 const CapitalManager = require('./capitalManager');
 const allocCapital = require('./allocCapital');
 const createLogger = require('../shared/logger');
@@ -13,6 +14,12 @@ const app = express();
 const port = process.env.PORT || 3009;
 app.use(express.json());
 
+app.use(cors({
+  origin: 'http://localhost:5173', // indirizzo frontend
+  credentials: true // se usi cookie o auth
+}));
+
+
 const dbManagerBaseUrl = process.env.DBMANAGER_URL || 'http://dbmanager:3002';
 
   // Init capitale e cache
@@ -25,6 +32,21 @@ const dbManagerBaseUrl = process.env.DBMANAGER_URL || 'http://dbmanager:3002';
     } catch (error) {
       console.error('[GET /initCapitalManager] Errore: '+ error.message);
       res.status(500).json({ error: 'Errore durante inizzializzazione di initCapitalManager '+ error.message, module:"[GET /initCapitalManager]" });
+    }
+  });
+
+
+   // Cancella Capital cache 
+  app.delete('/capital', async (req, res) => {
+
+    try {
+      const result = await allocCapital.deleteCapital();
+      console.log(result);
+      if (!result) return res.status(404).json({ error: 'Error Deleting Capital' });
+      res.json(result);
+    } catch (error) {
+      console.error('[DELETE /capital] Errore: '+ error.message);
+      res.status(500).json({ error: 'Errore durante la cancellazione della cache capitale '+ error.message, module:"[DELETE /capital]" });
     }
   });
 
@@ -149,7 +171,7 @@ const dbManagerBaseUrl = process.env.DBMANAGER_URL || 'http://dbmanager:3002';
       }
 
       targetModule.setLogLevel(req.body.logLevel);
-      res.status(200).json({ success: true, msg: `Nuovo livello ${req.body.logLevel} log per modulo ${req.params.module}` });
+      res.status(200).json({ success: true, logLevel: {allocCapital : allocCapital.getLogLevel(), capitalManager : capitalManager.getLogLevel()}});
     });
 
 

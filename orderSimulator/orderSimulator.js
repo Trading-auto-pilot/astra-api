@@ -10,8 +10,6 @@ const MICROSERVICE= "OrderSimulator";
 const MODULE_NAME = 'OrderSimulator';
 const MODULE_VERSION = '1.2';
 
-const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
-
 class OrderSimulator {
   constructor() {
     this.wsClients = [];
@@ -20,10 +18,12 @@ class OrderSimulator {
     this.liveMarketManager = process.env.LIVEMARKETMANAGER_URL || 'http://localhost:3012';
     this.wsServer = null;
     this.sharedClock=null;
+    this.logLevel = process.env.LOG_LEVEL || 'info';
+    this.logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, this.logLevel);
   } 
-
+ 
   async loadSettings() {
-    logger.info('[loadSettings] Lettura configurazione da DBManager...');
+    this.logger.info('[loadSettings] Lettura configurazione da DBManager...');
     const keys = [
       'ALPACA-API-TIMEOUT',
       'ALPACA-DEV-MARKET',
@@ -36,20 +36,30 @@ class OrderSimulator {
       try {
         const res = await axios.get(`${this.dbManagerUrl}/settings/${key}`);
         this.settings[key] = res.data;
-        logger.trace(`[loadSettings] Impostato ${key} = ${res.data}`);
+        this.logger.trace(`[loadSettings] Impostato ${key} = ${res.data}`);
       } catch (err) {
-        logger.error(`[loadSettings] Errore su ${key}: ${err.message}`);
+        this.logger.error(`[loadSettings] Errore su ${key}: ${err.message}`);
       }
     }
 
     for (const [key, value] of Object.entries(process.env)) {
-      logger.trace(`Environment variable ${key}=${value}`);
+      this.logger.trace(`Environment variable ${key}=${value}`);
     }
 
     for (const [key, value] of Object.entries(process.env)) {
-      logger.trace(`Environment variable ${key}=${value}`);
+      this.logger.trace(`Environment variable ${key}=${value}`);
     }
   }
+
+  getLogLevel() {
+    return this.logLevel;
+  }
+
+  setLogLevel(level) {
+      this.logLevel=level;
+      this.logger.setLevel(level);
+  }
+  
 
   generateHash(input) {
     const hash = crypto.createHash('sha256').update(input).digest('hex');
@@ -103,7 +113,7 @@ class OrderSimulator {
     order.filled_qty = orderPayload.qty;
     order["filled_avg_price"]=fillPrice;
 
-    logger.trace(`[sendFill] New Order ${JSON.stringify(order)}`);
+    this.logger.trace(`[sendFill] New Order ${JSON.stringify(order)}`);
 
     const FillMessage = {
         "stream":"trade_updates",
@@ -117,7 +127,7 @@ class OrderSimulator {
           } 
     }
 
-    logger.trace(`[sendFill] Messaggio da inviare su webSocket ${JSON.stringify(FillMessage)}`);
+    this.logger.trace(`[sendFill] Messaggio da inviare su webSocket ${JSON.stringify(FillMessage)}`);
     this.sendPayloadToClients(FillMessage);
   }
 
@@ -187,7 +197,7 @@ class OrderSimulator {
     }
 
     this.applySharedClockToOrder(simulatedResponse);
-    logger.trace(`[acceptOrder] messaggio Order Simulated ${JSON.stringify(simulatedResponse)}`);
+    this.logger.trace(`[acceptOrder] messaggio Order Simulated ${JSON.stringify(simulatedResponse)}`);
     
     // Invia ordine simulato a DBManager
     try {
@@ -205,56 +215,56 @@ class OrderSimulator {
   }
 
   attachWebSocketServer(server) {
-    logger.info(`[attachWebSocketServer] Avvio WebSocket Server...`);
+    this.logger.info(`[attachWebSocketServer] Avvio WebSocket Server...`);
     this.wsServer = new WebSocket.Server({ server });
 
     this.wsServer.on('connection', (ws) => {
-        logger.info('[WebSocket] Nuovo client connesso');
+        this.logger.info('[WebSocket] Nuovo client connesso');
         ws.isAuthenticated = false;
         this.wsClients.push(ws);
 
         ws.on('message', (message) => {
             try {
               const msg = JSON.parse(message);
-              logger.log(`[WebSocket] Messaggio ricevuto ${JSON.stringify(msg)}`);
-            if (msg.action === 'auth') {
-                if (msg.key === this.settings['APCA-API-KEY-ID'] && msg.secret === this.settings['APCA-API-SECRET-KEY']) {
-                ws.isAuthenticated = true;
-                ws.send(JSON.stringify({
-                  "stream": "authorization",
-                  "data": {
-                    "status": "authorized",
-                    "action": "authenticate"
+              this.logger.log(`[WebSocket] Messaggio ricevuto ${JSON.stringify(msg)}`);
+              if (msg.action === 'auth') {
+                  if (msg.key === this.settings['APCA-API-KEY-ID'] && msg.secret === this.settings['APCA-API-SECRET-KEY']) {
+                  ws.isAuthenticated = true;
+                  ws.send(JSON.stringify({
+                    "stream": "authorization",
+                    "data": {
+                      "status": "authorized",
+                      "action": "authenticate"
+                    }
+                  }));
+                  this.logger.info('[WebSocket] Autenticazione riuscita');
+                  } else {
+                  ws.send(JSON.stringify({ T: 'error', msg: 'authentication failed' }));
+                  this.logger.warning('[WebSocket] Autenticazione fallita');
                   }
-                }));
-                logger.info('[WebSocket] Autenticazione riuscita');
-                } else {
-                ws.send(JSON.stringify({ T: 'error', msg: 'authentication failed' }));
-                logger.warning('[WebSocket] Autenticazione fallita');
-                }
-            }
+              }
             } catch (err) {
-            logger.error('[WebSocket] Errore parsing messaggio:', err.message);
+            this.logger.error('[WebSocket] Errore parsing messaggio:', err.message);
             }
         });
 
         ws.on('close', () => {
             this.wsClients = this.wsClients.filter(c => c !== ws);
-            logger.info('[WebSocket] Client disconnesso');
+            this.logger.info('[WebSocket] Client disconnesso');
         });
     });
   }
 
   connectToMarketWebSocketForClock() {
-    logger.info(`[connectToMarketWebSocketForClock] Connessione in corso...`);
+    this.logger.info(`[connectToMarketWebSocketForClock] Connessione in corso...`);
     const baseUrl = this.settings['ALPACA-' + process.env.ENV_MARKET + '-MARKET'];
     const wsUrl = `${baseUrl}/${process.env.FEED}`;
-    logger.log(`[connectToMarketWebSocketForClock] Mi connetto a url : ${wsUrl}`);
+    this.logger.log(`[connectToMarketWebSocketForClock] Mi connetto a url : ${wsUrl}`);
 
     this.ws = new WebSocket(wsUrl);
 
     this.ws.on('open', () => {
-      logger.info(`[connectToMarketWebSocketForClock] WebSocket connesso. Autenticazione in corso...`);
+      this.logger.info(`[connectToMarketWebSocketForClock] WebSocket connesso. Autenticazione in corso...`);
       this.ws.send(JSON.stringify({
         action: 'auth',
         key: process.env.APCA_API_KEY_ID,
@@ -269,52 +279,52 @@ class OrderSimulator {
       try {
         messages = JSON.parse(data);
       } catch (err) {
-        logger.error('[connectToMarketWebSocketForClock] Errore parsing JSON iniziale:', err.message);
+        this.logger.error('[connectToMarketWebSocketForClock] Errore parsing JSON iniziale:', err.message);
         return;
       }
 
       for (const msg of messages) {
         if (msg.T === 'success' && msg.msg === 'authenticated') {
-          logger.info('Autenticato.');
+          this.logger.info('Autenticato.');
         }
 
         if (msg.T === 'b' && msg.t) { 
-          logger.trace(`[connectToMarketWebSocketForClock] messaggio ricevuto ${data}`);
+          this.logger.trace(`[connectToMarketWebSocketForClock] messaggio ricevuto ${data}`);
           this.processCandle(msg); 
         }
       }
     });
 
     this.ws.on('close', () => {
-      logger.warning(`[connect] Connessione WebSocket chiusa.`);
+      this.logger.warning(`[connect] Connessione WebSocket chiusa.`);
     });
 
     this.ws.on('error', (err) => {
-      logger.error(`[connect] Errore WebSocket ${wsUrl}: ${err.message}`);
+      this.logger.error(`[connect] Errore WebSocket ${wsUrl}: ${err.message}`);
     });
   }
 
   async startSimulation() {
-    logger.info('[startSimulation] Simulazione avviata');
+    this.logger.info('[startSimulation] Simulazione avviata');
     // Placeholder - future implementation (e.g. broadcast simulated order statuses)
   }
 
   async stopSimulation() {
-    logger.info('[stopSimulation] Simulazione fermata');
+    this.logger.info('[stopSimulation] Simulazione fermata');
     // Placeholder - clear intervals or other cleanup
   }
 
   async sendPayloadToClients(payload) {
     const msg = typeof payload === 'string' ? payload : JSON.stringify(payload);
-    logger.info(`[sendPayloadToClients] Client Connessi ${this.wsClients.length} Messaggio da inviare su ws | ${msg}`);
+    this.logger.info(`[sendPayloadToClients] Client Connessi ${this.wsClients.length} Messaggio da inviare su ws | ${msg}`);
 
     this.wsClients.forEach(ws => {
       setTimeout(() => {
         if (ws.readyState === WebSocket.OPEN && ws.isAuthenticated) {
           ws.send(msg);
-          logger.trace(`[sendPayloadToClients] Inviato payload: ${msg}`);
+          this.logger.trace(`[sendPayloadToClients] Inviato payload: ${msg}`);
         } else {
-          logger.error(`[sendPayloadToClients] Errore nell'invio del messaggio su ws: ${msg} readyState ${ws.readyState === WebSocket.OPEN} authenticated ${ws.isAuthenticated}`);
+          this.logger.error(`[sendPayloadToClients] Errore nell'invio del messaggio su ws: ${msg} readyState ${ws.readyState === WebSocket.OPEN} authenticated ${ws.isAuthenticated}`);
         }
       }, 30);
     });
@@ -326,7 +336,7 @@ async  getAccount() {
     const res = await axios.get(`${this.dbManagerUrl}/simul/account`);
     return res.data;
   } catch (error) {
-    logger.error(`[getAccount] Errore nel recupero account: ${error.message}`);
+    this.logger.error(`[getAccount] Errore nel recupero account: ${error.message}`);
     throw new Error('Impossibile recuperare lo stato simulato dell’account : '+error.message);
   }
 }
@@ -404,15 +414,15 @@ async  closePosition(symbol) {
  
   let resClosed, res;
   try {
-    logger.trace(`[closePosition] Richiamo ${this.dbManagerUrl}/simul/positions/${symbol}`);
+    this.logger.trace(`[closePosition] Richiamo ${this.dbManagerUrl}/simul/positions/${symbol}`);
     resClosed = await axios.delete(`${this.dbManagerUrl}/simul/positions/${symbol}`);
-    logger.trace(`[closePosition] resClosed =  ${JSON.stringify(resClosed.data)}`);
+    this.logger.trace(`[closePosition] resClosed =  ${JSON.stringify(resClosed.data)}`);
     const FillMessage = this.buildTradeUpdateFromClose(resClosed.data);
-    logger.trace(`[closePosition] Messaggio da inviare su webSocket ${JSON.stringify(FillMessage)}`);
+    this.logger.trace(`[closePosition] Messaggio da inviare su webSocket ${JSON.stringify(FillMessage)}`);
     FillMessage.forEach(msg => this.sendPayloadToClients(msg))
     
   } catch (error) {
-    logger.error(`[closePosition] Errore nella chiusura della posizione: ${error.message}`);
+    this.logger.error(`[closePosition] Errore nella chiusura della posizione: ${error.message}`);
     throw new Error('Errore nella chiusura della posizione :'+error.message);
   } 
  
@@ -421,13 +431,13 @@ async  closePosition(symbol) {
       // Incremento cache su Alpaca
       res = await axios.get(`${this.dbManagerUrl}/simul/account`);
       let account = res.data;
-      logger.trace(`[processCandle] Chiusura posizione incremento account cache ${account.cash} di ${resClosed.data.released}`);
+      this.logger.trace(`[closePosition] Chiusura posizione incremento account cache ${account.cash} di ${resClosed.data.released}`);
       account.cash = Number(account.cash) + Number(resClosed.data.released);
-      logger.trace(`[processCandle] Nuovo cache aggiornato ${account.cash}`);
+      this.logger.trace(`[closePosition] Nuovo cache aggiornato ${account.cash}`);
       await axios.put(`${this.dbManagerUrl}/simul/account`, account); 
     /************************************ */
   } catch (error) {
-    logger.error(`[closePosition] Errore nel recupero del capitale investito: ${error.message}`);
+    this.logger.error(`[closePosition] Errore nel recupero del capitale investito: ${error.message}`);
   }
 
   return resClosed.data.positions[0];
@@ -438,7 +448,7 @@ async  getPositions() {
     const res = await axios.get(`${this.dbManagerUrl}/simul/positions`);
     return res.data;
   } catch (error) {
-    logger.error(`[getPositions] Errore nel recupero della posizione: ${error.message}`);
+    this.logger.error(`[getPositions] Errore nel recupero della posizione: ${error.message}`);
     throw new Error('Impossibile recuperare la posizione : '+error.message);
   }
 }
@@ -448,7 +458,7 @@ async getOrders(){
   try{
     response = await axios.get(`${this.dbManagerUrl}/simul/orders`);
   } catch(error) {
-    logger.error(`[getOrders] Errore: ${err.message}`);
+    this.logger.error(`[getOrders] Errore: ${err.message}`);
   }
   return(response);
 }
@@ -457,11 +467,11 @@ async  processCandle(candle) {
   this.sharedClock = candle.t; 
 
   try {
-    logger.trace(`[processCandle] Recupero ordini attivi da : ${this.dbManagerUrl}/simul/orders`);
+    this.logger.trace(`[processCandle] Recupero ordini attivi da : ${this.dbManagerUrl}/simul/orders`);
     const response = await axios.get(`${this.dbManagerUrl}/simul/orders`);
     const orders = response.data;
 
-    //logger.trace(`[processCandle] symbol : ${candle.S} limit_price:${parseFloat(orders[0].limit_price)} candle price:${candle.l} `);
+    //this.logger.trace(`[processCandle] symbol : ${candle.S} limit_price:${parseFloat(orders[0].limit_price)} candle price:${candle.l} `);
     const matchedOrders = orders.filter(order =>
       order.status === 'accepted' &&
       order.symbol === candle.S &&
@@ -470,7 +480,7 @@ async  processCandle(candle) {
       parseFloat(order.limit_price) >= parseFloat(candle.l)
     );
 
-    logger.trace(`[processCandle] Ordini attivi trovati : ${JSON.stringify(matchedOrders)}`);
+    this.logger.trace(`[processCandle] Ordini attivi trovati : ${JSON.stringify(matchedOrders)}`);
 
 
     for (const order of matchedOrders) {
@@ -480,7 +490,7 @@ async  processCandle(candle) {
       const qty = parseFloat(order.qty);
       const now = new Date(this.sharedClock).toISOString();
 
-      logger.trace(`[processCandle] Ordine attivo ${JSON.stringify(order)} processato, aggiorno ordine DB`);
+      this.logger.trace(`[processCandle] Ordine attivo ${JSON.stringify(order)} processato, aggiorno ordine DB`);
 
       // Aggiorna ordine nel DB
       await axios.put(`${this.dbManagerUrl}/simul/orders`, {
@@ -515,7 +525,7 @@ async  processCandle(candle) {
       };
 
       // Attenzione, se la posizione gia esiste in DB va aggiunto la quantita' acquistata e modificato avg_price
-      logger.trace(`[processCandle] Inserisco nuova posizione a DB ${JSON.stringify(newPosition)}`);
+      this.logger.trace(`[processCandle] Inserisco nuova posizione a DB ${JSON.stringify(newPosition)}`);
       // Inserisci posizione nel DB
       await axios.post(`${this.dbManagerUrl}/simul/positions`, newPosition); 
 
@@ -528,22 +538,23 @@ async  processCandle(candle) {
       // Decrementa cache su Alpaca
       const res = await axios.get(`${this.dbManagerUrl}/simul/account`);
       let account = res.data;
-      logger.trace(`[processCandle] Recuperato cash account da decrementare ${account.cash} decremento di una quantita ${fillPrice * qty}`);
+      this.logger.trace(`[processCandle] Recuperato cash account da decrementare ${account.cash} decremento di una quantita ${fillPrice * qty}`);
       account.cash -= fillPrice * qty;
-      logger.trace(`[processCandle] Nuovo cache ${account.cash}`);
+      this.logger.trace(`[processCandle] Nuovo cache ${account.cash}`);
       await axios.put(`${this.dbManagerUrl}/simul/account`, account); 
       
       // Invio messaggio fill su websocket
-      logger.trace(`[processCandle] Invio messaggio FILL su websocket ${JSON.stringify(order)}`);
+      this.logger.trace(`[processCandle] Invio messaggio FILL su websocket ${JSON.stringify(order)}`);
       this.sendFill(order,fillPrice);
     }
   } catch (err) {
-    logger.error(`[processCandle] Errore: ${err.message}`);
+    this.logger.error(`[processCandle] Errore: ${err.message}`);
   }
 }
 
   getInfo() {
     return {
+      microservice: MICROSERVICE,
       module: MODULE_NAME,
       version: MODULE_VERSION,
       status: 'OK',

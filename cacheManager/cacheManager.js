@@ -271,37 +271,42 @@ class CacheManager {
 
 
   /********* Funzioni stats per L2 ******************************/
-    async getDirStatsL2() {
-      const results = {};
+  async getDirStatsL2() {
+   const results = {};
 
-      const subdirs = fs.readdirSync(this.cacheBasePath, { withFileTypes: true })
-        .filter(dirent => dirent.isDirectory());
+    const subdirs = fs.readdirSync(this.cacheBasePath, { withFileTypes: true })
+      .filter(dirent => dirent.isDirectory());
 
-      for (const dirent of subdirs) {
-        const dirPath = path.join(this.cacheBasePath, dirent.name);
-        let fileCount = 0;
-        let totalSize = 0;
+    for (const dirent of subdirs) {
+      const dirPath = path.join(this.cacheBasePath, dirent.name);
+      let fileCount = 0;
+      let totalSize = 0;
 
-        const files = fs.readdirSync(dirPath, { withFileTypes: true });
+      const files = fs.readdirSync(dirPath, { withFileTypes: true });
 
-        for (const file of files) {
-          if (file.isFile()) {
-            const filePath = path.join(dirPath, file.name);
-            const { size } = fs.statSync(filePath);
-            totalSize += size;
-            fileCount++;
-          }
+      for (const file of files) {
+        if (file.isFile()) {
+          const filePath = path.join(dirPath, file.name);
+          const { size } = fs.statSync(filePath);
+          totalSize += size;
+          fileCount++;
         }
+      }
 
+      // Aggiungi solo se c'è almeno un file
+      if (fileCount > 0) {
         results[dirent.name] = {
           fileCount,
           totalSizeBytes: totalSize,
         };
       }
-      this.logger.trace(`[getDirStatsL2] results: ${JSON.stringify(results)}`);
+    }
+    
+    this.logger.trace(`[getDirStatsL2] results: ${JSON.stringify(results)}`);
 
-      return results;
+    return results;
   }
+
 
   async listFilesL2(symbol) {
     const subdirPath = path.join(this.cacheBasePath, symbol);
@@ -340,7 +345,7 @@ class CacheManager {
     if (!fs.existsSync(dirPath)) {
       this.logger.warning(`[deleteMatchingFiles] Symbol "${dirPath}" non trovato`);
       throw new Error(`Symbol "${dirPath}" non trovato`);
-    }
+    } 
 
     const entries = fs.readdirSync(dirPath, { withFileTypes: true });
 

@@ -1,6 +1,7 @@
 const WebSocket = require('ws');
 const express = require('express');
 const axios = require('axios');
+const cors = require('cors');
 const OrderListener = require('./orderListner');
 const createLogger = require('../shared/logger');
 require('dotenv').config();
@@ -10,6 +11,11 @@ const MODULE_VERSION = '1.0';
 const app = express();
 const port = process.env.PORT || 3005;
 const logger = createLogger(MODULE_NAME);
+
+app.use(cors({
+  origin: 'http://localhost:5173', // indirizzo frontend
+  credentials: true // se usi cookie o auth
+}));
 
 let settings = {};
 let ws = null;

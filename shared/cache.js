@@ -46,5 +46,8 @@ module.exports = {
   lRange: async (key, start, stop) => {
     return await client.lRange(key, start, stop);
   },
+  multi: async (key, start, stop) => {
+    return await client.lRange(key, start, stop);
+  },
   client
 };
