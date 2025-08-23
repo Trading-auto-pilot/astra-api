@@ -77,23 +77,24 @@ class marketListener {
       MODULE_VERSION,
       this.logLevel,
       {
-        bus: this.bus,                          // <--- FIX: non _bus
+        bus: null,                          // <--- FIX: non _bus
         busTopicPrefix: this.env || 'DEV',
         console: true,
         enqueueDb: true,
       }
     );
+    this.bus.setLogger(this.logger);            // ok: i log interni del bus useranno skipBus:true
 
     // Collega il logger al bus (per log interni del bus)
-    this.bus.setLogger(this.logger);
+    //this.bus.setLogger(this.logger);
   }
 
   async init() {
     this.logger.info('[init] Inizializzazione componenti...');
 
     // 1) Connetti il BUS e SOLO dopo pubblica
-    await this.bus.connect();                                 // <--- FIX: await
-    await this.bus.publish('health.ping', { ok: true });
+    await this.bus.connect();     
+    this.logger.attachBus(this.bus);                      // <--- ora il logger può pubblicare su Redis
 
     this.statusDetails = 'Inizializzazione DB';
     await this.bus.publish(`${this.redisTelemetyChannel}.STATUS`, { status: this.status, details: this.statusDetails });

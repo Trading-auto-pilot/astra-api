@@ -1,6 +1,5 @@
 const WebSocket = require('ws');
 const EventEmitter = require('events');
-const createLogger = require('../../shared/logger');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
@@ -23,8 +22,7 @@ class AlpacaSocket extends EventEmitter {
     this.processing = false;
     this.delayProcess = config.delayBetweenMessages || 500;
 
-    //this.logLevel = process.env.LOG_LEVEL || 'info';
-    this.logger = config.logger; //createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, this.logLevel);
+    this.logger = config.logger; 
 
     this.connectionStatus = 'NOT CONNECTED';
     this.alpacaWsUrl = config.alpacaMarketServer;
