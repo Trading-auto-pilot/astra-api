@@ -56,11 +56,8 @@ function requireReady(req, res, next) {
     });
   }
 
-  const status = marketListener.getStatus 
-    ? marketListener.getStatus() 
-    : null;
-
-  if (status !== 'RUNNING') {
+  let status = marketListener.status;
+  if (status !== 'LISTENING') {
     return res.status(503).json({
       error: 'Service not running',
       currentStatus: status

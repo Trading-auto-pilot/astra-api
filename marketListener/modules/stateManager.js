@@ -8,7 +8,7 @@ class StateManager {
 
     // Parametri retry WS Alpaca
     this._alpacaRetryDelay = asInt(process.env.ALPACA_WSS_RETRAY_DELAY, 5000);
-    this._alpacaMaxRetray  = asInt(process.env.ALPACA_WSS_MAX_RETRY, 10);
+    this._alpacaMaxRetry  = asInt(process.env.ALPACA_WSS_MAX_RETRY, 10);
 
     // Flags / intervalli BUS (usa asBool/asInt)
     this._msgTelemetryOn        = asBool(process.env.MSG_TELEMETRY, true);
@@ -26,7 +26,7 @@ class StateManager {
     // Stato modulo
     this._symbolStrategyMap = [];
     this._moduleActive = true;
-    this._logLevel = process.env.LOG_LEVEL || 'info';
+    
 
     // Abilitazione canali BUS
     this._communicationChannels = {
@@ -36,18 +36,30 @@ class StateManager {
       logs      : { on: this._msgLogsOn,      params : { intervalsMs : this._msgLogsIntervals }}
     };
 
+    // Logs
+    this._logLevel = process.env.LOG_LEVEL || 'info';
+    this._logger = null;        // il logger viene impostato successivamente
+
   }
+  set logger(l) {this._logger = l;}
 
-  // Status
-  get status() { return this._status; }
-  set status(value) { this._status = value; }
+  // Rete Alpaca
+  get alpacaMarketServer() { return this._alpacaMarketServer;}
+  set alpacaMarketServer(server) { this._alpacaMarketServer = server;}
 
-  get statusDetails() { return this._statusDetails; }
-  set statusDetails(value) { this._statusDetails = value; }
+  get feed() { return this._feed;}
+  set feed(newFeed) { this._feed = newFeed;}
+
+  // Parametri retry WS Alpaca
+  get alpacaRetryDelay() { return this._alpacaRetryDelay;}
+  set alpacaRetryDelay(newRetry) { this._alpacaRetryDelay = newRetry; }
 
   // Symbol strategy
   get symbolStrategyMap() { return this._symbolStrategyMap; }
   set symbolStrategyMap(map) { this._symbolStrategyMap = map; }
+
+  get alpacaMaxRetry() {return this._alpacaMaxRetry;}
+  set alpacaMaxRetry(maxRetry) { this._alpacaMaxRetry = maxRetry;}
 
   // Module active
   get moduleActive() { return this._moduleActive; }
@@ -57,13 +69,22 @@ class StateManager {
   get communicationChannels() { return this._communicationChannels; }
   set communicationChannels(cfg) { this._communicationChannels = cfg; }
 
+  // Logs
+  get logLevel() { return this._logLevel; }
+  set logLevel(newLevel) { 
+    this._logLevel = newLevel;
+    this.logger.setLevel(newLevel);
+  }
+
+  
+
   // snapshot utile per debug/logging
   toJSON() {
     return {
       alpacaMarketServer: this._alpacaMarketServer,
       feed: this._feed,
       alpacaRetryDelay: this._alpacaRetryDelay,
-      alpacaMaxRetray: this._alpacaMaxRetray,
+      alpacaMaxRetry: this._alpacaMaxRetry,
       communicationChannels: this._communicationChannels,
       symbolStrategyMap: this._symbolStrategyMap,
       moduleActive: this._moduleActive,
