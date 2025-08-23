@@ -66,7 +66,7 @@ function createLogger(
   let currentIndex = levels.indexOf(level);
   if (currentIndex < 0) currentIndex = levels.indexOf('info');
 
-  const bus = opts.bus || null;
+  let bus = opts.bus || null;
   const consoleEnabled = opts.console !== false;
   const enqueueDb = opts.enqueueDb !== false;
   const prefixBase = (opts.busTopicPrefix || process.env.BUS_TOPIC_PREFIX || '').trim();
@@ -85,12 +85,16 @@ function createLogger(
     const timestamp = getTimestamp();
     const prefix = `[${timestamp}][${microservice}][${moduleName}][${moduleVersion}][${levelKey.toUpperCase()}]`;
 
-    // Patch per non inviare logs su BUS
+    // --------------- FIX skipBus parsing ---------------
     let skipBus = false;
-    if (args.length && typeof args[args.length - 1] === 'object' && args[args.length - 1]?.__opts) {
-      skipBus = !!args.pop().__opts.skipBus;
-      args.pop();
+    if (args.length) {
+      const last = args[args.length - 1];
+      if (last && typeof last === 'object' && last.__opts) {
+        skipBus = !!last.__opts.skipBus;
+        args.pop(); // rimuovi SOLO il sentinella
+      }
     }
+    // ---------------------------------------------------
     const fullMessage = args.join(' ');
     
 
@@ -171,7 +175,9 @@ function createLogger(
       const currentLevel = newLevel;
       currentIndex = levels.indexOf(currentLevel);
       console.log(`[logger] Livello di log aggiornato a: ${newLevel}`);
-    }
+    },
+    attachBus: (newBus) => { bus = newBus || null; }
+
   };
 
   return logger;
