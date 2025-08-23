@@ -15,7 +15,7 @@ class AlpacaSocket extends EventEmitter {
 
     this.orderActive = []; // simboli con ordini attivi
     this.retryDelay = config.alpacaRetryDelay;      // ms
-    this.maxRetries = config.alpacaMaxRetray;       // (non ancora usato sotto; vedi TODO)
+    this.alpacaMaxRetry = config.alpacaMaxRetry;       // (non ancora usato sotto; vedi TODO)
     this.retryCount = 0;
 
     this.messageQueue = [];
@@ -103,8 +103,8 @@ _triggerReconnect(reason) {
   setActiveOrders(symbols) { this.orderActive = symbols; }
   getRetryDelay() { return this.retryDelay; }
   setRetryDelay(ms) { this.retryDelay = parseInt(ms) || 5000; }
-  getMaxRetries() { return this.maxRetries; }
-  setMaxRetries(count) { this.maxRetries = parseInt(count) || 50; }
+  getMaxRetries() { return this.alpacaMaxRetry; }
+  setMaxRetries(count) { this.alpacaMaxRetry = parseInt(count) || 50; }
   getRetryCount() { return this.retryCount; }
   setRetryCount(count) { this.retryCount = parseInt(count) || 0; }
   resetRetryCount() { this.retryCount = 0; }
