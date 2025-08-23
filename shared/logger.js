@@ -1,8 +1,12 @@
+// logger.js
 const axios = require('axios');
+// opzionale: se ti serve la type ref
+// const { RedisBus } = require("./redisBus");
 
 const levels = ['trace', 'log', 'info', 'warning', 'error'];
 const dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
 const enableDbLog = process.env.ENABLE_DB_LOG === 'true';
+
 // ANSI color codes
 const COLORS = {
   trace: '\x1b[35m',
@@ -17,14 +21,14 @@ const COLORS = {
 function getTimestamp() { 
   const now = new Date();
   const date = now.toISOString().replace('T', ' ').replace('Z', '');
-  const millis = String(now.getMilliseconds());//.padStart(3, '0');
-  return `${date}`; //.${millis}`;
+  // const millis = String(now.getMilliseconds()).padStart(3, '0');
+  return `${date}`;
 }
 
-// Coda per log asincroni
+// Coda per log asincroni verso DB
 let logQueue = [];
 
-// Simulazione flush asincrono (puoi sostituire con DB)
+// Flush asincrono verso DB
 setInterval(async () => {
   if (!enableDbLog || logQueue.length === 0) return;
 
@@ -40,28 +44,69 @@ setInterval(async () => {
   }
 }, 1000);
 
-
-function createLogger(microservice = '', moduleName = '', moduleVersion = '', level = 'info') {
+/**
+ * Crea un logger.
+ * @param {string} microservice 
+ * @param {string} moduleName 
+ * @param {string} moduleVersion 
+ * @param {('trace'|'log'|'info'|'warning'|'error')} level 
+ * @param {object} [opts]
+ * @param {object} [opts.bus]                Istanza RedisBus (facoltativa)
+ * @param {string} [opts.busTopicPrefix]     Prefisso topic (es. process.env.ENV o "ENV.marketListener")
+ * @param {boolean} [opts.console=true]      Stampa su console
+ * @param {boolean} [opts.enqueueDb=true]    Accoda su DB (oltre all’ENV ENABLE_DB_LOG)
+ */
+function createLogger(
+  microservice = '',
+  moduleName = '',
+  moduleVersion = '',
+  level = 'info',
+  opts = {}
+) {
   let currentIndex = levels.indexOf(level);
+  if (currentIndex < 0) currentIndex = levels.indexOf('info');
 
+  const bus = opts.bus || null;
+  const consoleEnabled = opts.console !== false;
+  const enqueueDb = opts.enqueueDb !== false;
+  const prefixBase = (opts.busTopicPrefix || process.env.BUS_TOPIC_PREFIX || '').trim();
 
-  const logToConsoleAndQueue = (levelKey, color, ...args) => {
+  // topic builder: <prefix>.<microservice>.<moduleName>.logs.<level>
+  const buildBusTopic = (lvl) => {
+    const parts = [];
+    if (prefixBase) parts.push(prefixBase);
+    if (microservice) parts.push(microservice);
+    if (moduleName) parts.push(moduleName);
+    parts.push('logs', lvl); // <-- "logs" è il segmento di controllo
+    return parts.join('.');
+  };
+
+  const logToConsoleAndQueue = async (levelKey, color, ...args) => {
     const timestamp = getTimestamp();
     const prefix = `[${timestamp}][${microservice}][${moduleName}][${moduleVersion}][${levelKey.toUpperCase()}]`;
+
+    // Patch per non inviare logs su BUS
+    let skipBus = false;
+    if (args.length && typeof args[args.length - 1] === 'object' && args[args.length - 1]?.__opts) {
+      skipBus = !!args.pop().__opts.skipBus;
+      args.pop();
+    }
     const fullMessage = args.join(' ');
+    
 
-    // stampa su console
-    const output = `${color}${prefix} ${fullMessage}${COLORS.reset}`;
-    if (levelKey === 'error') console.error(output);
-    else if (levelKey === 'warning') console.warn(output);
-    else console.log(output);
+    // 1) Console
+    if (consoleEnabled) {
+      const output = `${color}${prefix} ${fullMessage}${COLORS.reset}`;
+      if (levelKey === 'error') console.error(output);
+      else if (levelKey === 'warning') console.warn(output);
+      else console.log(output);
+    }
 
-  // estrae il nome funzione (obbligatorio)
+    // 2) Parsing campi funzione e JSON "pipe" per DB payload
     const funcMatch = fullMessage.match(/^\s*\[([^\]]+)\]\s*/);
     const functionName = funcMatch ? funcMatch[1] : null;
     let message = fullMessage.replace(/^\[[^\]]+\]\s*/, '');
 
-      // estrae JSON finale opzionale dopo pipe |
     let jsonDetails = null;
     const pipeIndex = message.lastIndexOf('|');
     if (pipeIndex !== -1) {
@@ -69,30 +114,52 @@ function createLogger(microservice = '', moduleName = '', moduleVersion = '', le
       message = message.slice(0, pipeIndex).trim();
       try {
         jsonDetails = JSON.parse(maybeJson);
-      } catch (_) {
-        // ignora se non è JSON valido
+      } catch (_) { /* ignore */ }
+    }
+
+    // 3) Enqueue verso DB (se abilitato)
+    if (enqueueDb) {
+      logQueue.push({
+        timestamp,
+        level: levelKey,
+        functionName,
+        message,
+        jsonDetails,
+        microservice,
+        moduleName,
+        moduleVersion
+      });
+    }
+
+    // 4) Publish su RedisBus (se presente)
+    if (bus && !skipBus) {
+      try {
+        const topic = buildBusTopic(levelKey);
+        await bus.publish(topic, {
+          ts: timestamp,
+          level: levelKey,
+          microservice, moduleName, moduleVersion,
+          functionName,
+          message,
+          details: jsonDetails || undefined,
+        });
+      } catch (e) {
+        // log locale SENZA bus per non rientrare
+        await logToConsoleAndQueue(
+          'warning',
+          COLORS.warning,
+          `[logger] bus publish failed: ${e && e.message ? e.message : e}`,
+          { __opts: { skipBus: true } }
+        );
       }
     }
 
-    // enqueue per scrittura asincrona
-    logQueue.push({
-      timestamp,
-      level: levelKey,
-      functionName,
-      message: message,
-      jsonDetails,
-      microservice,
-      moduleName,
-      moduleVersion
-    });
   };
-
-
 
   const logger =  {
     trace: (...args) => currentIndex <= 0 && logToConsoleAndQueue('trace', COLORS.trace, ...args),
-    log: (...args) => currentIndex <= 1 && logToConsoleAndQueue('log', COLORS.log, ...args),
-    info: (...args) => currentIndex <= 2 && logToConsoleAndQueue('info', COLORS.info, ...args),
+    log:   (...args) => currentIndex <= 1 && logToConsoleAndQueue('log',   COLORS.log,   ...args),
+    info:  (...args) => currentIndex <= 2 && logToConsoleAndQueue('info',  COLORS.info,  ...args),
     warning: (...args) => currentIndex <= 3 && logToConsoleAndQueue('warning', COLORS.warning, ...args),
     error: (...args) => currentIndex <= 4 && logToConsoleAndQueue('error', COLORS.error, ...args),
 
@@ -101,7 +168,7 @@ function createLogger(microservice = '', moduleName = '', moduleVersion = '', le
         console.warn(`[logger] Livello "${newLevel}" non valido`);
         return;
       }
-      currentLevel = newLevel;
+      const currentLevel = newLevel;
       currentIndex = levels.indexOf(currentLevel);
       console.log(`[logger] Livello di log aggiornato a: ${newLevel}`);
     }

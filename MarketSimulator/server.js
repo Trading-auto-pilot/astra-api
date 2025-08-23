@@ -147,6 +147,7 @@ server.listen(port, () => {
 
 // Configurazione REDIS
 // Redis Pub/Sub Integration
+/*
 (async () => {
   const subscriber = redis.createClient({ url: process.env.REDIS_URL || 'redis://redis:6379' });
   subscriber.on('error', (err) => logger.error('❌ Redis error:', err));
@@ -167,3 +168,4 @@ server.listen(port, () => {
     }
   });
 })();
+*/
