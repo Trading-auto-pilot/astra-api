@@ -22,7 +22,7 @@ class marketListener {
     this.env = process.env.ENV || 'DEV';
 
     // Alpaca WS endpoint + feed
-    this.alpacaMarketServer = process.env.ALPACA_MARKET_URL || 'ws://localhost:3003'; // es. 'wss://stream.data.alpaca.markets/v2'
+    this.alpacaMarketServer = process.env.ALPACA_MARKET_URL || 'ws://localhost:3003/v2'; // es. 'wss://stream.data.alpaca.markets/v2'
     this.feed               = process.env.FEED || 'iex';
 
     // Parametri retry WS Alpaca
