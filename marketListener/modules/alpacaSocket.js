@@ -250,6 +250,7 @@ _triggerReconnect(reason) {
       ws.once('close', (code, reasonBuf) => {
         const reason = reasonBuf ? reasonBuf.toString() : '';
         this.logger.warning(`[connect] Connessione chiusa. Codice: ${code}, Motivo: ${reason}.`);
+        this._setStatus({status:"CLOSED",message:`Connessione chiusa. Codice: ${code}, Motivo: ${reason}`});
         fullCleanup();
         // se serve, avvia il loop di retry
         if (this.shouldReconnect) this._triggerReconnect('close');   // <--- AGGIUNTO
