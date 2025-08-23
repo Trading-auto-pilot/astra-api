@@ -136,25 +136,29 @@ _triggerReconnect(reason) {
         //this.connectionStatus = 'NOT CONNECTED';
         this._setStatus({status:"NOT CONNECTED",message:'Timeout autenticazione WebSocket'});
         this.logger.error('[connect] Timeout autenticazione WebSocket');
-        cleanup();
+        fullCleanup();
         try { ws.terminate(); } catch {}
         reject(new Error('Timeout autenticazione WebSocket'));
       }, authTimeoutMs);
 
-      const cleanup = () => {
+      const fullCleanup = () => {
+        lightCleanup();
         try { ws.removeAllListeners('open'); } catch {}
         try { ws.removeAllListeners('message'); } catch {}
         try { ws.removeAllListeners('close'); } catch {}
         try { ws.removeAllListeners('error'); } catch {}
         try { ws.removeAllListeners('unexpected-response'); } catch {}
+      };
+
+      const lightCleanup = () => {
         clearTimeout(authTimeout);
-        this._connectPromise = null;
+        this._connectPromise = null; // sblocca futuri connect()
       };
 
       ws.on('open', () => {
         this.logger.info('[connect] WebSocket connesso. Autenticazione in corso...');
         this.connectionStatus = 'AUTHENTICATING';
-        this._setStatus({status:"CONNECTED",message:'WebSocket connesso. Autenticazione in corso...'});
+        this._setStatus({status:"AUTHENTICATING",message:'WebSocket connesso. Autenticazione in corso...'});
         try {
           ws.send(JSON.stringify({
             action: 'auth',
@@ -163,7 +167,7 @@ _triggerReconnect(reason) {
           }));
         } catch (e) {
           this.logger.error(`[connect] Errore invio auth: ${e.message}`);
-          cleanup();
+          fullCleanup();
           try { ws.terminate(); } catch {}
           reject(e);
         }
@@ -171,10 +175,9 @@ _triggerReconnect(reason) {
 
       ws.on('message', async (data) => {
         this.logger.trace(`[connect] messaggio ricevuto ${data}`);
-
         let messages;
         try {
-          messages = JSON.parse(data);
+          messages = JSON.parse(typeof data === 'string' ? data : data.toString());
         } catch (err) {
           this.logger.error('[connect] Errore parsing JSON:', err.message);
           return;
@@ -194,7 +197,7 @@ _triggerReconnect(reason) {
               this._setStatus({status:"LISTENING",message:`Nessuna sottoscrizione attiva`});
             }
             this.retryCount = 0;
-            cleanup();
+            lightCleanup();
             resolve(true);
             return;
           }
@@ -223,7 +226,7 @@ _triggerReconnect(reason) {
 
         // cleanup e retry fuori dallo stack corrente
         setImmediate(() => {
-          cleanup(); // rimuove i listener e azzera _connectPromise
+          fullCleanup(); // rimuove i listener e azzera _connectPromise
           if (this.shouldReconnect) this._triggerReconnect('unexpected-response');
         });
 
@@ -235,7 +238,7 @@ _triggerReconnect(reason) {
       ws.on('error', (err) => {
         this.connectionStatus = 'ERROR CONNECTION';
         this.logger.error(`[connect] Errore WebSocket: ${err?.message || ''}`);
-        cleanup();
+        fullCleanup();
         try { ws.terminate(); } catch {}
         // fai fallire il tentativo corrente...
         // (chi chiama connect() lo .catch-a dentro start())
@@ -247,7 +250,7 @@ _triggerReconnect(reason) {
       ws.once('close', (code, reasonBuf) => {
         const reason = reasonBuf ? reasonBuf.toString() : '';
         this.logger.warning(`[connect] Connessione chiusa. Codice: ${code}, Motivo: ${reason}.`);
-        cleanup();
+        fullCleanup();
         // se serve, avvia il loop di retry
         if (this.shouldReconnect) this._triggerReconnect('close');   // <--- AGGIUNTO
         reject(new Error(`Socket closed during connect (code ${code})`));
