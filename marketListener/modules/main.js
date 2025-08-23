@@ -6,6 +6,7 @@ const { RedisBus } = require("../../shared/redisBus");
 const { asBool, asInt } = require('../../shared/helpers');
 
 const AlpacaWS = require('./alpacaSocket');
+const StateManager = require('./stateManager');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
@@ -22,61 +23,29 @@ class marketListener {
     // Ambiente
     this.env = process.env.ENV || 'DEV';
 
-    // Alpaca WS endpoint + feed
-    this.alpacaMarketServer = process.env.ALPACA_MARKET_URL || 'ws://localhost:3003/v2'; // es. 'wss://stream.data.alpaca.markets/v2'
-    this.feed               = process.env.FEED || 'iex';
-
-    // Parametri retry WS Alpaca
-    this.alpacaRetryDelay = asInt(process.env.ALPACA_WSS_RETRAY_DELAY, 5000);
-    this.alpacaMaxRetray  = asInt(process.env.ALPACA_WSS_MAX_RETRY, 10);
-
-    // Flags / intervalli BUS (usa asBool/asInt)
-    this.msgTelemetryOn        = asBool(process.env.MSG_TELEMETRY, true);
-    this.msgTelemetryIntervals = asInt(process.env.MSG_TELEMETRY_INTERVALS, 500);
-
-    this.msgTickOn             = asBool(process.env.MSG_TICK, true);
-    this.msgTickIntervals      = asInt(process.env.MSG_TICK_INTERVALS, 500);
-
-    this.msgCandleOn           = asBool(process.env.MSG_CANDLE, true);
-    this.msgCandleIntervals    = asInt(process.env.MSG_CANDLE_INTERVALS, 500);
-
-    this.msgLogsOn             = asBool(process.env.MSG_LOGS, true);
-    this.msgLogsIntervals      = asInt(process.env.MSG_LOGS_INTERVALS, 500);
-
     // Canali Redis (prefix di servizio)
     this.redisTelemetyChannel = `${this.env}.${MICROSERVICE}.telemetry`;
     this.redisTickChannel     = `${this.env}.${MICROSERVICE}.tick`;
     this.redisCandleChannel   = `${this.env}.${MICROSERVICE}.candle`;
     this.redisLogsChannel     = `${this.env}.${MICROSERVICE}.logs`;
 
-    // Stato modulo
-    this.symbolStrategyMap = [];
-    this.moduleActive = true;
-
     this.status = 'STARTING';
     this.statusDetails = null;
 
-    // Abilitazione canali BUS
-    this.communicationChannels = {
-      telemetry : { on: this.msgTelemetryOn, params : { intervalsMs : this.msgTelemetryIntervals }},
-      tick      : { on: this.msgTickOn,      params : { intervalsMs : this.msgTickIntervals }},
-      candle    : { on: this.msgCandleOn,    params : { intervalsMs : this.msgCandleIntervals }},
-      logs      : { on: this.msgLogsOn,      params : { intervalsMs : this.msgLogsIntervals }}
-    };
+    this.state = new StateManager(this.env);
 
     // Inizializzazione BUS Redis
     this.bus = new RedisBus({
-      channels: this.communicationChannels,
+      channels: this.state._communicationChannels,
       name: "marketListener"
     });
 
     // Logger (passa il bus con la chiave corretta!)
-    this.logLevel = process.env.LOG_LEVEL || 'info';
     this.logger = createLogger(
       MICROSERVICE,
       MODULE_NAME,
       MODULE_VERSION,
-      this.logLevel,
+      this.state._logLevel,
       {
         bus: null,                          // <--- FIX: non _bus
         busTopicPrefix: this.env || 'DEV',
@@ -111,24 +80,23 @@ class marketListener {
     }
 
     // 3) Configura Alpaca
-    this.logger.info(`[init] communicationChannels | ${JSON.stringify(this.communicationChannels)}`);
+    this.logger.info(`[init] communicationChannels | ${JSON.stringify(this.state._communicationChannels)}`);
     this.status = 'CONNECTING';
     this.statusDetails = 'Settings letti da DB. Inizio connessione ad Alpaca.';
     await this.bus.publish(`${this.redisTelemetyChannel}.STATUS`, { status: this.status, details: this.statusDetails });
 
     const delayBetweenMessages = asInt(getSetting('PROCESS_DELAY_BETWEEN_MESSAGES'), 500); // <--- FIX: string, non array
 
-    this.symbolStrategyMap = await this.loadActiveStrategies();
+    this.state._symbolStrategyMap = await this.loadActiveStrategies();
     const alpacaConfig = {
-      alpacaMarketServer    : `${this.alpacaMarketServer}/${this.feed}`,
-      alpacaRetryDelay      : this.alpacaRetryDelay,
-      alpacaMaxRetray       : this.alpacaMaxRetray,
-      symbolStrategyMap     : this.symbolStrategyMap,
+      alpacaMarketServer    : `${this.state._alpacaMarketServer}/${this.state._feed}`,
+      alpacaRetryDelay      : this.state._alpacaRetryDelay,
+      alpacaMaxRetray       : this.state._alpacaMaxRetray,
+      symbolStrategyMap     : this.state._symbolStrategyMap,
       processBar            : async (bar) => { /* TODO: tua logica */ },  // <--- FIX: funzione, non []
       logger                : this.logger,
       delayBetweenMessages
     };
-
     // 4) Istanzia Alpaca socket
     // ATTENZIONE: assicurati che alpacaSocket exporti la classe correttamente (default o named)
     this.alpacaWS = new AlpacaWS(alpacaConfig);
