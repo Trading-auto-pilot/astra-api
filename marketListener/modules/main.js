@@ -1,4 +1,5 @@
 // modules/main.js
+const axios = require('axios');
 const createLogger = require('../../shared/logger');
 const { initializeSettings, getSetting } = require('../../shared/loadSettings');
 const { RedisBus } = require("../../shared/redisBus");
@@ -117,6 +118,7 @@ class marketListener {
 
     const delayBetweenMessages = asInt(getSetting('PROCESS_DELAY_BETWEEN_MESSAGES'), 500); // <--- FIX: string, non array
 
+    this.symbolStrategyMap = await this.loadActiveStrategies();
     const alpacaConfig = {
       alpacaMarketServer    : `${this.alpacaMarketServer}/${this.feed}`,
       alpacaRetryDelay      : this.alpacaRetryDelay,
@@ -134,9 +136,9 @@ class marketListener {
     // Se AlpacaWS estende EventEmitter:
     if (this.alpacaWS.on) {
       this.alpacaWS.on('status', async (status) => {
-        this.logger.info(`[init] Connection status to Alpaca web socket ${status}`);
+        this.logger.info(`[init] Connection status to Alpaca web socket ${JSON.stringify(status)}`);
         this.status = status;
-        await this.bus.publish(`${this.redisTelemetyChannel}.STATUS`, { status: this.status, details: this.statusDetails });
+        await this.bus.publish(`${this.redisTelemetyChannel}.STATUS`, this.status);
       });
     }
 
@@ -150,6 +152,28 @@ class marketListener {
       }
     }
   }
+
+  async loadActiveStrategies() {
+    try {
+      const res = await axios.get(`${this.dbManagerUrl}/strategies`);
+      this.strategies = res.data || [];
+      this.logger.info(`[loadActiveStrategies] Caricati ${this.strategies.length} strategie attive`);
+
+      const symbolStrategyMap = {};
+      for (const strategy of this.strategies) {
+        const symbol = strategy.idSymbol;
+        this.logger.trace(`[loadActiveStrategies] Recuperato symbol : ${symbol}`)
+        if (!symbolStrategyMap[symbol]) {
+            symbolStrategyMap[symbol] = [];
+        }
+        symbolStrategyMap[symbol].push(strategy);
+      }
+      return(symbolStrategyMap);
+      } catch (err) {
+          this.logger.error('[loadActiveStrategies] Errore nel caricamento strategie attive:', err.message);
+      }
+  }
+
 }
 
 module.exports = marketListener;

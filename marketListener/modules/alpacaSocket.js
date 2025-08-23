@@ -112,6 +112,7 @@ _triggerReconnect(reason) {
   // ---------- public API ----------
   async disconnect() {
     this.logger.warning('[disconnect] Chiamata disconnessione da Alpaca.');
+    _setStatus({status:'DISCONNECTED', message:'Disconnesso dal server'});
     this.shouldReconnect = false;
     this._teardownSocket();
     this.connectionStatus = 'CLOSED';
@@ -133,7 +134,7 @@ _triggerReconnect(reason) {
       const authTimeoutMs = 5000;
       const authTimeout = setTimeout(() => {
         //this.connectionStatus = 'NOT CONNECTED';
-        this._setStatus("NOT CONNECTED");
+        this._setStatus({status:"NOT CONNECTED",message:'Timeout autenticazione WebSocket'});
         this.logger.error('[connect] Timeout autenticazione WebSocket');
         cleanup();
         try { ws.terminate(); } catch {}
@@ -153,6 +154,7 @@ _triggerReconnect(reason) {
       ws.on('open', () => {
         this.logger.info('[connect] WebSocket connesso. Autenticazione in corso...');
         this.connectionStatus = 'AUTHENTICATING';
+        this._setStatus({status:"CONNECTED",message:'WebSocket connesso. Autenticazione in corso...'});
         try {
           ws.send(JSON.stringify({
             action: 'auth',
@@ -181,15 +183,15 @@ _triggerReconnect(reason) {
 
         for (const msg of messages) {
           if (msg.T === 'success' && msg.msg === 'authenticated') {
-            // autenticato
-            //this.connectionStatus = 'CONNECTED';
-            this._setStatus("CONNECTED")
+            this._setStatus({status:"AUTHENTICATED"});
             const symbols = Object.keys(this.symbolStrategyMap || {});
             if (symbols.length) {
               ws.send(JSON.stringify({ action: 'subscribe', bars: symbols }));
               this.logger.info(`[connect] Sottoscritto ai simboli: ${symbols.join(', ')}`);
+              this._setStatus({status:"LISTENING",message:`Sottoscritto ai simboli: ${symbols.join(', ')}`});
             } else {
               this.logger.warning('[connect] Nessun simbolo da sottoscrivere');
+              this._setStatus({status:"LISTENING",message:`Nessuna sottoscrizione attiva`});
             }
             this.retryCount = 0;
             cleanup();
@@ -312,7 +314,7 @@ _triggerReconnect(reason) {
     } catch {}
     this.ws = null;
     //this.connectionStatus = 'NOT CONNECTED';
-    this._setStatus("NOT CONNECTED")
+    this._setStatus({status:"NOT CONNECTED"})
   }
 }
 
