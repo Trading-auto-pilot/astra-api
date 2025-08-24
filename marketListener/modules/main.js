@@ -146,7 +146,23 @@ class marketListener {
   get status() {return this._status;}
   set status(s) {this._status = s;}
 
-  
+  getInfo() {
+    return(
+      {
+        MICROSERVICE : MICROSERVICE,
+        MODULE_VERSION: MODULE_VERSION,
+        STATUS : this._status,
+        STATUS_DETAILS: this.statusDetails,
+        ENV: this.env,
+        BusChannels : {
+          redisTelemetyChannel : this.redisTelemetyChannel,
+          redisTickChannel : this.redisTickChannel,
+          redisCandleChannel : this.redisCandleChannel,
+          redisLogsChannel : this.redisLogsChannel
+        }
+      }
+    )
+  }
 
 }
 

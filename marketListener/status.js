@@ -214,25 +214,25 @@ router.put('/alpacaRetryDelay', (req, res) => {
       }
 
       const normalized = candidate;
-      const prev = marketListener.state.alpacaMaxRetray;
+      const prev = marketListener.state.alpacaMaxRetry;
 
       if (prev === normalized) {
-        logger.info(`[${moduleName}] PUT /alpacaMaxRetray: unchanged -> ${normalized}`);
+        logger.info(`[${moduleName}] PUT /alpacaMaxRetry: unchanged -> ${normalized}`);
         return res.status(200).json({ maxRetry: normalized, changed: false });
       }
 
       // assegna (serve setter in StateManager!)
-      marketListener.state.alpacaMaxRetray = normalized;
+      marketListener.state.alpacaMaxRetry = normalized;
 
-      logger.info(`[${moduleName}] PUT /alpacaMaxRetray: aggiornato ${prev || '(none)'} -> ${normalized}`);
+      logger.info(`[${moduleName}] PUT /alpacaMaxRetry: aggiornato ${prev || '(none)'} -> ${normalized}`);
 
       return res.status(200).json({
-        maxRetry: marketListener.state.alpacaMaxRetray,
+        maxRetry: marketListener.state.alpacaMaxRetry,
         previousMax: prev || null,
         changed: true
       });
     } catch (e) {
-      logger.error(`[${moduleName}] [PUT] /alpacaMaxRetray ${e.message}`);
+      logger.error(`[${moduleName}] [PUT] /alpacaMaxRetry ${e.message}`);
       return res.status(500).json({ error: e.message });
     }
   });
@@ -294,7 +294,7 @@ router.put('/alpacaRetryDelay', (req, res) => {
 
     try {
       // accetta sia { channels: {...} } sia direttamente {...}
-      const input = (req.body && (req.body.channels || req.body)) || {};
+      const input = (req.body && (req.body.communicationChannels || req.body)) || {};
       if (typeof input !== 'object' || Array.isArray(input)) {
         return res.status(400).json({ error: 'payload non valido: atteso oggetto di configurazione' });
       }
@@ -355,7 +355,7 @@ router.put('/alpacaRetryDelay', (req, res) => {
       }
 
       return res.status(200).json({
-        channels: normalized,
+        communicationChannels: normalized,
         changed: anyChanged,
         details,
         maxAllowedIntervalMs: maxInterval
