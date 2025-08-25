@@ -97,14 +97,14 @@ router.put('/alpacaMarketServer', async (req, res) => {
   }
 });
 
-  router.get('/feed', (_req, res) => {
-    try {
-      res.json({url : marketListener.state.feed});
-    } catch (e) {
-      logger.error(`[status/info] [GET] /feed ${e.message}`);
-      res.status(500).json({ error: e.message });
-    }
-  });
+router.get('/feed', (_req, res) => {
+  try {
+    res.json({feed : marketListener.state.feed});
+  } catch (e) {
+    logger.error(`[status/info] [GET] /feed ${e.message}`);
+    res.status(500).json({ error: e.message });
+  }
+});
 
   router.put('/feed', (req, res) => {
     try {
@@ -354,6 +354,7 @@ router.put('/alpacaRetryDelay', (req, res) => {
         }
       }
 
+      await marketListener.updateCommunicationChannel(normalized);
       return res.status(200).json({
         communicationChannels: normalized,
         changed: anyChanged,
@@ -365,6 +366,58 @@ router.put('/alpacaRetryDelay', (req, res) => {
       return res.status(500).json({ error: e.message });
     }
   });
+
+  router.get('/logLevel', (_req, res) => {
+    try {
+      res.json({logLevel : marketListener.state.logLevel});
+    } catch (e) {
+      logger.error(`[status/info] [GET] /logLevel ${e.message}`);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+router.put('/logLevel', (req, res) => {
+  try {
+    const candidate = req.body?.logLevel;
+    if (typeof candidate !== 'string') {
+      return res.status(400).json({ error: 'logLevel deve essere una stringa' });
+    }
+
+    // Normalizziamo l'input a lowercase
+    const newLevel = candidate.toLowerCase();
+    const allowedLevels = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'];
+
+    // Validazione
+    if (!allowedLevels.includes(newLevel)) {
+      return res.status(400).json({
+        error: `Valore non valido. I logLevel ammessi sono: ${allowedLevels.join(', ')}`
+      });
+    }
+
+    // Stato attuale
+    const prev = marketListener.state.logLevel || 'info'; // default
+    if (prev === newLevel) {
+      logger.info(`[${moduleName}] PUT /logLevel: unchanged -> ${newLevel}`);
+      return res.status(200).json({ logLevel: newLevel, changed: false });
+    }
+
+    // Aggiorna
+    marketListener.state.logLevel = newLevel;
+    //logger.setLevel(newLevel); // supponendo tu abbia un setter nel logger
+    logger.info(`[${moduleName}] PUT /logLevel: aggiornato ${prev} -> ${newLevel}`);
+
+    return res.status(200).json({
+      logLevel: marketListener.state.logLevel,
+      previousLevel: prev,
+      changed: true
+    });
+
+  } catch (e) {
+    logger.error(`[${moduleName}] [PUT] /logLevel ${e.message}`);
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 
   return router;
 };

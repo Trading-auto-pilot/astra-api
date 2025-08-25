@@ -73,7 +73,7 @@ class StateManager {
   get logLevel() { return this._logLevel; }
   set logLevel(newLevel) { 
     this._logLevel = newLevel;
-    this.logger.setLevel(newLevel);
+    this._logger.setLevel(newLevel);
   }
 
   

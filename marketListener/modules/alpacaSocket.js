@@ -1,6 +1,7 @@
 const WebSocket = require('ws');
 const EventEmitter = require('events');
 const path = require('path');
+const SymbolDedupQueue = require('./SymbolDedupQueue');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 const MICROSERVICE = 'marketListener';
@@ -10,6 +11,7 @@ const MODULE_VERSION = '3.1';
 class AlpacaSocket extends EventEmitter {
   constructor(config) {
     super();
+    this.messageQueue = new SymbolDedupQueue();
     this.symbolStrategyMap = config.symbolStrategyMap;
     this.processBar = config.processBar;
 
@@ -41,6 +43,10 @@ class AlpacaSocket extends EventEmitter {
   _setStatus(newStatus) {
     this.connectionStatus = newStatus;
     this.emit('status', newStatus);   // <--- notifica i listener
+  }
+
+  _sendCandle(candle) {
+    this.emit('candle', candle);   // <--- notifica i listener
   }
 
 // ====== NUOVO: entry-point con retry ======
@@ -112,7 +118,7 @@ _triggerReconnect(reason) {
   // ---------- public API ----------
   async disconnect() {
     this.logger.warning('[disconnect] Chiamata disconnessione da Alpaca.');
-    _setStatus({status:'DISCONNECTED', message:'Disconnesso dal server'});
+    this._setStatus({status:'DISCONNECTED', message:'Disconnesso dal server'});
     this.shouldReconnect = false;
     this._teardownSocket();
     this.connectionStatus = 'CLOSED';
@@ -206,6 +212,8 @@ _triggerReconnect(reason) {
             if (!this.orderActive.includes(msg.S)) {
               this.logger.trace(`[connect] messaggio T ricevuto, accodo per elaborazione processBar`);
               this.messageQueue.push(msg);
+              this._kickProcessor();
+              this._sendCandle(msg);
             } else {
               this.logger.trace('[connect] Candela non processata per ordine già attivo');
             }
@@ -285,6 +293,26 @@ _triggerReconnect(reason) {
   }
 
   // ---------- internals ----------
+
+  _kickProcessor() {
+    if (this.processing) return;
+    this.processing = true;
+    setImmediate(async () => {
+      try {
+        let msg;
+        while ((msg = this.messageQueue.shift())) {
+          await this.processBar(msg);
+          this._sendCandle(msg);
+        }
+      } catch (err) {
+        this.logger.error(`[processLoop] ${err.message}`);
+      } finally {
+        this.processing = false;
+        if (this.messageQueue.length) this._kickProcessor();
+      }
+    });
+  }
+  
   _ensureQueueProcessor() {
     if (this._processorTimer) return;
     this._processorTimer = setInterval(async () => {
@@ -319,6 +347,45 @@ _triggerReconnect(reason) {
     this.ws = null;
     //this.connectionStatus = 'NOT CONNECTED';
     this._setStatus({status:"NOT CONNECTED"})
+  }
+
+  updateCommunicationChannels(newConfig) {
+    const requiredKeys = ['telemetry', 'tick', 'candle', 'logs'];
+
+    // Validazione: tutte le chiavi richieste devono esistere
+    for (const key of requiredKeys) {
+      if (!newConfig[key] || typeof newConfig[key] !== 'object') {
+        this.logger.error(`[updateCommunicationChannels] Config mancante o invalida per '${key}'`);
+        throw new Error(`Invalid config: missing '${key}'`);
+      }
+      if (typeof newConfig[key].on !== 'boolean' || !newConfig[key].params) {
+        this.logger.error(`[updateCommunicationChannels] Campo 'on' o 'params' invalido per '${key}'`);
+        throw new Error(`Invalid config for '${key}'`);
+      }
+    }
+
+    // Aggiorna configurazione interna
+    this._communicationChannels = {
+      telemetry : { ...newConfig.telemetry },
+      tick      : { ...newConfig.tick },
+      candle    : { ...newConfig.candle },
+      logs      : { ...newConfig.logs }
+    };
+
+    this.logger.info(`[updateCommunicationChannels] Configurazione aggiornata con successo`);
+    this.logger.log(`[updateCommunicationChannels] Nuova configurazione: ${JSON.stringify(this._communicationChannels)}`);
+
+    // opzionale: notificare altri moduli via Redis Pub/Sub
+    if (this.redisPublisher) {
+      this.redisPublisher.publish('config.events.v1', JSON.stringify({
+        type: 'communicationChannelsUpdated',
+        ts: new Date().toISOString(),
+        service: 'alpacaSocket',
+        data: this._communicationChannels
+      }));
+    }
+
+    return this._communicationChannels;
   }
 }
 
