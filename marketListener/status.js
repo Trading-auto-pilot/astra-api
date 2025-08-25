@@ -418,6 +418,15 @@ router.put('/logLevel', (req, res) => {
   }
 });
 
+  router.get('/metrics', (_req, res) => {
+    try {
+      res.json(marketListener.getMetricsSnapshot(100));
+    } catch (e) {
+      logger.error(`[${moduleName}] [GET] /metrics ${e.message}`);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
 
   return router;
 };
