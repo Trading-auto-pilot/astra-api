@@ -18,6 +18,11 @@ class AlpacaSocket extends EventEmitter {
     this.state = config.state;
     this.redisTelemetyChannel = config.redisTelemetyChannel;
 
+    // ==== Telemetria
+    this._tOpen = null;
+    this._disconnectRecorded = false;   
+    this._reconnectCycle = false;       
+
     // === Redis orderActive (fonte di verità) ===
     this.env = process.env.ENV || 'dev';
     this.redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -86,6 +91,12 @@ class AlpacaSocket extends EventEmitter {
 
     this.reconnecting = true;
     let attempt = 0;
+    
+    if (!this._reconnectCycle) {
+      this.metrics.conn.reconnects++;
+      this.metrics.conn.lastReconnectTs = Date.now();
+      this._reconnectCycle = true;
+    }
 
     while (this.shouldReconnect  && attempt < (this.alpacaMaxRetry ?? Infinity)) {
       try {
@@ -111,6 +122,11 @@ class AlpacaSocket extends EventEmitter {
     if (!this.shouldReconnect || this.reconnecting) return;
     const delay = this.retryDelay || 5000;
     this.logger.warning(`[reconnect] scheduling in ${delay}ms (reason=${reason})`);
+    if (!this._reconnectCycle) {
+      this.metrics.conn.reconnects++;
+      this.metrics.conn.lastReconnectTs = Date.now();
+      this._reconnectCycle = true;
+    }
     setTimeout(() => this.start().catch(e => {
       this.logger.error(`[reconnect] loop error: ${e?.message || e}`);
     }), delay);
@@ -182,6 +198,7 @@ class AlpacaSocket extends EventEmitter {
       };
 
       ws.on('open', () => {
+        this._tOpen = Date.now();
         this.logger.info('[connect] WebSocket connesso. Autenticazione in corso...');
         this.status = 'AUTHENTICATING';
         this._setStatus("AUTHENTICATING",'WebSocket connesso. Autenticazione in corso...');
@@ -202,6 +219,13 @@ class AlpacaSocket extends EventEmitter {
       ws.on('message', async (data) => {
         this.logger.trace(`[connect] messaggio ricevuto ${data}`);
         let messages;
+        if (this._tOpen) {
+          this.metrics.conn.authTimeMs = Date.now() - this._tOpen;
+        }
+        this._disconnectRecorded = false;   // nuovo ciclo sano
+        this._reconnectCycle = false;       // chiudi ciclo di reconnect
+        this.retryCount = 0;
+
         try {
           messages = JSON.parse(typeof data === 'string' ? data : data.toString());
         } catch (err) {
@@ -299,6 +323,12 @@ class AlpacaSocket extends EventEmitter {
 
 
       ws.on('error', (err) => {
+        if (!this._disconnectRecorded) {
+          this.metrics.conn.disconnects++;
+          this.metrics.conn.lastDisconnectReason = err?.message || 'ws error';
+          this._disconnectRecorded = true;
+        }
+
         this.status = 'ERROR CONNECTION';
         this.logger.error(`[connect] Errore WebSocket: ${err?.message || ''}`);
         fullCleanup();
@@ -312,6 +342,11 @@ class AlpacaSocket extends EventEmitter {
 
       ws.once('close', (code, reasonBuf) => {
         const reason = reasonBuf ? reasonBuf.toString() : '';
+        if (!this._disconnectRecorded) {
+          this.metrics.conn.disconnects++;
+          this.metrics.conn.lastDisconnectReason = `close ${code} ${reason}`;
+          this._disconnectRecorded = true;
+        }
         this.logger.warning(`[connect] Connessione chiusa. Codice: ${code}, Motivo: ${reason}.`);
         this._setStatus("CLOSED",`Connessione chiusa. Codice: ${code}, Motivo: ${reason}`);
         fullCleanup();
