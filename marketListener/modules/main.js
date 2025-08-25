@@ -125,6 +125,14 @@ class marketListener {
     // Avvia ascolto sulla coda Redis
     await this.alpacaWS.initOrderActiveWatcher();
 
+    // Da implementare nel micro-servizio tradeExecutor per inserire in coda ordini ativi
+    // attiva
+    // await redis.sAdd('prod.orders.active.set', 'AAPL');
+    // disattiva
+    // await redis.sRem('prod.orders.active.set', 'AAPL');
+    // Pubblica Evento
+    // await redis.publish('prod.orders.active.events.v1', JSON.stringify({ action: 'add', symbol: 'AAPL' }));
+    // await redis.publish('prod.orders.active.events.v1', JSON.stringify({ action: 'remove', symbol: 'AAPL' }));
   }
 
   async loadActiveStrategies() {
