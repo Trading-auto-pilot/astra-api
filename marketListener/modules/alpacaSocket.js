@@ -15,6 +15,8 @@ class AlpacaSocket extends EventEmitter {
     this.messageQueue = new SymbolDedupQueue();
     this.symbolStrategyMap = config.symbolStrategyMap;
     this.processBar = config.processBar;
+    this.state = config.state;
+    this.redisTelemetyChannel = config.redisTelemetyChannel;
 
     // === Redis orderActive (fonte di verità) ===
     this.env = process.env.ENV || 'dev';
@@ -43,11 +45,30 @@ class AlpacaSocket extends EventEmitter {
 
     this.ws = null;
     this._connectPromise = null;
+
+    // Metriche di Telemetria
+    this.metrics = {
+      startedAt: Date.now(),
+      messages: { total: 0, ewmaPerSec: 0, lastTs: null }, // lastTs = dall'ultima candela (msg.t)
+      perSymbol: new Map(), // sym -> { lastTs, lastClose }
+      queue: { maxObserved: 0 },
+      dedup: { replacedCount: 0 },
+      conn: { reconnects: 0, disconnects: 0, lastReconnectTs: null, lastDisconnectReason: null, authTimeMs: null },
+      errors: { parseJson: 0, ws: 0, processBar: 0, auth: 0 },
+      latency: { ingestToProcessMsEWMA: 0 },
+      orders: { eventsProcessed: 0, reconcileAdjustments: 0 }
+    };
+    this._ewmaAlpha = 0.2;
+
+    // Publisher metrics (riuso la conn Redis principale)
+    this.redisPub = this.redis.duplicate();
+
+    this._metricsTimer = null;
   }
   _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-  _setStatus(newStatus,  message='') {
-    this.connectionStatus = { newStatus, message };
+  _setStatus(status,  message='') {
+    this.connectionStatus = { status, message };
     this.emit('status', this.connectionStatus);   // <--- notifica i listener
   }
 
@@ -89,7 +110,7 @@ class AlpacaSocket extends EventEmitter {
   _triggerReconnect(reason) {
     if (!this.shouldReconnect || this.reconnecting) return;
     const delay = this.retryDelay || 5000;
-    this.logger.warn(`[reconnect] scheduling in ${delay}ms (reason=${reason})`);
+    this.logger.warning(`[reconnect] scheduling in ${delay}ms (reason=${reason})`);
     setTimeout(() => this.start().catch(e => {
       this.logger.error(`[reconnect] loop error: ${e?.message || e}`);
     }), delay);
@@ -208,15 +229,49 @@ class AlpacaSocket extends EventEmitter {
           }
 
           if (msg.T === 'b') {
-            if (!this.isOrderActive(msg.S)) {
-              this.logger.trace('[connect] Bar ricevuto, enqueue dedup per processBar');
-              this.messageQueue.push(msg);    // SymbolDedupQueue, non array
+            const sym = String(msg.S).toUpperCase();
+            // timestamp dalla candela (ISO o epoch). Normalizza a ms.
+            const tsMs = typeof msg.t === 'number' ? msg.t : Date.parse(msg.t);
+
+            if (!this.isOrderActive(sym)) {
+              // per-symbol
+              let ps = this.metrics.perSymbol.get(sym);
+              if (!ps) { ps = { lastTs: null, lastClose: null }; this.metrics.perSymbol.set(sym, ps); }
+              ps.lastTs = tsMs ?? ps.lastTs;
+              ps.lastClose = msg.c ?? msg.pc ?? ps.lastClose;
+
+              // global
+              this.metrics.messages.total++;
+              if (tsMs && (!this.metrics.messages.lastTs || tsMs > this.metrics.messages.lastTs)) {
+                this.metrics.messages.lastTs = tsMs;
+              }
+
+              // rate (EWMA su “arrivi”): calcolato per finestra reale, non now()
+              if (!this._lastRateTs) { this._lastRateTs = tsMs; this._lastRateCount = 0; }
+              this._lastRateCount++;
+              const dt = tsMs - this._lastRateTs;
+              if (dt >= 1000) {
+                const instRate = this._lastRateCount / (dt / 1000);
+                this.metrics.messages.ewmaPerSec =
+                  this._ewmaAlpha * instRate + (1 - this._ewmaAlpha) * this.metrics.messages.ewmaPerSec;
+                this._lastRateTs = tsMs;
+                this._lastRateCount = 0;
+              }
+
+              // enqueue & process
+              msg.__ingestTs = tsMs;    // per latenza pipeline
+              msg.S = sym;
+              this.messageQueue.push(msg);
+              if (this.messageQueue.length > this.metrics.queue.maxObserved) {
+                this.metrics.queue.maxObserved = this.messageQueue.length;
+              }
               this._kickProcessor();
               this._sendCandle(msg);
             } else {
               this.logger.trace('[connect] Candela non processata: ordine già attivo');
             }
           }
+
 
         }
       });
@@ -296,13 +351,19 @@ class AlpacaSocket extends EventEmitter {
 
   _kickProcessor() {
     if (this.processing) return;
+
+    
     this.processing = true;
     setImmediate(async () => {
       try {
         let msg;
         while ((msg = this.messageQueue.shift())) {
           try {
+            const t0 = msg.__ingestTs ?? Date.now();
             await this.processBar(msg);
+            const dt = Date.now() - t0;
+            this.metrics.latency.ingestToProcessMsEWMA =
+              this._ewmaAlpha * dt + (1 - this._ewmaAlpha) * this.metrics.latency.ingestToProcessMsEWMA;
           } catch (err) {
             this.logger.error(`[processLoop] processBar failed for ${msg.S}: ${err.message}`);
           }
@@ -335,7 +396,55 @@ class AlpacaSocket extends EventEmitter {
     this._setStatus("NOT CONNECTED",'');
   }
 
+  _startMetricsTicker() {
+    if (this._metricsTimer) return;
+    this._metricsTimer = setInterval(() => this._publishMetrics(), this.state.communicationChannels.telemetry.params.intervalsMs);
+  }
+
+  _stopMetricsTicker() {
+    if (this._metricsTimer) { clearInterval(this._metricsTimer); this._metricsTimer = null; }
+  }
+
+  async _publishMetrics() {
+    try {
+      const payload = {
+        v: 1,
+        ts: new Date().toISOString(),
+        env: this.env,
+        service: 'market-listener',
+        type: 'metrics',
+        data: this._getMetricsSnapshot(50)
+      };
+      // delega a redisBus (che decide on/off)
+      await this.redisPublisher.publish(this.redisTelemetyChannel, JSON.stringify(payload));
+    } catch (e) {
+      this.logger.warn(`[metrics] publish failed: ${e.message}`);
+    }
+  }
+
+  _getMetricsSnapshot(limitPerSymbol = 50) {
+    const perSymbol = [];
+    let i = 0;
+    for (const [s, v] of this.metrics.perSymbol.entries()) {
+      perSymbol.push({ symbol: s, lastTs: v.lastTs, lastClose: v.lastClose });
+      if (++i >= limitPerSymbol) break;
+    }
+
+    return {
+      startedAt: this.metrics.startedAt,
+      messages: this.metrics.messages,
+      queue: this.metrics.queue,
+      dedup: this.metrics.dedup,
+      conn: this.metrics.conn,
+      errors: this.metrics.errors,
+      latency: this.metrics.latency,
+      orders: this.metrics.orders,
+      perSymbol
+    };
+  }
+
   async initOrderActiveWatcher() {
+    await this.redisPub.connect();
     await this.redis.connect();
     await this.sub.connect();
 
@@ -383,10 +492,12 @@ class AlpacaSocket extends EventEmitter {
   }
 
   async closeOrderActiveWatcher() {
+    this._stopMetricsTicker();
     clearInterval(this._reconcileTimer);
     try { await this.sub.unsubscribe(this.EVENTS_CH); } catch {}
     try { await this.sub.disconnect(); } catch {}
     try { await this.redis.disconnect(); } catch {}
+    try { await this.redisPub.disconnect(); } catch {}
   }
 
   // helper O(1)
@@ -396,7 +507,7 @@ class AlpacaSocket extends EventEmitter {
 
 
   updateCommunicationChannels(newConfig) {
-    const requiredKeys = ['telemetry', 'tick', 'candle', 'logs'];
+    const requiredKeys = ['telemetry', 'metrics', 'candle', 'logs'];
 
     // Validazione: tutte le chiavi richieste devono esistere
     for (const key of requiredKeys) {
@@ -413,10 +524,21 @@ class AlpacaSocket extends EventEmitter {
     // Aggiorna configurazione interna
     this._communicationChannels = {
       telemetry : { ...newConfig.telemetry },
-      tick      : { ...newConfig.tick },
+      metrics      : { ...newConfig.metrics },
       candle    : { ...newConfig.candle },
       logs      : { ...newConfig.logs }
     };
+
+  // aggiorna intervallo dal canale telemetry se presente
+  const ms = Number(this._communicationChannels?.telemetry?.params?.intervalsMs);
+  if (Number.isFinite(ms) && ms > 0) {
+    this._metricsIntervalMs = ms;
+    if (this._metricsTimer) { this._stopMetricsTicker(); this._startMetricsTicker(); }
+  }
+
+  // attiva/disattiva ticker
+  if (this._communicationChannels.telemetry?.on) this._startMetricsTicker();
+  else this._stopMetricsTicker();
 
     this.logger.info(`[updateCommunicationChannels] Configurazione aggiornata con successo`);
     this.logger.log(`[updateCommunicationChannels] Nuova configurazione: ${JSON.stringify(this._communicationChannels)}`);

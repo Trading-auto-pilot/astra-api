@@ -25,7 +25,7 @@ class marketListener {
 
     // Canali Redis (prefix di servizio)
     this.redisTelemetyChannel = `${this.env}.${MICROSERVICE}.telemetry`;
-    this.redisTickChannel     = `${this.env}.${MICROSERVICE}.tick`;
+    this.redisStatusChannel     = `${this.env}.${MICROSERVICE}.status`;
     this.redisCandleChannel   = `${this.env}.${MICROSERVICE}.candle`;
     this.redisLogsChannel     = `${this.env}.${MICROSERVICE}.logs`;
 
@@ -66,14 +66,14 @@ class marketListener {
     this.logger.attachBus(this.bus);                      // <--- ora il logger può pubblicare su Redis
 
     this.statusDetails = 'Inizializzazione DB';
-    await this.bus.publish(`${this.redisTelemetyChannel}.STATUS`, { status: this._status, details: this.statusDetails });
+    await this.bus.publish(`${this.redisStatusChannel}`, { status: this._status, details: this.statusDetails });
 
     // 2) Leggi settings dal DB (scatola nera)
     const initDB = await initializeSettings(this.dbManagerUrl);
     if (!initDB) {
       this._status = 'ERROR';
       this.statusDetails = 'Errore connessione al DB';
-      await this.bus.publish(`${this.redisTelemetyChannel}.STATUS`, { status: this._status, details: this.statusDetails });
+      await this.bus.publish(`${this.redisStatusChannel}`, { status: this._status, details: this.statusDetails });
       this.logger.error('[init] Errore Inizializzazione. Connessione al DB fallita dopo retry');
       process.exit(1);
     }
@@ -82,7 +82,7 @@ class marketListener {
     this.logger.info(`[init] communicationChannels | ${JSON.stringify(this.state._communicationChannels)}`);
     this._status = 'CONNECTING';
     this.statusDetails = 'Settings letti da DB. Inizio connessione ad Alpaca.';
-    await this.bus.publish(`${this.redisTelemetyChannel}.STATUS`, { status: this._status, details: this.statusDetails });
+    await this.bus.publish(`${this.redisStatusChannel}`, { status: this._status, details: this.statusDetails });
 
     const delayBetweenMessages = asInt(getSetting('PROCESS_DELAY_BETWEEN_MESSAGES'), 500); // <--- FIX: string, non array
 
@@ -94,6 +94,8 @@ class marketListener {
       symbolStrategyMap     : this.state._symbolStrategyMap,
       processBar            : async (bar) => { /* TODO: tua logica */ },  // <--- FIX: funzione, non []
       logger                : this.logger,
+      state                 :this.state,
+      redisTelemetyChannel  :this.redisTelemetyChannel,
       delayBetweenMessages
     };
     // 4) Istanzia Alpaca socket
@@ -104,7 +106,8 @@ class marketListener {
     if (this.alpacaWS.on) {
       this.alpacaWS.on('status', async (FullStatus) => {
         this.logger.info(`[init] Connection status to Alpaca web socket ${JSON.stringify(FullStatus)}`);
-        await this.bus.publish(`${this.redisTelemetyChannel}.STATUS`, FullStatus);
+        this._status = FullStatus.status;
+        await this.bus.publish(`${this.redisStatusChannel}`, FullStatus);
       });
 
       this.alpacaWS.on('candle', async (candle) => {
@@ -134,6 +137,8 @@ class marketListener {
     // await redis.publish('prod.orders.active.events.v1', JSON.stringify({ action: 'add', symbol: 'AAPL' }));
     // await redis.publish('prod.orders.active.events.v1', JSON.stringify({ action: 'remove', symbol: 'AAPL' }));
   }
+
+  getMetricsSnapshot(n){ return this.alpacaWS._getMetricsSnapshot(n); }
 
   async loadActiveStrategies() {
     try {
@@ -169,7 +174,7 @@ class marketListener {
         ENV: this.env,
         BusChannels : {
           redisTelemetyChannel : this.redisTelemetyChannel,
-          redisTickChannel : this.redisTickChannel,
+          redisStatusChannel : this.redisStatusChannel,
           redisCandleChannel : this.redisCandleChannel,
           redisLogsChannel : this.redisLogsChannel
         }
