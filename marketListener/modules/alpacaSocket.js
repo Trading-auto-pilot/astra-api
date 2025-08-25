@@ -1,4 +1,5 @@
 const WebSocket = require('ws');
+const { createClient } = require('redis');
 const EventEmitter = require('events');
 const path = require('path');
 const SymbolDedupQueue = require('./SymbolDedupQueue');
@@ -15,18 +16,26 @@ class AlpacaSocket extends EventEmitter {
     this.symbolStrategyMap = config.symbolStrategyMap;
     this.processBar = config.processBar;
 
-    this.orderActive = []; // simboli con ordini attivi
+    // === Redis orderActive (fonte di verità) ===
+    this.env = process.env.ENV || 'dev';
+    this.redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+    this.ACTIVE_SET = `${this.env}.orders.active.set`;
+    this.EVENTS_CH = `${this.env}.orders.active.events.v1`;
+
+    this.orderActiveSet = new Set();       // cache locale O(1)
+    this.redis = createClient({ url: this.redisUrl });
+    this.sub   = this.redis.duplicate();
+    /********************************************* */
+
     this.retryDelay = config.alpacaRetryDelay;      // ms
     this.alpacaMaxRetry = config.alpacaMaxRetry;       // (non ancora usato sotto; vedi TODO)
     this.retryCount = 0;
 
-    this.messageQueue = [];
     this.processing = false;
-    this.delayProcess = config.delayBetweenMessages || 500;
 
     this.logger = config.logger; 
 
-    this.connectionStatus = 'NOT CONNECTED';
+    this.status = 'NOT CONNECTED';
     this.alpacaWsUrl = config.alpacaMarketServer;
 
     this.shouldReconnect = false;
@@ -34,79 +43,70 @@ class AlpacaSocket extends EventEmitter {
 
     this.ws = null;
     this._connectPromise = null;
-    this._processorTimer = null;
-
-    this._ensureQueueProcessor(); // un solo setInterval
   }
   _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-  _setStatus(newStatus) {
-    this.connectionStatus = newStatus;
-    this.emit('status', newStatus);   // <--- notifica i listener
+  _setStatus(newStatus,  message='') {
+    this.connectionStatus = { newStatus, message };
+    this.emit('status', this.connectionStatus);   // <--- notifica i listener
   }
 
   _sendCandle(candle) {
     this.emit('candle', candle);   // <--- notifica i listener
   }
 
-// ====== NUOVO: entry-point con retry ======
-async start() {
-  // abilita reconnessioni finché non chiami disconnect()
-  this.shouldReconnect = true;
+  // ====== NUOVO: entry-point con retry ======
+  async start() {
+    // abilita reconnessioni finché non chiami disconnect()
+    this.shouldReconnect = true;
 
-  // se è già in corso un loop di reconnessione, non avviarne un altro
-  if (this.reconnecting) return;
+    // se è già in corso un loop di reconnessione, non avviarne un altro
+    if (this.reconnecting) return;
 
-  this.reconnecting = true;
-  let attempt = 0;
+    this.reconnecting = true;
+    let attempt = 0;
 
-  while (this.shouldReconnect) {
-    try {
-      this.logger.info(`[start] Tentativo connessione #${attempt}`);
-      await this.connect();               // singolo tentativo -> authenticated oppure throw
-      this.logger.info('[start] Connessione stabilita');
-      this.reconnecting = false;
-      return;                             // esci: la socket è su
-    } catch (err) {
-      this.logger.warning(`[start] Connessione fallita #${attempt}: ${err?.message || err}`);
-      attempt++;
-      await this._sleep(this.retryDelay || 5000);
-      // continua il loop
+    while (this.shouldReconnect  && attempt < (this.alpacaMaxRetry ?? Infinity)) {
+      try {
+        this.logger.info(`[start] Tentativo connessione #${attempt}`);
+        await this.connect();               // singolo tentativo -> authenticated oppure throw
+        this.logger.info('[start] Connessione stabilita');
+        this.reconnecting = false;
+        return;                             // esci: la socket è su
+      } catch (err) {
+        this.logger.warning(`[start] Connessione fallita #${attempt}: ${err?.message || err}`);
+        attempt++;
+        this.retryCount = attempt;
+        await this._sleep(this.retryDelay || 5000);
+        // continua il loop
+      }
     }
+
+    this.reconnecting = false;
   }
 
-  this.reconnecting = false;
-}
-
-// ====== utility per avviare il loop di retry dagli handler ======
-_triggerReconnect(reason) {
-  // evita più loop sovrapposti
-  if (!this.shouldReconnect) return;
-  if (this.reconnecting) return;
-
-  // non attendere dentro l'handler, lascia che il loop parta fuori stack
-  setTimeout(() => {
-    // ignora eventuali errori non catturati qui
-    this.start().catch(e => {
-      this.logger.error(`[reconnect] errore nel loop start(): ${e?.message || e}`, { __opts:{skipBus:true} });
-    });
-  }, this.retryDelay || 5000);
-}
+  // ====== utility per avviare il loop di retry dagli handler ======
+  _triggerReconnect(reason) {
+    if (!this.shouldReconnect || this.reconnecting) return;
+    const delay = this.retryDelay || 5000;
+    this.logger.warn(`[reconnect] scheduling in ${delay}ms (reason=${reason})`);
+    setTimeout(() => this.start().catch(e => {
+      this.logger.error(`[reconnect] loop error: ${e?.message || e}`);
+    }), delay);
+  }
 
   // ---------- getters / setters ----------
-  getConnectionStatus() { return this.connectionStatus; }
+  getConnectionStatus() { return this.status; }
   getLogLevel() { return this.logLevel; }
   setLogLevel(level) { this.logLevel = level; this.logger.setLevel(level); }
   getParams() {
     return {
       Url: this.alpacaWsUrl,
-      delayBetweenMessages: this.delayProcess,
-      messageQueued: this.messageQueue.length,
+      messageQueued: this.messageQueue.length, // usa getter della dedup queue
       connRetry: this.retryCount
     };
   }
 
-  setActiveOrders(symbols) { this.orderActive = symbols; }
   getRetryDelay() { return this.retryDelay; }
   setRetryDelay(ms) { this.retryDelay = parseInt(ms) || 5000; }
   getMaxRetries() { return this.alpacaMaxRetry; }
@@ -118,10 +118,10 @@ _triggerReconnect(reason) {
   // ---------- public API ----------
   async disconnect() {
     this.logger.warning('[disconnect] Chiamata disconnessione da Alpaca.');
-    this._setStatus({status:'DISCONNECTED', message:'Disconnesso dal server'});
+    this._setStatus('DISCONNECTED','Disconnesso dal server');
     this.shouldReconnect = false;
     this._teardownSocket();
-    this.connectionStatus = 'CLOSED';
+    this.status = 'CLOSED';
   }
 
   async connect() {
@@ -129,7 +129,7 @@ _triggerReconnect(reason) {
     if (this._connectPromise) return this._connectPromise;
 
     this.shouldReconnect = true; // abilita reconnect finché non si fa disconnect()
-    this.connectionStatus = 'CONNECTING';
+    this.status = 'CONNECTING';
 
     this._connectPromise = new Promise((resolve, reject) => {
       // Crea socket nuovo; non risolvere su 'open', ma solo dopo autenticazione
@@ -139,8 +139,7 @@ _triggerReconnect(reason) {
 
       const authTimeoutMs = 5000;
       const authTimeout = setTimeout(() => {
-        //this.connectionStatus = 'NOT CONNECTED';
-        this._setStatus({status:"NOT CONNECTED",message:'Timeout autenticazione WebSocket'});
+        this._setStatus("NOT CONNECTED",'Timeout autenticazione WebSocket');
         this.logger.error('[connect] Timeout autenticazione WebSocket');
         fullCleanup();
         try { ws.terminate(); } catch {}
@@ -163,8 +162,8 @@ _triggerReconnect(reason) {
 
       ws.on('open', () => {
         this.logger.info('[connect] WebSocket connesso. Autenticazione in corso...');
-        this.connectionStatus = 'AUTHENTICATING';
-        this._setStatus({status:"AUTHENTICATING",message:'WebSocket connesso. Autenticazione in corso...'});
+        this.status = 'AUTHENTICATING';
+        this._setStatus("AUTHENTICATING",'WebSocket connesso. Autenticazione in corso...');
         try {
           ws.send(JSON.stringify({
             action: 'auth',
@@ -192,15 +191,15 @@ _triggerReconnect(reason) {
 
         for (const msg of messages) {
           if (msg.T === 'success' && msg.msg === 'authenticated') {
-            this._setStatus({status:"AUTHENTICATED"});
+            this._setStatus("AUTHENTICATED",'Authentication succeed');
             const symbols = Object.keys(this.symbolStrategyMap || {});
             if (symbols.length) {
               ws.send(JSON.stringify({ action: 'subscribe', bars: symbols }));
               this.logger.info(`[connect] Sottoscritto ai simboli: ${symbols.join(', ')}`);
-              this._setStatus({status:"LISTENING",message:`Sottoscritto ai simboli: ${symbols.join(', ')}`});
+              this._setStatus("LISTENING",`Sottoscritto ai simboli: ${symbols.join(', ')}`);
             } else {
               this.logger.warning('[connect] Nessun simbolo da sottoscrivere');
-              this._setStatus({status:"LISTENING",message:`Nessuna sottoscrizione attiva`});
+              this._setStatus("LISTENING",`Nessuna sottoscrizione attiva`);
             }
             this.retryCount = 0;
             lightCleanup();
@@ -209,20 +208,21 @@ _triggerReconnect(reason) {
           }
 
           if (msg.T === 'b') {
-            if (!this.orderActive.includes(msg.S)) {
-              this.logger.trace(`[connect] messaggio T ricevuto, accodo per elaborazione processBar`);
-              this.messageQueue.push(msg);
+            if (!this.isOrderActive(msg.S)) {
+              this.logger.trace('[connect] Bar ricevuto, enqueue dedup per processBar');
+              this.messageQueue.push(msg);    // SymbolDedupQueue, non array
               this._kickProcessor();
               this._sendCandle(msg);
             } else {
-              this.logger.trace('[connect] Candela non processata per ordine già attivo');
+              this.logger.trace('[connect] Candela non processata: ordine già attivo');
             }
           }
+
         }
       });
 
       ws.on('unexpected-response', (req, res) => {
-        this.connectionStatus = 'UNEXPECTED ERROR';
+        this.status = 'UNEXPECTED ERROR';
         const code = res?.statusCode;
         const msg  = res?.statusMessage || '';
         this.logger.error(
@@ -244,7 +244,7 @@ _triggerReconnect(reason) {
 
 
       ws.on('error', (err) => {
-        this.connectionStatus = 'ERROR CONNECTION';
+        this.status = 'ERROR CONNECTION';
         this.logger.error(`[connect] Errore WebSocket: ${err?.message || ''}`);
         fullCleanup();
         try { ws.terminate(); } catch {}
@@ -258,7 +258,7 @@ _triggerReconnect(reason) {
       ws.once('close', (code, reasonBuf) => {
         const reason = reasonBuf ? reasonBuf.toString() : '';
         this.logger.warning(`[connect] Connessione chiusa. Codice: ${code}, Motivo: ${reason}.`);
-        this._setStatus({status:"CLOSED",message:`Connessione chiusa. Codice: ${code}, Motivo: ${reason}`});
+        this._setStatus("CLOSED",`Connessione chiusa. Codice: ${code}, Motivo: ${reason}`);
         fullCleanup();
         // se serve, avvia il loop di retry
         if (this.shouldReconnect) this._triggerReconnect('close');   // <--- AGGIUNTO
@@ -301,7 +301,11 @@ _triggerReconnect(reason) {
       try {
         let msg;
         while ((msg = this.messageQueue.shift())) {
-          await this.processBar(msg);
+          try {
+            await this.processBar(msg);
+          } catch (err) {
+            this.logger.error(`[processLoop] processBar failed for ${msg.S}: ${err.message}`);
+          }
           this._sendCandle(msg);
         }
       } catch (err) {
@@ -311,23 +315,6 @@ _triggerReconnect(reason) {
         if (this.messageQueue.length) this._kickProcessor();
       }
     });
-  }
-  
-  _ensureQueueProcessor() {
-    if (this._processorTimer) return;
-    this._processorTimer = setInterval(async () => {
-      if (this.processing || this.messageQueue.length === 0) return;
-      const msg = this.messageQueue.shift();
-      this.processing = true;
-      this.logger.trace(`[queue] Elaborazione messaggio T ${JSON.stringify(msg)}`);
-      try {
-        await this.processBar(msg);
-      } catch (err) {
-        this.logger.error('[queue] Errore in processBar:', err.message);
-      } finally {
-        this.processing = false;
-      }
-    }, this.delayProcess);
   }
 
   _teardownSocket() {
@@ -345,9 +332,68 @@ _triggerReconnect(reason) {
       }
     } catch {}
     this.ws = null;
-    //this.connectionStatus = 'NOT CONNECTED';
-    this._setStatus({status:"NOT CONNECTED"})
+    this._setStatus("NOT CONNECTED",'');
   }
+
+  async initOrderActiveWatcher() {
+    await this.redis.connect();
+    await this.sub.connect();
+
+    // bootstrap stato corrente
+    const members = await this.redis.sMembers(this.ACTIVE_SET);
+    this.orderActiveSet = new Set(members);
+    this.logger.info(`[orderActive] bootstrap: ${members.length} simboli attivi`);
+
+    // eventi incrementali
+    await this.sub.subscribe(this.EVENTS_CH, (raw) => {
+      try {
+        const msg = JSON.parse(raw);
+        const sym = msg?.symbol;
+        if (!sym || typeof sym !== 'string') return;
+
+        if (msg.action === 'add') {
+          this.orderActiveSet.add(sym);
+          this.logger.trace(`[orderActive] add ${sym}`);
+        } else if (msg.action === 'remove') {
+          this.orderActiveSet.delete(sym);
+          this.logger.trace(`[orderActive] remove ${sym}`);
+        }
+      } catch (e) {
+        this.logger.error(`[orderActive][subscribe] ${e.message}`);
+      }
+    });
+
+    // reconcile periodico (anti-perdita-eventi)
+    this._reconcileTimer = setInterval(async () => {
+      try {
+        const freshArr = await this.redis.sMembers(this.ACTIVE_SET);
+        const fresh = new Set(freshArr);
+        let changed = fresh.size !== this.orderActiveSet.size;
+        if (!changed) {
+          for (const s of fresh) { if (!this.orderActiveSet.has(s)) { changed = true; break; } }
+        }
+        if (changed) {
+          this.orderActiveSet = fresh;
+          this.logger.debug('[orderActive] reconciled');
+        }
+      } catch (e) {
+        this.logger.error(`[orderActive][reconcile] ${e.message}`);
+      }
+    }, 30_000);
+  }
+
+  async closeOrderActiveWatcher() {
+    clearInterval(this._reconcileTimer);
+    try { await this.sub.unsubscribe(this.EVENTS_CH); } catch {}
+    try { await this.sub.disconnect(); } catch {}
+    try { await this.redis.disconnect(); } catch {}
+  }
+
+  // helper O(1)
+  isOrderActive(symbol) {
+    return this.orderActiveSet.has(symbol);
+  }
+
 
   updateCommunicationChannels(newConfig) {
     const requiredKeys = ['telemetry', 'tick', 'candle', 'logs'];

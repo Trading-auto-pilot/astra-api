@@ -121,6 +121,10 @@ class marketListener {
         this.logger.error(`[init] Alpaca connect failed: ${e?.message||e}`);
       }
     }
+
+    // Avvia ascolto sulla coda Redis
+    await this.alpacaWS.initOrderActiveWatcher();
+
   }
 
   async loadActiveStrategies() {
