@@ -49,6 +49,7 @@ let marketListener;
 })();
 
 // middleware: verifica che l'istanza sia pronta
+
 function requireReady(req, res, next) {
   if (!marketListener) {
     return res.status(503).json({ 
@@ -65,63 +66,42 @@ function requireReady(req, res, next) {
   }
   next();
 }
+  
 
 /* -------------------------- ROUTES: OPERATIVE -------------------------- */
-app.put('/connect', requireReady, async (_req, res) => {
-  await marketListener.connect();
-  res.json({ success: true });
+app.put('/connect', async (_req, res) => {
+  try {
+    const status = await marketListener.connect(); // supponendo che ritorni lo stato aggiornato
+
+    if (status === 'LISTENING') {
+      return res.json({ success: true, status });
+    } else {
+      return res.json({ success: false, status });
+    }
+  } catch (err) {
+    logger.error(`[PUT /connect] Errore durante connessione: ${err.message}`);
+    return res.status(500).json({ success: false, error: 'Errore durante la connessione' });
+  }
 });
+
 
 app.delete('/connect', requireReady, async (_req, res) => {
-  await marketListener.disconnect();
-  res.json({ success: true });
-});
-
-app.post('/pause', requireReady, (_req, res) => {
-  marketListener.pause();
-  res.json({ status: 'paused' });
-});
-
-app.post('/resume', requireReady, (_req, res) => {
-  marketListener.resume();
-  res.json({ status: 'resumed' });
-});
-
-app.post('/init', requireReady, async (_req, res) => {
-  await marketListener.init();
-  res.json({ status: 'init' });
-});
-
-app.put('/orderActive/remove', requireReady, (req, res) => {
-  const { symbol } = req.body;
-  if (!symbol || typeof symbol !== 'string') {
-    return res.status(400).json({ error: 'Fornire un simbolo valido' });
-  }
   try {
-    marketListener.updateOrderActive([symbol]);
-    res.json({ success: true, removed: symbol });
+    const status = await marketListener.disconnect();
+
+    if (status === 'DISCONNECTED' || status === 'NOT CONNECTED') {
+      return res.json({ success: true, status });
+    } else {
+      return res.json({ success: false, status });
+    }
   } catch (err) {
-    logger.error(`Errore rimozione ordine attivo: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    // logghiamo l'errore se usi un logger
+    logger.error(`[DELETE /connect] Errore durante disconnessione: ${err.message}`);
+    return res.status(500).json({ success: false, error: 'Errore durante la disconnessione' });
   }
 });
 
-// loglevel runtime (PUT = operativo, resta al root)
-app.put('/loglevel/:module', requireReady, (req, res) => {
-  if (req.params.module === 'RESTServer') {
-    logLevel = req.body.logLevel;
-  } else {
-    marketListener.setLogLevel(req.body.logLevel, req.params.module);
-  }
-  res.status(200).json({
-    success: true,
-    logLevel: {
-      marketListener: marketListener.getLogLevel(),
-      alpacaSocket: marketListener.getLogLevel('alpacaSocket'),
-      RESTServer: logLevel
-    }
-  });
-});
+
 
 /* --------------------------- ROUTES: STATUS ---------------------------- */
 // sola lettura sotto /status/*

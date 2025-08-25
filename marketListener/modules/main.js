@@ -56,8 +56,6 @@ class marketListener {
     this.bus.setLogger(this.logger);            // ok: i log interni del bus useranno skipBus:true
     this.state.logger = this.logger;
 
-    // Collega il logger al bus (per log interni del bus)
-    //this.bus.setLogger(this.logger);
   }
 
   async init() {
@@ -106,8 +104,11 @@ class marketListener {
     if (this.alpacaWS.on) {
       this.alpacaWS.on('status', async (FullStatus) => {
         this.logger.info(`[init] Connection status to Alpaca web socket ${JSON.stringify(FullStatus)}`);
-        this._status = FullStatus.status;
-        await this.bus.publish(`${this.redisTelemetyChannel}.STATUS`, this._status);
+        await this.bus.publish(`${this.redisTelemetyChannel}.STATUS`, FullStatus);
+      });
+
+      this.alpacaWS.on('candle', async (candle) => {
+        await this.bus.publish(`${this.redisCandleChannel}`, candle);
       });
     }
 
@@ -164,6 +165,19 @@ class marketListener {
     )
   }
 
+  async disconnect() {
+    await this.alpacaWS.disconnect();
+    return (this._status);
+  }
+
+  async connect() {
+    await this.alpacaWS.start();
+    return (this._status);
+  }
+
+  async updateCommunicationChannel(newConf) {
+    await this.alpacaWS.updateCommunicationChannels(newConf);
+  }
 }
 
 module.exports = marketListener;
