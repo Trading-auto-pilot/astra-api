@@ -81,6 +81,10 @@ class AlpacaSocket extends EventEmitter {
     this.emit('candle', candle);   // <--- notifica i listener
   }
 
+  _sendMetrics(metrics){
+    this.emit('metrics', metrics);
+  }
+
   // ====== NUOVO: entry-point con retry ======
   async start() {
     // abilita reconnessioni finché non chiami disconnect()
@@ -451,9 +455,10 @@ class AlpacaSocket extends EventEmitter {
         data: this._getMetricsSnapshot(50)
       };
       // delega a redisBus (che decide on/off)
-      await this.redisPublisher.publish(this.redisTelemetyChannel, JSON.stringify(payload));
+      //await this.redisPublisher.publish(this.redisTelemetyChannel, JSON.stringify(payload));
+      this._sendMetrics(JSON.stringify(payload));
     } catch (e) {
-      this.logger.warn(`[metrics] publish failed: ${e.message}`);
+      this.logger.warning(`[metrics] publish failed: ${e.message}`);
     }
   }
 
