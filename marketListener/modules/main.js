@@ -113,6 +113,10 @@ class marketListener {
       this.alpacaWS.on('candle', async (candle) => {
         await this.bus.publish(`${this.redisCandleChannel}`, candle);
       });
+
+      this.alpacaWS.on('metrics', async (metrics) => {
+        await this.bus.publish(`${this.redisTelemetyChannel}`, metrics);
+      });
     }
 
     // Avvia il loop di connessione (se hai implementato start())

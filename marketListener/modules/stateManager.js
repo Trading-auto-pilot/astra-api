@@ -14,8 +14,8 @@ class StateManager {
     this._msgTelemetryOn        = asBool(process.env.MSG_TELEMETRY, true);
     this._msgTelemetryIntervals = asInt(process.env.MSG_TELEMETRY_INTERVALS, 500);
 
-    this._msgTickOn             = asBool(process.env.MSG_TICK, true);
-    this._msgTickIntervals      = asInt(process.env.MSG_TICK_INTERVALS, 500);
+    this._msgMetricsOn             = asBool(process.env.MSG_METRICS, true);
+    this._msgMetricsIntervals      = asInt(process.env.MSG_METRICS_INTERVALS, 500);
 
     this._msgCandleOn           = asBool(process.env.MSG_CANDLE, true);
     this._msgCandleIntervals    = asInt(process.env.MSG_CANDLE_INTERVALS, 500);
@@ -31,7 +31,7 @@ class StateManager {
     // Abilitazione canali BUS
     this._communicationChannels = {
       telemetry : { on: this._msgTelemetryOn, params : { intervalsMs : this._msgTelemetryIntervals }},
-      tick      : { on: this._msgTickOn,      params : { intervalsMs : this._msgTickIntervals }},
+      metrics      : { on: this._msgMetricsOn,      params : { intervalsMs : this._msgMetricsIntervals }},
       candle    : { on: this._msgCandleOn,    params : { intervalsMs : this._msgCandleIntervals }},
       logs      : { on: this._msgLogsOn,      params : { intervalsMs : this._msgLogsIntervals }}
     };

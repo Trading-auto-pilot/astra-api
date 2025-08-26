@@ -290,7 +290,7 @@ router.put('/alpacaRetryDelay', (req, res) => {
 
 
   router.put('/communicationChannels', async (req, res) => {
-    const allowedKeys = ['telemetry', 'tick', 'candle', 'logs'];
+    const allowedKeys = ['telemetry', 'metrics', 'candle', 'logs'];
 
     try {
       // accetta sia { channels: {...} } sia direttamente {...}
