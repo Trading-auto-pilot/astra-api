@@ -59,9 +59,9 @@ function requireReady(req, res, next) {
 
   let status = marketListener.status;
   if (status !== 'LISTENING') {
-    return res.status(503).json({
+    return res.status(200).json({
       error: 'Service not running',
-      currentStatus: status
+      status: status
     });
   }
   next();

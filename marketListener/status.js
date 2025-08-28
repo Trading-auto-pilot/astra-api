@@ -187,14 +187,14 @@ router.put('/alpacaRetryDelay', (req, res) => {
   }
 });
 
-  router.get('/symbolStrategyMap', (_req, res) => {
-    try {
-      res.json({symbols : marketListener.state.symbolStrategyMap});
-    } catch (e) {
-      logger.error(`[status/info] [GET] /symbolStrategyMap ${e.message}`);
-      res.status(500).json({ error: e.message });
-    }
-  });
+router.get('/symbolStrategyMap', (_req, res) => {
+  try {
+    res.json({symbols : marketListener.state.symbolStrategyMap});
+  } catch (e) {
+    logger.error(`[status/info] [GET] /symbolStrategyMap ${e.message}`);
+    res.status(500).json({ error: e.message });
+  }
+});
 
   router.get('/alpacaMaxRetry', (_req, res) => {
     try {
