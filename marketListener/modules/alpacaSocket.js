@@ -162,7 +162,8 @@ class AlpacaSocket extends EventEmitter {
     this._setStatus('DISCONNECTED','Disconnesso dal server');
     this.shouldReconnect = false;
     this._teardownSocket();
-    this.status = 'CLOSED';
+    this._setStatus("CLOSED",'WebSocket Closed');
+    //this.status = 'CLOSED';
   }
 
   async connect() {
@@ -180,7 +181,7 @@ class AlpacaSocket extends EventEmitter {
 
       const authTimeoutMs = 5000;
       const authTimeout = setTimeout(() => {
-        this._setStatus("NOT CONNECTED",'Timeout autenticazione WebSocket');
+        this._setStatus("RECONNECTING",'Timeout autenticazione WebSocket');
         this.logger.error('[connect] Timeout autenticazione WebSocket');
         fullCleanup();
         try { ws.terminate(); } catch {}
@@ -355,7 +356,10 @@ class AlpacaSocket extends EventEmitter {
         this._setStatus("CLOSED",`Connessione chiusa. Codice: ${code}, Motivo: ${reason}`);
         fullCleanup();
         // se serve, avvia il loop di retry
-        if (this.shouldReconnect) this._triggerReconnect('close');   // <--- AGGIUNTO
+        if (this.shouldReconnect) {
+          this._setStatus("RECONNECTING",`Connessione chiusa. Codice: ${code}, Motivo: ${reason}`);
+          this._triggerReconnect('close');
+        }   // <--- AGGIUNTO
         reject(new Error(`Socket closed during connect (code ${code})`));
       });
     });
@@ -371,6 +375,7 @@ class AlpacaSocket extends EventEmitter {
     let attempt = 0;
     while (this.shouldReconnect) {
       try {
+        this._setStatus("RECONNECTING",'scheduleReconnect tenttivo '+attempt);
         this.logger.info(`[reconnect] Tentativo ${attempt}`);
         await this.connect(); // ora connect non esce subito: aspetta authenticated
         this.logger.info('[reconnect] Connessione riuscita');
@@ -383,6 +388,7 @@ class AlpacaSocket extends EventEmitter {
         // loop finché shouldReconnect rimane true
       }
     }
+    this._setStatus("ERROR RECONNECTING",'Numero di tentativi effettuati '+attempt);
     this.reconnecting = false;
   }
 

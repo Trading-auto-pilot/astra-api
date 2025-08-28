@@ -173,7 +173,7 @@ class marketListener {
       {
         MICROSERVICE : MICROSERVICE,
         MODULE_VERSION: MODULE_VERSION,
-        STATUS : this._status,
+        status : this._status,
         STATUS_DETAILS: this.statusDetails,
         ENV: this.env,
         BusChannels : {
