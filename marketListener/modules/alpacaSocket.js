@@ -222,7 +222,7 @@ class AlpacaSocket extends EventEmitter {
       });
 
       ws.on('message', async (data) => {
-        this.logger.trace(`[connect] messaggio ricevuto ${data}`);
+        this.logger.trace(`[connect] messaggio ricevuto | ${data}`);
         let messages;
         if (this._tOpen) {
           this.metrics.conn.authTimeMs = Date.now() - this._tOpen;
@@ -310,7 +310,7 @@ class AlpacaSocket extends EventEmitter {
         const code = res?.statusCode;
         const msg  = res?.statusMessage || '';
         this.logger.error(
-          `[connect] Risposta inattesa durante handshake: ${code} ${msg} | url=${this.alpacaWsUrl} headers=${JSON.stringify(res?.headers||{})}`
+          `[connect] Risposta inattesa durante handshake: ${code} ${msg} url=${this.alpacaWsUrl} headers | ${JSON.stringify(res?.headers||{})}`
         );
 
         // NON usare ws.terminate() qui: non è mai diventato WebSocket
@@ -587,7 +587,7 @@ class AlpacaSocket extends EventEmitter {
   else this._stopMetricsTicker();
 
     this.logger.info(`[updateCommunicationChannels] Configurazione aggiornata con successo`);
-    this.logger.log(`[updateCommunicationChannels] Nuova configurazione: ${JSON.stringify(this._communicationChannels)}`);
+    this.logger.log(`[updateCommunicationChannels] Nuova configurazione| ${JSON.stringify(this._communicationChannels)}`);
 
     // opzionale: notificare altri moduli via Redis Pub/Sub
     if (this.redisPublisher) {
