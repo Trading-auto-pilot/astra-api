@@ -106,7 +106,7 @@ class marketListener {
     // Se AlpacaWS estende EventEmitter:
     if (this.alpacaWS.on) {
       this.alpacaWS.on('status', async (FullStatus) => {
-        this.logger.info(`[init] Connection status to Alpaca web socket ${JSON.stringify(FullStatus)}`);
+        this.logger.info(`[init] Connection status to Alpaca web socket | ${JSON.stringify(FullStatus)}`);
         this._status = FullStatus.status;
         await this.bus.publish(`${this.redisStatusChannel}`, FullStatus);
       });
