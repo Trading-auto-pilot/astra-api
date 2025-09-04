@@ -3,6 +3,7 @@ const { createClient } = require('redis');
 
 function safeParse(s) { try { return JSON.parse(s); } catch { return undefined; } }
 
+
 class RedisBus {
   constructor(opts = {}) {
     this.url    = opts.url || process.env.REDIS_URL || "redis://localhost:6379";
@@ -23,38 +24,58 @@ class RedisBus {
     this._connected  = false;
   }
 
-  setChannelConfig(key, cfg) {
-    this.channelsCfg[key] = cfg; // aggiorna la config dichiarativa
+  /**
+   * Svuota la coda dello scheduler `state` per il canale `key`
+   * e pubblica (batch) su Redis. Fail-closed se OFF o coda vuota.
+   */
+// timer -> flush
+  _flushScheduler(key, state) {
+    try {
+      if (!state?.on) return;
+      if (!this._connected || !this.pub?.isOpen) return;
+      if (!state.queue?.length) return;
 
-    let state = this._sched.get(key);
-
-    // se non esiste, crealo da zero
-    if (!state) {
-      this._ensureScheduler(key, cfg);
-      return;
+      const items = state.queue.splice(0);
+      const byCh = new Map();
+      for (const { channel, message } of items) {
+        if (typeof channel !== 'string' || typeof message !== 'string') continue;
+        (byCh.get(channel) || byCh.set(channel, []).get(channel)).push(message);
+      }
+      for (const [ch, arr] of byCh) {
+        // se vuoi array JSON: JSON.stringify(arr.map(JSON.parse)) —> ma qui pubblichi strings singole
+        // più semplice: invia singolarmente per compatibilità WS bridge
+        for (const m of arr) this.pub.publish(ch, m).catch(e =>
+          this._log('error', `[${this.name}] publish ${ch} error: ${e?.message||e}`)
+        );
+      }
+      state.lastFlushAt = Date.now();
+    } catch (e) {
+      this._log('error', `[${this.name}] _flushScheduler ${key} failed: ${e?.message||e}`);
     }
+  }
 
-    // esiste già: aggiorna on/off e interval
-    state.on = !!cfg.on;
+
+
+  setChannelConfig(key, cfg) {
+    this.channelsCfg[key] = cfg;
+    let state = this._sched.get(key);
+    if (!state) { this._ensureScheduler(key, cfg); return; }
+
+    state.on = !!cfg?.on;
     const newInterval = Number(cfg?.params?.intervalsMs) > 0 ? Number(cfg.params.intervalsMs) : this.defaultIntervalMs;
 
-    // se cambia intervalMs, resetta il timer
     if (state.intervalMs !== newInterval) {
       if (state.timer) clearInterval(state.timer);
       state.intervalMs = newInterval;
-      if (state.on) {
-        state.timer = setInterval(() => this._flushScheduler(key, state), newInterval);
-      }
+      if (state.on) state.timer = setInterval(() => this._flushScheduler(key, state), newInterval);
     }
-
-    // se cambia on/off
-    if (!state.on && state.timer) {
-      clearInterval(state.timer);
-      state.timer = null;
-      this._log('warning', `[${this.name}] scheduler DISABLED at runtime key=${key}`);
-    } else if (state.on && !state.timer) {
+    if (!state.on) {
+      if (state.timer) { clearInterval(state.timer); state.timer = null; }
+      state.queue = [];                               // <-- drop backlog quando OFF
+      this._log('warn', `[${this.name}] scheduler DISABLED key=${key}`);
+    } else if (!state.timer) {
       state.timer = setInterval(() => this._flushScheduler(key, state), state.intervalMs);
-      this._log('info', `[${this.name}] scheduler ENABLED at runtime key=${key}`);
+      this._log('info', `[${this.name}] scheduler ENABLED key=${key}`);
     }
   }
 
@@ -134,30 +155,27 @@ class RedisBus {
    *   * se non connesso => SKIP (log di warning)
    */
   async publish(channel, payload) {
-    if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
-      payload.source = this.name;
-    }
-    const msg = this.json && typeof payload !== "string" ? JSON.stringify(payload) : payload;
-
     const key = this._matchControlKey(channel);
+    const st = key && this._sched.get(key);
+    // serializza sempre non-string
+    const message = (typeof payload === 'string') ? payload
+      : JSON.stringify(payload && typeof payload==='object'
+          ? { ...payload, __source: this.name }  // clone + source
+          : payload, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
 
-    if (key) {
-      const sched = this._sched.get(key);
-      if (!sched?.on) {
-        this._log('info',  `[${this.name}] publish DROPPED (disabled) channel=${channel} key=${key}`);
-        return 0;
-      }
-      // accoda SEMPRE; se non connesso resterà in coda
-      sched.queue.push({ channel, msg });
+    if (st) {
+      if (!st.on) { this.logger?.trace?.(`[BUS] DROP ${channel} OFF`); return 0; }
+      (st.queue ||= []).push({ channel, message });   // <-- una sola volta
       return 1;
     }
 
-    // non configurato: invio diretto solo se connesso
+    // canale non gestito: decidi policy (fail-closed consigliato)
+    // return 0; // <- fail-closed
     if (!this._connected || !this.pub?.isOpen) {
-      this._log('warning', `[${this.name}] publish skipped (bus not connected) channel=${channel}`);
+      this._log('warn', `[${this.name}] publish skipped (bus not connected) channel=${channel}`);
       return 0;
     }
-    return this.pub.publish(channel, msg);
+    return this.pub.publish(channel, message);
   }
 
   async subscribe(channel, handler) {
@@ -199,7 +217,9 @@ class RedisBus {
         );
         if (!res) continue;
         for (const entry of res) {
-          for (const [id, fields] of entry.messages) {
+          for (const m of entry.messages) {
+            const id = m.id;
+            const fields = m.message;
             const raw = fields.event;
             const json = raw && this.json ? safeParse(raw) : undefined;
             const ok = await onMessage({ id, fields, json });
@@ -215,42 +235,19 @@ class RedisBus {
   }
 
   // -------- Internals --------
-
-  _ensureScheduler(key, cfg) {
+// --- _ensureScheduler: usa SEMPRE _flushScheduler (niente flush inline duplicato)
+_ensureScheduler(key, cfg) {
     if (this._sched.has(key)) return;
-
     const on = !!cfg?.on;
     const intervalMs = Number(cfg?.params?.intervalsMs) > 0 ? Number(cfg.params.intervalsMs) : this.defaultIntervalMs;
+    const state = { on, intervalMs, queue: [], timer: null, lastFlushAt: null };
 
-    const state = { on, intervalMs, queue: [], timer: null };
-
-    if (on) {
-      state.timer = setInterval(async () => {
-        // flush solo se connesso
-        if (!this._connected || !this.pub?.isOpen) return;
-        if (state.queue.length === 0) return;
-
-        const batch = state.queue.splice(0, state.queue.length);
-        for (const { channel, msg } of batch) {
-          try {
-            await this.pub.publish(channel, msg);
-          } catch (e) {
-            // reinfila e riprova al tick successivo
-            state.queue.unshift({ channel, msg });
-            this._log('error', `[${this.name}] publish error (key=${key}, channel=${channel}): ${e && e.message ? e.message : e}`);
-            break;
-          }
-        }
-      }, intervalMs);
-
-      this._log('info', `[${this.name}] scheduler ready key=${key} on=${on} intervalMs=${intervalMs}`);
-    } else {
-      this._log('warning', `[${this.name}] scheduler disabled for key=${key}`);
-      this._log('info',    `[${this.name}] scheduler ready key=${key} on=${on} intervalMs=${intervalMs}`);
-    }
-
+    if (on) state.timer = setInterval(() => this._flushScheduler(key, state), intervalMs);
+    this._log(on ? 'info' : 'warn', `[${this.name}] scheduler ${on?'ENABLED':'DISABLED'} key=${key} intervalMs=${intervalMs}`);
     this._sched.set(key, state);
   }
+
+
 
   // ---- Debug helpers ----
   status() {
@@ -267,10 +264,11 @@ class RedisBus {
   async flushNow(key) {
     const s = this._sched.get(key);
     if (!s) throw new Error(`No scheduler for key=${key}`);
-    const batch = s.queue.splice(0, s.queue.length);
+    const batch = s.queue.splice(0);
     let sent = 0;
-    for (const { channel, msg } of batch) {
-      await this.pub.publish(channel, msg);
+    for (const { channel, message } of batch) {
+      if (typeof channel !== 'string' || typeof message !== 'string') continue;
+      await this.pub.publish(channel, message);
       sent++;
     }
     return sent;
