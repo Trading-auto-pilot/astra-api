@@ -64,6 +64,7 @@ class marketListener {
     // 1) Connetti il BUS e SOLO dopo pubblica
     await this.bus.connect();     
     this.logger.attachBus(this.bus);                      // <--- ora il logger può pubblicare su Redis
+    this.logger.info("[debug] bus.status()", JSON.stringify(this.bus.status()));
 
     this.statusDetails = 'Inizializzazione DB';
     await this.bus.publish(`${this.redisStatusChannel}`, { status: this._status, details: this.statusDetails });
@@ -196,9 +197,47 @@ class marketListener {
     return (this._status);
   }
 
-  async updateCommunicationChannel(newConf) {
-    await this.alpacaWS.updateCommunicationChannels(newConf);
-  }
+// main.js (MarketListener)
+async updateCommunicationChannel(newConf) {
+  const cfg = this.normalizeChannels(newConf, this.state.communicationChannels);
+
+  // 1) aggiorna lo stato applicativo (single source of truth)
+  this.state.communicationChannels = cfg;
+
+  // 2) applica subito al BUS (ferma timer/flush dei canali OFF)
+  await this.bus.applyChannels?.(cfg);
+
+  // 3.a) aggiorna anche l’Alpaca WS (telemetry, ecc.)
+  await this.alpacaWS.updateCommunicationChannels?.(cfg);
+
+  // 3.b) BUS: applica per-canale (usa proprio setChannelConfig)
+  this.bus.setChannelConfig('telemetry', cfg.telemetry);
+  this.bus.setChannelConfig('metrics',   cfg.metrics);
+  this.bus.setChannelConfig('candle',    cfg.candle);
+  this.bus.setChannelConfig('logs',      cfg.logs);
+
+  // 4) (opzionale) notifica gli altri componenti (es. redisWsBridge)
+  this.redis?.publish?.('channelsCfg.updated', JSON.stringify({ v: Date.now(), by: 'marketListener' }));
+
+  this.logger.info(`[channels] telemetry=${cfg.telemetry.on} metrics=${cfg.metrics.on} candle=${cfg.candle.on} logs=${cfg.logs.on}`);
+  return { ok: true, channels: cfg };
+}
+
+// helper semplice
+normalizeChannels(inCfg = {}, prev = {}) {
+  const ms = (v, d=500) => (Number(v ?? d) || d);
+  const norm = (k) => ({
+    on: !!inCfg?.[k]?.on,
+    params: { intervalsMs: ms(inCfg?.[k]?.params?.intervalsMs ?? prev?.[k]?.params?.intervalsMs) }
+  });
+  return {
+    telemetry: norm('telemetry'),
+    metrics:   norm('metrics'),
+    candle:    norm('candle'),
+    logs:      norm('logs'),
+  };
+}
+
 }
 
 module.exports = marketListener;
