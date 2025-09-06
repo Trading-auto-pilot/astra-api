@@ -1,0 +1,57 @@
+{
+  "bot": { "id": "bot_sell_tpsl", "name": "TP/SL Sell", "version": "1.0.0" },
+  "scope": "sell",
+  "schema_version": 1,
+  "groups": [{ "id": "exits", "label": "Exits" }, { "id": "advanced", "label": "Advanced" }],
+  "params": [
+    {
+      "key": "useTakeProfit",
+      "label": "Usa Take Profit",
+      "type": "boolean",
+      "default": true,
+      "group": "exits"
+    },
+    {
+      "key": "takeProfitPct",
+      "label": "Take Profit (%)",
+      "type": "percent",
+      "default": 4.0,
+      "min": 0,
+      "max": 100,
+      "step": 0.1,
+      "unit": "%",
+      "group": "exits",
+      "enableIf": { "useTakeProfit": true }
+    },
+    {
+      "key": "useStopLoss",
+      "label": "Usa Stop Loss",
+      "type": "boolean",
+      "default": true,
+      "group": "exits"
+    },
+    {
+      "key": "stopLossPct",
+      "label": "Stop Loss (%)",
+      "type": "percent",
+      "default": 2.0,
+      "min": 0,
+      "max": 100,
+      "step": 0.1,
+      "unit": "%",
+      "group": "exits",
+      "enableIf": { "useStopLoss": true }
+    },
+    {
+      "key": "trailingStopPct",
+      "label": "Trailing Stop (%)",
+      "type": "percent",
+      "default": 0,
+      "min": 0,
+      "max": 100,
+      "step": 0.1,
+      "unit": "%",
+      "group": "advanced"
+    }
+  ]
+}

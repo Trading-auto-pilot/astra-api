@@ -15,7 +15,7 @@ class SMA {
     this.lastOp = null;
     this.comprato = null;
     this.capitaleInvestito = 0;
-    this.dbManagerURL = process.env.DBMANAGER_URL || 'http://dbmanager:3002';
+    this.dbManagerURL = process.env.DBMANAGER_URL || 'http://localhost:3002';
     this.AlpacaApi = new Alpaca();
     this.logLevel = process.env.LOG_LEVEL || 'info';
     this.logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, this.logLevel);
