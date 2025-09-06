@@ -7,6 +7,29 @@ const cache = require('../../shared/cache');
 module.exports = (dbManager) => {
   const router = express.Router();
 
+  router.get("/alpaca/assets/:symbol", async (req, res) => {
+    const sym = req.params.symbol;
+    const r = await fetch(`https://paper-api.alpaca.markets/v2/assets/${encodeURIComponent(sym)}`, {
+      headers: {
+        "APCA-API-KEY-ID": process.env.ALPACA_KEY_ID,
+        "APCA-API-SECRET-KEY": process.env.ALPACA_SECRET_KEY
+      }
+    });
+    if (r.status === 404) return res.status(404).json(null);
+    const data = await r.json();
+    res.status(r.ok ? 200 : r.status).json(data);
+  });
+
+  router.get("/poligon/assets/:symbol", async (req, res) => {
+    const sym = req.params.symbol;
+    const POLIGON_API = process.env.POLIGON_API;
+    const r = await fetch(`https://api.polygon.io/v3/reference/tickers/${encodeURIComponent(sym)}?apiKey=${POLIGON_API}`);
+    if (r.status === 404) return res.status(404).json(null);
+    const data = await r.json();
+    res.status(r.ok ? 200 : r.status).json(data);
+  });
+
+
   // 🔹 GET /symbols
   router.get('/', async (req, res) => {
     const cacheKey = 'symbols:all';
@@ -43,6 +66,8 @@ module.exports = (dbManager) => {
       res.status(500).json({ error: 'Errore durante il recupero del simbolo '+ error.message, module:"[GET /symbols/:symbol]" });
     }
   });
+
+  
 
 
   // 🔹 POST /symbols
