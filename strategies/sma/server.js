@@ -2,6 +2,7 @@ const express = require('express');
 const redis = require('redis');
 const cors = require('cors');
 const SMA = require('./SMA');
+const PARAMS = require('./params.json');
 require('dotenv').config();
 
 const REDIS_POSITIONS_KEY = 'alpaca:positions';
@@ -22,7 +23,7 @@ app.use(express.json());
 // Configurazione REDIS
 // Redis Pub/Sub Integration
 (async () => {
-  const subscriber = redis.createClient({ url: process.env.REDIS_URL || 'redis://redis:6379' });
+  const subscriber = redis.createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
   subscriber.on('error', (err) => console.error('❌ Redis error:', err));
 
   await subscriber.connect();
@@ -57,6 +58,11 @@ app.use(express.json());
     // ℹ️ Info del modulo
     app.get('/info', (req, res) => {
       res.json(strategy.getSMAInfo());
+    });
+
+    // ℹ️ Info del modulo
+    app.get('/params', (req, res) => {
+      res.json(PARAMS);
     });
 
     app.get('/loglevel', (req, res) => {

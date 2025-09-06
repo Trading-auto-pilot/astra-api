@@ -4,6 +4,7 @@ const redis = require('redis');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const SLTP = require('./sltp');
+const PARAMS = require('./params.json');
 
 const REDIS_POSITIONS_KEY = 'alpaca:positions';
 
@@ -22,7 +23,7 @@ const sltp = new SLTP();
 
 
 (async () => {
-  const subscriber = redis.createClient({ url: process.env.REDIS_URL || 'redis://redis:6379' });
+  const subscriber = redis.createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
   subscriber.on('error', (err) => console.error('❌ Redis error:', err));
 
   await subscriber.connect();
@@ -70,6 +71,9 @@ app.get('/info', (req, res) => {
   res.json(info);
 });
 
+    app.get('/params', (req, res) => {
+      res.json(PARAMS);
+    });
 
     app.get('/loglevel', (req, res) => {
       res.json({SLTP:sltp.getLogLevel()});

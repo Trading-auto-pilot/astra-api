@@ -1,0 +1,77 @@
+{
+  "bot": { "id": "bot_buy_sma", "name": "SMA Buy", "version": "1.1.0" },
+  "scope": "buy",              
+  "schema_version": 1,
+  "groups": [
+    { "id": "core", "label": "Core" },
+    { "id": "buy", "label": "Buy" },
+    { "id": "risk", "label": "Risk/Timing", "optional": true },
+    { "id": "advanced", "label": "Advanced", "optional": true }
+
+  ],
+  "params": [
+    {
+      "key": "smaPeriod",
+      "label": "SMA period",
+      "desc": "Numero di candele per la media mobile semplice.",
+      "type": "integer",        
+      "required": true,
+      "default": 20,
+      "min": 1,
+      "max": 500,
+      "step": 1,
+      "group": "core"
+    },
+    {
+      "key": "priceSource",
+      "label": "Fonte prezzo",
+      "type": "select",
+      "choices": [
+        { "value": "close", "label": "Close" },
+        { "value": "hl2",   "label": "(H+L)/2" },
+        { "value": "ohlc4", "label": "(O+H+L+C)/4" }
+      ],
+      "default": "close",
+      "group": "core"
+    },
+    {
+        "key": "type",
+        "label": "Order type",
+        "desc" : "tipo immissione ordine",
+        "type" : "select",
+            "choices": [
+                { "value": "market", "label": "Market" },
+                { "value": "limit",   "label": "Limit" },
+                { "value": "stop", "label": "Stop" },
+                { "value": "stop_limit", "label": "Stop Limit" },
+                { "value": "trailing_stop", "label": "Trailing Stop" }
+            ],
+        "default" : "limit",
+        "required": true,
+        "group": "buy"
+    },
+    {
+      "key": "cooldownSec",
+      "label": "Cooldown (sec)",
+      "type": "integer",
+      "default": 1800,
+      "min": 0,
+      "group": "risk"
+    },
+    {
+      "key": "minScore",
+      "label": "Soglia score",
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "group": "advanced",
+      "help": "Esegui BUY solo se score >= soglia."
+    }
+  ],
+  "ui": {
+    "order": ["core", "buy","risk", "advanced"],  
+    "hints": { "compact": false }
+  }
+}
