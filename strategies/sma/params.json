@@ -5,7 +5,6 @@
   "groups": [
     { "id": "core", "label": "Core" },
     { "id": "buy", "label": "Buy" },
-    { "id": "risk", "label": "Risk/Timing", "optional": true },
     { "id": "advanced", "label": "Advanced", "optional": true }
 
   ],
@@ -23,21 +22,9 @@
       "group": "core"
     },
     {
-      "key": "priceSource",
-      "label": "Fonte prezzo",
-      "type": "select",
-      "choices": [
-        { "value": "close", "label": "Close" },
-        { "value": "hl2",   "label": "(H+L)/2" },
-        { "value": "ohlc4", "label": "(O+H+L+C)/4" }
-      ],
-      "default": "close",
-      "group": "core"
-    },
-    {
-        "key": "type",
+        "key": "orderType",
         "label": "Order type",
-        "desc" : "tipo immissione ordine",
+        "desc" : "Represents what type of order this is (https://docs.alpaca.markets/docs/orders-at-alpaca)",
         "type" : "select",
             "choices": [
                 { "value": "market", "label": "Market" },
@@ -51,27 +38,57 @@
         "group": "buy"
     },
     {
-      "key": "cooldownSec",
-      "label": "Cooldown (sec)",
-      "type": "integer",
-      "default": 1800,
-      "min": 0,
-      "group": "risk"
+        "key": "limitPrice",
+        "label": "Limit Price",
+        "desc" : "Required if type is stop or stop_limit. It can be percentage or dollars",
+        "showIf": { "orderType": "limit" },    
+        "requireIf": { "orderType": "limit" },
+        "group": "buy",
+        "type": "integer", 
+        "step":1,
+        "min" : 0
     },
     {
-      "key": "minScore",
-      "label": "Soglia score",
-      "type": "number",
-      "default": 0,
-      "min": 0,
-      "max": 1,
-      "step": 0.01,
-      "group": "advanced",
-      "help": "Esegui BUY solo se score >= soglia."
+        "key": "trailPrice",
+        "label": "Trail Price",
+        "desc" : "Required if type is trailing_stop. It can be percentage or dollars",
+        "showIf": { "orderType": "trailing_stop" },    
+        "requireIf": { "orderType": "trailing_stop" },
+        "group": "buy",
+        "type": "integer", 
+        "step":1,
+        "min" : 0
+
+    },
+    {
+        "key": "timeInForce",
+        "label": "Time in force",
+        "desc" : "Represents how long the order is valid",
+        "type" : "select",
+            "choices": [
+                { "value": "day", "label": "Day" },
+                { "value": "gtc", "label": "Gtc - Good till cancelled" },
+                { "value": "ioc", "label": "IOC - Immediate or cancel", "showIf": { "orderType": { "in": ["market","limit"] } }, "help": "Yes*" },
+                { "value": "fok", "label": "FOK - Fill or kill", "showIf": { "orderType": { "in": ["market","limit"] } }, "help": "Yes*" },
+                { "value": "opg", "label": "OPG - At the Open", "showIf": { "orderType": { "in": ["market","limit"] } }, "help": "Yes*" },
+                { "value": "cls", "label": "CLS - At the close", "showIf": { "orderType": { "in": ["market","limit"] } }, "help": "Yes*" }
+            ],
+        "default" : "limit",
+        "required": true,
+        "group": "buy"
+    },
+    {
+        "key": "extendedHours",
+        "label": "Extended Hours",
+        "desc" : "Operate after hours",
+        "group": "buy",
+        "type": "boolean",
+        "default":false
+
     }
   ],
   "ui": {
-    "order": ["core", "buy","risk", "advanced"],  
+    "order": ["core", "buy", "advanced"],  
     "hints": { "compact": false }
   }
 }

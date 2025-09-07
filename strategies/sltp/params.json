@@ -23,35 +23,71 @@
       "group": "exits",
       "enableIf": { "useTakeProfit": true }
     },
+
     {
-      "key": "useStopLoss",
-      "label": "Usa Stop Loss",
-      "type": "boolean",
-      "default": true,
-      "group": "exits"
+        "key": "orderType",
+        "label": "Order type",
+        "desc" : "Represents what type of order this is (https://docs.alpaca.markets/docs/orders-at-alpaca)",
+        "type" : "select",
+            "choices": [
+                { "value": "market", "label": "Market" },
+                { "value": "limit",   "label": "Limit" },
+                { "value": "stop", "label": "Stop" },
+                { "value": "stop_limit", "label": "Stop Limit" },
+                { "value": "trailing_stop", "label": "Trailing Stop" }
+            ],
+        "default" : "limit",
+        "required": true,
+        "group": "buy"
     },
     {
-      "key": "stopLossPct",
-      "label": "Stop Loss (%)",
-      "type": "percent",
-      "default": 2.0,
-      "min": 0,
-      "max": 100,
-      "step": 0.1,
-      "unit": "%",
-      "group": "exits",
-      "enableIf": { "useStopLoss": true }
+        "key": "limitPrice",
+        "label": "Limit Price",
+        "desc" : "Required if type is stop or stop_limit. It can be percentage or dollars",
+        "showIf": { "orderType": "limit" },    
+        "requireIf": { "orderType": "limit" },
+        "group": "buy",
+        "type": "integer", 
+        "step":1,
+        "min" : 0
     },
     {
-      "key": "trailingStopPct",
-      "label": "Trailing Stop (%)",
-      "type": "percent",
-      "default": 0,
-      "min": 0,
-      "max": 100,
-      "step": 0.1,
-      "unit": "%",
-      "group": "advanced"
+        "key": "trailPrice",
+        "label": "Trail Price",
+        "desc" : "Required if type is trailing_stop. It can be percentage or dollars",
+        "showIf": { "orderType": "trailing_stop" },    
+        "requireIf": { "orderType": "trailing_stop" },
+        "group": "buy",
+        "type": "integer", 
+        "step":1,
+        "min" : 0
+
+    },
+    {
+        "key": "timeInForce",
+        "label": "Time in force",
+        "desc" : "Represents how long the order is valid",
+        "type" : "select",
+            "choices": [
+                { "value": "day", "label": "Day" },
+                { "value": "gtc", "label": "Gtc - Good till cancelled" },
+                { "value": "ioc", "label": "IOC - Immediate or cancel", "showIf": { "orderType": { "in": ["market","limit"] } }, "help": "Yes*" },
+                { "value": "fok", "label": "FOK - Fill or kill", "showIf": { "orderType": { "in": ["market","limit"] } }, "help": "Yes*" },
+                { "value": "opg", "label": "OPG - At the Open", "showIf": { "orderType": { "in": ["market","limit"] } }, "help": "Yes*" },
+                { "value": "cls", "label": "CLS - At the close", "showIf": { "orderType": { "in": ["market","limit"] } }, "help": "Yes*" }
+            ],
+        "default" : "limit",
+        "required": true,
+        "group": "buy"
+    },
+    {
+        "key": "extendedHours",
+        "label": "Extended Hours",
+        "desc" : "Operate after hours",
+        "group": "buy",
+        "type": "boolean",
+        "default":false
+
     }
   ]
 }
