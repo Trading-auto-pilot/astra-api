@@ -9,9 +9,18 @@ const REDIS_POSITIONS_KEY = 'alpaca:positions';
 
 const app = express();
 
+// CORS: singola origin o lista separata da virgole
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
 app.use(cors({
-  origin: 'http://localhost:5173', // indirizzo frontend
-  credentials: true // se usi cookie o auth
+  origin(origin, cb) {
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    return cb(new Error('Not allowed by CORS'));
+  },
+  credentials: true
 }));
 
 const port = process.env.PORT || 3010;
