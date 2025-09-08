@@ -3,6 +3,7 @@
 const { getDbConnection, sanitizeData } = require('./core');
 const { resolveBotIdByName } = require('./bots');
 const { v4: uuidv4 } = require('uuid');
+const crypto = require("crypto");
 const { resolveSymbolIdByName } = require('./symbols');
 const createLogger = require('../../shared/logger');
 const { publishCommand } = require('../../shared/redisPublisher');
@@ -28,6 +29,171 @@ function setFlushDBSec(value) {
   flushDBSec = value;
   clearInterval(IntervalFlush);
   startAtSecondSec(flushDB);
+}
+
+function hashId(name, description) {
+  const raw = `${name}|${description || ""}|${new Date().toISOString()}`;
+  return "str_" + crypto.createHash("sha1").update(raw).digest("hex").slice(0, 16);
+}
+function safeParseJSON(s) { try { return JSON.parse(s); } catch { return undefined; } }
+
+function rowToStrategy(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.Description ?? null,
+    enabled: !!row.enabled,
+    priority: Number(row.priority),
+    direction: row.direction,
+    buy_bot_id: String(row.buy_bot_id),
+    sell_bot_id: String(row.sell_bot_id),
+    updated_at: row.updated_at, // opzionale
+  };
+}
+
+/** Ritorna tutte le strategie con symbols e bot_params */
+async function listStrategiesV2() {
+  const conn = await getDbConnection();
+  const [rows] = await conn.query(
+    `SELECT id, name, Description, enabled, priority, direction, buy_bot_id, sell_bot_id, notes, updated_at
+     FROM strategies_v2
+     ORDER BY updated_at DESC`
+  );
+  if (!rows.length) return [];
+
+  const ids = rows.map(r => r.id);
+  const placeholders = ids.map(() => "?").join(",");
+  const [symRows] = await conn.query(
+    `SELECT strategy_id, symbol, enabled, priority_override, params_override
+     FROM strategy_symbol
+     WHERE strategy_id IN (${placeholders})
+     ORDER BY symbol ASC`,
+    ids
+  );
+
+  // indicizza symbols per strategy_id
+  const byStrat = new Map();
+  for (const r of rows) {
+    byStrat.set(r.id, {
+      strategy: rowToStrategy(r),
+      symbols: [],
+      bot_params: r.notes ? safeParseJSON(r.notes) : undefined,
+    });
+  }
+  for (const s of symRows) {
+    const bucket = byStrat.get(s.strategy_id);
+    if (!bucket) continue;
+    bucket.symbols.push({
+      symbol: String(s.symbol).toUpperCase(),
+      enabled: s.enabled !== 0,
+      priority_override: s.priority_override != null ? Number(s.priority_override) : null,
+      params_override: s.params_override ? safeParseJSON(s.params_override) : null,
+    });
+  }
+  return Array.from(byStrat.values());
+}
+
+/** (facoltativa) singola strategia per id */
+async function getStrategyV2(id) {
+  const conn = await getDbConnection();
+  const [rows] = await conn.query(
+    `SELECT id, name, Description, enabled, priority, direction, buy_bot_id, sell_bot_id, notes, updated_at
+     FROM strategies_v2 WHERE id = ? LIMIT 1`, [id]
+  );
+  if (!rows.length) return null;
+
+  const base = rows[0];
+  const [symRows] = await conn.query(
+    `SELECT strategy_id, symbol, enabled, priority_override, params_override
+     FROM strategy_symbol WHERE strategy_id = ? ORDER BY symbol ASC`, [id]
+  );
+  return {
+    strategy: rowToStrategy(base),
+    symbols: symRows.map(s => ({
+      symbol: String(s.symbol).toUpperCase(),
+      enabled: s.enabled !== 0,
+      priority_override: s.priority_override != null ? Number(s.priority_override) : null,
+      params_override: s.params_override ? safeParseJSON(s.params_override) : null,
+    })),
+    bot_params: base.notes ? safeParseJSON(base.notes) : undefined,
+  };
+}
+
+/**
+ * payload atteso:
+ * {
+ *   strategy: { name, description?, enabled, priority, direction, buy_bot_id, sell_bot_id },
+ *   symbols:  [{ symbol, enabled?:boolean, priority_override?:number|null, params_override?:object|null }, ...],
+ *   bot_params?: { [botId]: any }   // verrà serializzato in strategies_v2.notes
+ * }
+ */
+async function createStrategyV2(payload) {
+  const conn = await getDbConnection();
+  const s = payload?.strategy || {};
+  const symbols = Array.isArray(payload?.symbols) ? payload.symbols : [];
+  if (!s?.name) throw new Error("strategy.name mancante");
+  if (!s?.buy_bot_id || !s?.sell_bot_id) throw new Error("buy_bot_id/sell_bot_id mancanti");
+  if (!s?.priority || Number(s.priority) <= 0) throw new Error("priority non valido");
+  if (!["LONG_ONLY", "BOTH"].includes(s?.direction)) throw new Error("direction non valido");
+  if (symbols.length === 0) throw new Error("symbols vuoto");
+
+  // deduplica simboli
+  const dup = symbols.map(x => x.symbol).filter(Boolean);
+  const set = new Set(dup.map(x => x.toUpperCase()));
+  if (set.size !== dup.length) throw new Error("symbols contiene duplicati");
+
+  const id = hashId(s.name, s.description);
+  const notes = payload?.bot_params ? JSON.stringify(payload.bot_params) : null;
+
+  try {
+    await conn.beginTransaction();
+
+    // INSERT strategies_v2
+    await conn.execute(
+      `INSERT INTO strategies_v2
+       (id, name, Description, enabled, priority, direction, buy_bot_id, sell_bot_id, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        s.name,
+        s.description || null,
+        !!s.enabled ? 1 : 0,
+        Number(s.priority),
+        s.direction,
+        String(s.buy_bot_id),
+        String(s.sell_bot_id),
+        notes
+      ]
+    );
+
+    // INSERT strategy_symbol (bulk)
+    // Colonne attese: strategy_id, symbol, enabled, priority_override, params_override
+    const rows = symbols.map(row => ([
+      id,
+      String(row.symbol).toUpperCase(),
+      row.enabled === false ? 0 : 1,
+      row.priority_override != null ? Number(row.priority_override) : null,
+      row.params_override ? JSON.stringify(row.params_override) : null
+    ]));
+
+    const placeholders = rows.map(() => "(?,?,?,?,?)").join(",");
+    const flat = rows.flat();
+
+    await conn.execute(
+      `INSERT INTO strategy_symbol
+        (strategy_id, symbol, enabled, priority_override, params_override)
+       VALUES ${placeholders}`,
+      flat
+    );
+
+    await conn.commit();
+    return { ok: true, id };
+  } catch (e) {
+    try { await conn.rollback(); } catch {}
+    throw e;
+  } finally {
+    conn.release();
+  }
 }
 
 async function getDBActiveStrategies(symbol = null) {
@@ -539,6 +705,9 @@ module.exports = {
   updateStrategyRun,
   syncStrategyStart,
   syncStrategyStop,
-  syncStrategyOnce
+  syncStrategyOnce,
+  createStrategyV2,
+  listStrategiesV2,
+  getStrategyV2
 
 };
