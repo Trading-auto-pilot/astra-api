@@ -3,6 +3,7 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const createLogger = require('../shared/logger');
+const { mountRoutesFrom } = require("./routes-loader");
 require('dotenv').config({ path: '../.env' });
 
 // const DBManager = require('./dbManager');
@@ -42,6 +43,7 @@ app.get('/info', (req, res) => {
 });
 
 // 📦 Caricamento dinamico delle route da /routes
+/*
 const routesPath = path.join(__dirname, 'routes');
 fs.readdirSync(routesPath).forEach(file => {
   if (file.endsWith('.js')) {
@@ -54,6 +56,13 @@ fs.readdirSync(routesPath).forEach(file => {
     }
   }
 });
+*/
+
+// vecchie /routes (flat)
+mountRoutesFrom(app, path.join(__dirname, "routes"), "/", dbManager, { maxDepth: 0, logger });
+
+// nuove /api/<version>/...  → auto-montate su /api/<version>/...
+mountRoutesFrom(app, path.join(__dirname, "routes/api"), "/api", dbManager, { maxDepth: 2, logger });
 
 // app.listen(port, () => {
 //   console.log(`[${MODULE_NAME}] Avviato sulla porta ${port}`);

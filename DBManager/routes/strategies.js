@@ -54,27 +54,6 @@ module.exports = (dbManager) => {
     }
   });
 
-  // Capital + Orders per strategy
-  // router.get('/capitalAndOrder/:strategy_id(\\d+)', async (req, res) => {
-  //   try {
-  //     const result = await dbManager.getStrategyCapitalAndOrders(req.params.strategy_id);
-  //     res.json(result);
-  //   } catch (error) {
-  //     console.error('[GET /strategies/capitalAndOrder/:strategy_id] Errore: '+ error.message);
-  //     res.status(500).json({ error: 'Errore durante l\'aggiornamento della strategia '+ error.message, module:"[GET /strategies/capitalAndOrder/:strategy_id]" });
-  //   }
-  // });
-
-  // router.put('/capitalAndOrder', async (req, res) => {
-  //   try {
-  //     const result = await dbManager.updateStrategyCapitalAndOrders(req.body);
-  //     res.json(result);
-  //   } catch (error) {
-  //     console.error('[PUT /strategies/capitalAndOrder] Errore: '+ error.message);
-  //     res.status(500).json({ error: 'Errore durante l\'aggiornamento della strategia '+ error.message, module:"[PUT /strategies/capitalAndOrder]" });
-  //   }
-  // });
-
   // Runs (storico esecuzioni strategia)
   router.get('/runs/strategy', async (req, res) => {
 
