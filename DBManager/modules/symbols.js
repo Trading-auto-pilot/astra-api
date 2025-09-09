@@ -36,7 +36,113 @@ async function resolveSymbolIdByName(name) {
   }
 }
 
+function pickBranding(payload) {
+  const r = payload;
+  if (!r?.ticker) throw new Error("ticker mancante nel payload");
+  const symbol = String(r.ticker).trim().toUpperCase();
+
+  const branding = r.branding || {};
+  const logoUrl = branding.logo_url || null;
+  const iconUrl = branding.icon_url || null;
+
+  return { symbol, logoUrl, iconUrl };
+}
+
+async function upsertSymbolBrandingFromPolygon(payload) {
+  const { symbol, logoUrl, iconUrl } = pickBranding(payload);
+
+  const conn = await getDbConnection();
+  try {
+    // esiste già?
+    const [rows] = await conn.query(
+      "SELECT name, logo, icon FROM Symbols WHERE name = ? LIMIT 1",
+      [symbol]
+    );
+
+    if (rows.length) {
+      // aggiorna SOLO se mancanti
+      const cur = rows[0];
+      const toSet = [];
+      const vals = [];
+      if ((cur.logo_url == null || cur.logo_url === "") && logoUrl) {
+        toSet.push("logo = ?");
+        vals.push(logoUrl);
+      }
+      if ((cur.icon_url == null || cur.icon_url === "") && iconUrl) {
+        toSet.push("icon = ?");
+        vals.push(iconUrl);
+      }
+      if (toSet.length) {
+        vals.push(symbol);
+        await conn.execute(`UPDATE Symbols SET ${toSet.join(", ")} WHERE name = ?`, vals);
+        return { ok: true, symbol, inserted: false, updated: true };
+      }
+      return { ok: true, symbol, inserted: false, updated: false };
+    }
+
+    // inserisci nuovo
+    await conn.execute(
+      "INSERT INTO symbols (symbol, logo, icon) VALUES (?, ?, ?)",
+      [symbol, logoUrl, iconUrl]
+    );
+    return { ok: true, symbol, inserted: true, updated: false };
+  } finally {
+    if (typeof conn.release === "function") conn.release();
+    else if (typeof conn.end === "function") await conn.end();
+  }
+}
+
+/**
+ * Legge la tabella Symbols.
+ * @param {string | string[] | undefined} symbol - opzionale; se string filtra per symbol esatto,
+ *                                                 se array filtra per elenco.
+ * @returns {Promise<Array<{id:number, symbol:string, icon:string|null, logo:string|null}>>}
+ */
+async function listSymbols(symbol) {
+  const conn = await getDbConnection();
+  try {
+    // normalizza input
+    const toUpper = (s) => String(s).trim().toUpperCase();
+    const list = Array.isArray(symbol)
+      ? symbol.map(toUpper).filter(Boolean)
+      : (typeof symbol === "string" && symbol.trim() ? [toUpper(symbol)] : []);
+
+    let rows;
+    if (list.length === 1) {
+      // un singolo symbol
+      [rows] = await conn.query(
+        "SELECT id, name, icon, logo FROM Symbols WHERE UPPER(name) = ? LIMIT 1",
+        [list[0]]
+      );
+    } else if (list.length > 1) {
+      // più symbol
+      const qs = list.map(() => "?").join(",");
+      [rows] = await conn.query(
+        `SELECT id, name, icon, logo FROM Symbols WHERE UPPER(name) IN (${qs}) ORDER BY name ASC`,
+        list
+      );
+    } else {
+      // nessun filtro: tutti
+      [rows] = await conn.query(
+        "SELECT id, name, icon, logo FROM Symbols ORDER BY name ASC"
+      );
+    }
+
+    return rows.map((r) => ({
+      id: r.id,
+      symbol: r.name,   // normalizzo il campo
+      icon: r.icon ?? null,
+      logo: r.logo ?? null,
+    }));
+  } finally {
+    if (typeof conn.release === "function") conn.release();
+    else if (typeof conn.end === "function") await conn.end();
+  }
+}
+
 module.exports = {
   getSymbolsList,
-  resolveSymbolIdByName
+  resolveSymbolIdByName,
+  upsertSymbolBrandingFromPolygon,
+  listSymbols
 };
