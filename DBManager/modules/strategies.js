@@ -33,9 +33,16 @@ function setFlushDBSec(value) {
 
 function hashId(name, description) {
   const raw = `${name}|${description || ""}|${new Date().toISOString()}`;
-  return "str_" + crypto.createHash("sha1").update(raw).digest("hex").slice(0, 16);
+  return crypto.createHash("sha1").update(raw).digest("hex").slice(0, 16);
 }
+const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
 function safeParseJSON(s) { try { return JSON.parse(s); } catch { return undefined; } }
+function asJson(v) {
+  if (v == null) return undefined;
+  if (typeof v === "string") { try { return JSON.parse(v); } catch { return undefined; } }
+  if (typeof v === "object") return v; // già deserializzato dal driver
+  return undefined;
+}
 
 function rowToStrategy(row) {
   return {
@@ -47,7 +54,10 @@ function rowToStrategy(row) {
     direction: row.direction,
     buy_bot_id: String(row.buy_bot_id),
     sell_bot_id: String(row.sell_bot_id),
+    config: row.config,
+    bot_params:row.bot_params,
     updated_at: row.updated_at, // opzionale
+    share_perc:row.share_perc
   };
 }
 
@@ -55,7 +65,7 @@ function rowToStrategy(row) {
 async function listStrategiesV2() {
   const conn = await getDbConnection();
   const [rows] = await conn.query(
-    `SELECT id, name, Description, enabled, priority, direction, buy_bot_id, sell_bot_id, notes, updated_at
+    `SELECT id, name, Description, enabled, priority, direction, buy_bot_id, sell_bot_id, config, notes, updated_at, share_perc
      FROM strategies_v2
      ORDER BY updated_at DESC`
   );
@@ -87,7 +97,7 @@ async function listStrategiesV2() {
       symbol: String(s.symbol).toUpperCase(),
       enabled: s.enabled !== 0,
       priority_override: s.priority_override != null ? Number(s.priority_override) : null,
-      params_override: s.params_override ? safeParseJSON(s.params_override) : null,
+      params_override: asJson(s.params_override) ?? null,
     });
   }
   return Array.from(byStrat.values());
@@ -97,7 +107,7 @@ async function listStrategiesV2() {
 async function getStrategyV2(id) {
   const conn = await getDbConnection();
   const [rows] = await conn.query(
-    `SELECT id, name, Description, enabled, priority, direction, buy_bot_id, sell_bot_id, notes, updated_at
+    `SELECT id, name, Description, enabled, priority, direction, buy_bot_id, sell_bot_id, notes, updated_at, share_perc
      FROM strategies_v2 WHERE id = ? LIMIT 1`, [id]
   );
   if (!rows.length) return null;
@@ -120,39 +130,99 @@ async function getStrategyV2(id) {
 }
 
 /**
- * payload atteso:
+ * payload:
  * {
  *   strategy: { name, description?, enabled, priority, direction, buy_bot_id, sell_bot_id },
- *   symbols:  [{ symbol, enabled?:boolean, priority_override?:number|null, params_override?:object|null }, ...],
- *   bot_params?: { [botId]: any }   // verrà serializzato in strategies_v2.notes
+ *   symbols:  [{ symbol, enabled?, priority_override?, params_override? }, ...],
+ *   bot_params?: { [botId]: any } // config dei due BOT (verrà salvata in strategies_v2.config)
  * }
  */
+
+const isPlainObj = (v) =>
+  v && typeof v === "object" && !Array.isArray(v) &&
+  Object.prototype.toString.call(v) === "[object Object]";
+
+function hashId(name, description) {
+  const raw = `${name}|${description || ""}|${new Date().toISOString()}`;
+  return "str_" + crypto.createHash("sha1").update(raw).digest("hex").slice(0, 16);
+}
+
+function normalizeBotParams(v) {
+  if (v == null) return {};
+  if (typeof v === "string") {
+    try { return normalizeBotParams(JSON.parse(v)); } catch { return {}; }
+  }
+  if (Array.isArray(v)) {
+    const out = {};
+    for (const it of v) {
+      if (it && typeof it === "object") {
+        const id = it.bot_id ?? it.id ?? it.key;
+        if (id != null) out[String(id)] = isPlainObj(it.params) ? it.params : {};
+      }
+    }
+    return out;
+  }
+  return isPlainObj(v) ? v : {};
+}
+
+function coercePercent(x, fieldName = "share") {
+  if (x == null || x === "") return null;
+  const n = Number(x);
+  if (!Number.isFinite(n)) throw new Error(`${fieldName} non numerico`);
+  if (n < 0 || n > 100) throw new Error(`${fieldName} fuori range 0..100`);
+  return Math.round(n * 100) / 100; // 2 decimali max
+}
+
 async function createStrategyV2(payload) {
-  const conn = await getDbConnection();
   const s = payload?.strategy || {};
   const symbols = Array.isArray(payload?.symbols) ? payload.symbols : [];
-  if (!s?.name) throw new Error("strategy.name mancante");
-  if (!s?.buy_bot_id || !s?.sell_bot_id) throw new Error("buy_bot_id/sell_bot_id mancanti");
-  if (!s?.priority || Number(s.priority) <= 0) throw new Error("priority non valido");
+  const botParams = normalizeBotParams(payload?.bot_params);
+
+
+  // --- validazioni base
+  if (!s?.name || typeof s.name !== "string") throw new Error("strategy.name mancante");
+  if (s.buy_bot_id == null || s.sell_bot_id == null) throw new Error("buy_bot_id/sell_bot_id mancanti");
+  const buyId  = String(s.buy_bot_id);
+  const sellId = String(s.sell_bot_id);
+
+  const prio = Number(s.priority);
+  if (!Number.isInteger(prio) || prio <= 0) throw new Error("priority non valido");
   if (!["LONG_ONLY", "BOTH"].includes(s?.direction)) throw new Error("direction non valido");
   if (symbols.length === 0) throw new Error("symbols vuoto");
 
-  // deduplica simboli
-  const dup = symbols.map(x => x.symbol).filter(Boolean);
-  const set = new Set(dup.map(x => x.toUpperCase()));
-  if (set.size !== dup.length) throw new Error("symbols contiene duplicati");
+  // dedup symbols
+  const normSymbols = symbols.map(x => String(x.symbol || "").trim().toUpperCase()).filter(Boolean);
+  if (new Set(normSymbols).size !== normSymbols.length) throw new Error("symbols contiene duplicati");
+  // --- share a livello ROOT (preferenza root -> fallback da BUY params)
+  const buyParamsRaw = isPlainObj(botParams[buyId]) ? { ...botParams[buyId] } : {};
+  const sharePerc = coercePercent(payload.strategy.sharePerc);
 
+  // rimuovi eventuali chiavi share dai params del BUY per non duplicare
+  delete buyParamsRaw.share;
+  delete buyParamsRaw.sharePerc;
+  delete buyParamsRaw.allocation;
+
+  const sellParamsRaw = isPlainObj(botParams[sellId]) ? botParams[sellId] : {};
+  // --- config (solo parametri BOT, niente share qui)
+  const config = {
+    buy:  { bot_id: buyId,  params: buyParamsRaw },
+    sell: { bot_id: sellId, params: sellParamsRaw },
+  };
+  // ID e config serializzata (fonte di verità per i due BOT)
   const id = hashId(s.name, s.description);
-  const notes = payload?.bot_params ? JSON.stringify(payload.bot_params) : null;
 
+  // (legacy) opzionale: conserva anche il vecchio blob in notes
+  const notes = Object.keys(botParams).length ? JSON.stringify(botParams) : null;
+
+  const conn = await getDbConnection();
   try {
     await conn.beginTransaction();
 
-    // INSERT strategies_v2
+    // INSERT strategies_v2 (assume colonna JSON `config` esiste)
     await conn.execute(
       `INSERT INTO strategies_v2
-       (id, name, Description, enabled, priority, direction, buy_bot_id, sell_bot_id, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, name, Description, enabled, priority, direction, buy_bot_id, sell_bot_id, config, notes, share_perc)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         s.name,
@@ -162,29 +232,32 @@ async function createStrategyV2(payload) {
         s.direction,
         String(s.buy_bot_id),
         String(s.sell_bot_id),
-        notes
+        JSON.stringify(config),
+        notes,
+        sharePerc
       ]
     );
 
-    // INSERT strategy_symbol (bulk)
-    // Colonne attese: strategy_id, symbol, enabled, priority_override, params_override
-    const rows = symbols.map(row => ([
-      id,
-      String(row.symbol).toUpperCase(),
-      row.enabled === false ? 0 : 1,
-      row.priority_override != null ? Number(row.priority_override) : null,
-      row.params_override ? JSON.stringify(row.params_override) : null
-    ]));
+    // INSERT strategy_symbol (serializza overrides)
+    if (symbols.length) {
+      const rows = symbols.map(row => {
+        const sym = String(row.symbol).trim().toUpperCase();
+        if (!sym) throw new Error("symbol vuoto in symbols[]");
+        const enabled = row.enabled === false ? 0 : 1;
+        const prioOv = row.priority_override != null ? Number(row.priority_override) : null;
+        if (prioOv != null && !Number.isFinite(prioOv)) throw new Error(`priority_override non numerico per ${sym}`);
+        const ovObj = isPlainObj(row.params_override) ? row.params_override : null;
+        return [id, sym, enabled, prioOv, ovObj ? JSON.stringify(ovObj) : null];
+      });
 
-    const placeholders = rows.map(() => "(?,?,?,?,?)").join(",");
-    const flat = rows.flat();
-
-    await conn.execute(
-      `INSERT INTO strategy_symbol
-        (strategy_id, symbol, enabled, priority_override, params_override)
-       VALUES ${placeholders}`,
-      flat
-    );
+      const placeholders = rows.map(() => "(?,?,?,?,?)").join(",");
+      await conn.execute(
+        `INSERT INTO strategy_symbol
+         (strategy_id, symbol, enabled, priority_override, params_override)
+         VALUES ${placeholders}`,
+        rows.flat()
+      );
+    }
 
     await conn.commit();
     return { ok: true, id };
@@ -192,7 +265,9 @@ async function createStrategyV2(payload) {
     try { await conn.rollback(); } catch {}
     throw e;
   } finally {
-    conn.release();
+    // mysql2/promise: release() se è pooled, altrimenti end()
+    if (typeof conn.release === "function") conn.release();
+    else if (typeof conn.end === "function") await conn.end();
   }
 }
 
@@ -362,18 +437,6 @@ async function getStrategiesRun() {
     return results;
   }
 
-  // Redis vuoto → fallback a DB
-  // try {
-  //   const rows = await getDBStrategiesRun();
-  //   for (const row of rows) {
-  //     const redisKey = `strategy_runs:${row.id}`;
-  //     await cache.hmset(redisKey, row);
-  //   }
-  //   return rows;
-  // } catch (err) {
-  //   logger.error(`[getStrategiesRun] Fallback da DB fallito: ${err.message}`);
-  //   throw err;
-  // }
 }
 
 async function insertStrategyRun(strategyRun) {

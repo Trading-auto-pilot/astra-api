@@ -42,21 +42,6 @@ app.get('/info', (req, res) => {
   });
 });
 
-// 📦 Caricamento dinamico delle route da /routes
-/*
-const routesPath = path.join(__dirname, 'routes');
-fs.readdirSync(routesPath).forEach(file => {
-  if (file.endsWith('.js')) {
-    const routeModule = require(path.join(routesPath, file));
-    if (typeof routeModule === 'function') {
-      const router = routeModule(dbManager); // chiama la factory con dbManager
-      const routePath = '/' + path.basename(file, '.js'); // usa il nome del file come path
-      app.use(routePath, router);
-      logger.trace(`[server] Registrata route dinamica: ${routePath}`);
-    }
-  }
-});
-*/
 
 // vecchie /routes (flat)
 mountRoutesFrom(app, path.join(__dirname, "routes"), "/", dbManager, { maxDepth: 0, logger });
