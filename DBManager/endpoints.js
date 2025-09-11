@@ -42,6 +42,21 @@ app.get('/info', (req, res) => {
   });
 });
 
+// middleware/withTimeout.js
+function withTimeout(ms = 8000) {
+  return (req, res, next) => {
+    const t = setTimeout(() => {
+      if (!res.headersSent) {
+        logger.warning(`Time out richiesta endpoint `);
+        res.status(504).json({ error: `timeout ${ms}ms` });
+      }
+    }, ms)
+    res.on("finish", () => clearTimeout(t))
+    next()
+  }
+}
+
+app.use("/api", withTimeout(8000))
 
 // vecchie /routes (flat)
 mountRoutesFrom(app, path.join(__dirname, "routes"), "/", dbManager, { maxDepth: 0, logger });

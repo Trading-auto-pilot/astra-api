@@ -192,8 +192,6 @@ function sanitizeData(tableName, data) {
   return sanitized;
 }
 
-
-
 const pool = mysql.createPool({
   host: process.env.MYSQL_HOST || 'localhost',
   port: process.env.MYSQL_PORT || '3306',
@@ -204,6 +202,12 @@ const pool = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0
 });
+
+async function q(sql, params) {
+  const conn = await pool.getConnection()
+  try { const [rows] = await conn.query(sql, params); return rows }
+  finally { conn.release() }              // <-- SEMPRE
+}
 
 async function getDbConnection() {
   try {

@@ -82,7 +82,7 @@ async function upsertSymbolBrandingFromPolygon(payload) {
 
     // inserisci nuovo
     await conn.execute(
-      "INSERT INTO symbols (symbol, logo, icon) VALUES (?, ?, ?)",
+      "INSERT INTO Symbols (name, logo, icon) VALUES (?, ?, ?)",
       [symbol, logoUrl, iconUrl]
     );
     return { ok: true, symbol, inserted: true, updated: false };

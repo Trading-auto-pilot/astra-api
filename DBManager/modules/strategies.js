@@ -100,6 +100,7 @@ async function listStrategiesV2() {
       params_override: asJson(s.params_override) ?? null,
     });
   }
+  conn.release();
   return Array.from(byStrat.values());
 }
 
@@ -117,6 +118,7 @@ async function getStrategyV2(id) {
     `SELECT strategy_id, symbol, enabled, priority_override, params_override
      FROM strategy_symbol WHERE strategy_id = ? ORDER BY symbol ASC`, [id]
   );
+  conn.release();
   return {
     strategy: rowToStrategy(base),
     symbols: symRows.map(s => ({
@@ -173,11 +175,175 @@ function coercePercent(x, fieldName = "share") {
   return Math.round(n * 100) / 100; // 2 decimali max
 }
 
+function ensureDirection(d) {
+  if (d === "LONG_ONLY" || d === "BOTH") return d;
+  throw new Error("direction non valido");
+}
+
+function toUpperSym(s) {
+  return String(s || "").trim().toUpperCase();
+}
+
+async function modifyStrategyV2(id, payload) {
+  const s = payload?.strategy || {};
+  //const id = String(s?.id || "").trim();
+  if (!id) throw new Error("strategy.id mancante");
+
+  // validazioni base / normalizzazioni
+  if (!s?.name || typeof s.name !== "string") throw new Error("strategy.name mancante");
+  if (s.buy_bot_id == null || s.sell_bot_id == null) throw new Error("buy_bot_id/sell_bot_id mancanti");
+  const buyId  = String(s.buy_bot_id);
+  const sellId = String(s.sell_bot_id);
+
+  const prio = Number(s.priority);
+  if (!Number.isInteger(prio) || prio <= 0) throw new Error("priority non valido");
+
+  const direction = ensureDirection(s.direction);
+  const botParams = normalizeBotParams(payload?.bot_params);
+
+  // share a livello root (se non presente, prova fallback da params del BUY)
+  const buyParamsRaw  = isPlainObj(botParams[buyId])  ? { ...botParams[buyId] }  : {};
+  const sellParamsRaw = isPlainObj(botParams[sellId]) ? { ...botParams[sellId] } : {};
+
+  const sharePerc = coercePercent(
+    payload.sharePerc ?? payload.share ?? payload.allocation ??
+    buyParamsRaw.share ?? buyParamsRaw.sharePerc ?? buyParamsRaw.allocation,
+    "sharePerc"
+  );
+  // rimuovi eventuali chiavi share dal BUY params
+  delete buyParamsRaw.share;
+  delete buyParamsRaw.sharePerc;
+  delete buyParamsRaw.allocation;
+
+  // config (fonte di verità per i due bot)
+  const config = {
+    buy:  { bot_id: buyId,  params: buyParamsRaw },
+    sell: { bot_id: sellId, params: sellParamsRaw },
+  };
+
+  // legacy/compat: conserva blob bot_params in notes (opzionale)
+  const notes = Object.keys(botParams).length ? JSON.stringify(botParams) : null;
+
+  // symbols: se forniti nel payload, rappresentano lo stato DESIDERATO
+  const symbols = Array.isArray(payload?.symbols) ? payload.symbols : undefined;
+  let desired = undefined;
+  if (symbols) {
+    const arr = symbols.map(row => ({
+      symbol: toUpperSym(row.symbol),
+      enabled: row.enabled === false ? 0 : 1,
+      priority_override: row.priority_override != null ? Number(row.priority_override) : null,
+      params_override: isPlainObj(row.params_override) ? JSON.stringify(row.params_override) : (row.params_override ?? null),
+    })).filter(r => r.symbol);
+    // dedup by symbol
+    const seen = new Set();
+    desired = [];
+    for (const r of arr) {
+      if (!seen.has(r.symbol)) { desired.push(r); seen.add(r.symbol); }
+    }
+  }
+
+  const conn = await getDbConnection();
+  try {
+    await conn.beginTransaction();
+
+    // esistenza + lock
+    const [exist] = await conn.query("SELECT id FROM strategies_v2 WHERE id = ? FOR UPDATE", [id]);
+    if (!exist.length) throw new Error(`strategy id non trovato: ${id}`);
+
+    // UPDATE strategies_v2
+    await conn.execute(
+      `UPDATE strategies_v2
+         SET name = ?, Description = ?, enabled = ?, priority = ?, direction = ?,
+             buy_bot_id = ?, sell_bot_id = ?, config = ?, notes = ?, share_perc = ?
+       WHERE id = ?`,
+      [
+        s.name,
+        s.description || null,
+        s.enabled === false ? 0 : 1,
+        prio,
+        direction,
+        buyId,
+        sellId,
+        config,           // mysql2 su colonna JSON accetta l'oggetto
+        notes,
+        sharePerc,        // può essere null
+        id
+      ]
+    );
+
+    // Sincronizza strategy_symbol solo se symbols è presente nel payload
+    let symChanges = { inserted: 0, updated: 0, deleted: 0 };
+    if (desired) {
+      // leggi stato attuale
+      const [curRows] = await conn.query(
+        "SELECT symbol, enabled, priority_override, params_override FROM strategy_symbol WHERE strategy_id = ?",
+        [id]
+      );
+      const currentMap = new Map(curRows.map(r => [toUpperSym(r.symbol), r]));
+
+      const desiredMap = new Map(desired.map(r => [r.symbol, r]));
+
+      // delete: tutti quelli in current che non sono più desired
+      const toDelete = [...currentMap.keys()].filter(sym => !desiredMap.has(sym));
+      if (toDelete.length) {
+        const qs = toDelete.map(() => "?").join(",");
+        await conn.execute(
+          `DELETE FROM strategy_symbol WHERE strategy_id = ? AND symbol IN (${qs})`,
+          [id, ...toDelete]
+        );
+        symChanges.deleted = toDelete.length;
+      }
+
+      // insert/update
+      const toInsert = [];
+      for (const [sym, row] of desiredMap.entries()) {
+        if (!currentMap.has(sym)) {
+          toInsert.push([id, sym, row.enabled, row.priority_override, row.params_override]);
+        } else {
+          const cur = currentMap.get(sym);
+          const needUpdate =
+            Number(cur.enabled) !== Number(row.enabled) ||
+            (cur.priority_override == null ? null : Number(cur.priority_override)) !== (row.priority_override == null ? null : Number(row.priority_override)) ||
+            String(cur.params_override ?? null) !== String(row.params_override ?? null);
+          if (needUpdate) {
+            await conn.execute(
+              `UPDATE strategy_symbol
+                  SET enabled = ?, priority_override = ?, params_override = ?
+                WHERE strategy_id = ? AND symbol = ?`,
+              [row.enabled, row.priority_override, row.params_override, id, sym]
+            );
+            symChanges.updated++;
+          }
+        }
+      }
+
+      if (toInsert.length) {
+        const placeholders = toInsert.map(() => "(?,?,?,?,?)").join(",");
+        await conn.execute(
+          `INSERT INTO strategy_symbol
+             (strategy_id, symbol, enabled, priority_override, params_override)
+           VALUES ${placeholders}`,
+          toInsert.flat()
+        );
+        symChanges.inserted = toInsert.length;
+      }
+    }
+
+    await conn.commit();
+    return { ok: true, id, symbols: symbols ? symChanges : undefined };
+  } catch (e) {
+    try { await conn.rollback(); } catch {}
+    throw e;
+  } finally {
+    if (typeof conn.release === "function") conn.release();
+    else if (typeof conn.end === "function") await conn.end();
+  }
+}
+
 async function createStrategyV2(payload) {
   const s = payload?.strategy || {};
   const symbols = Array.isArray(payload?.symbols) ? payload.symbols : [];
   const botParams = normalizeBotParams(payload?.bot_params);
-
 
   // --- validazioni base
   if (!s?.name || typeof s.name !== "string") throw new Error("strategy.name mancante");
@@ -748,6 +914,56 @@ async function syncStrategyOnce(){
   return({success:true, recordsStrategy:strategies.numStrategy, recordsStrategyRuns:strategies.numRecordSync, deletedStrategyRuns:strategies.numRecordDeleted})
 }
 
+async function deleteStrategyV2(id) {
+  const strategyId = String(id || "").trim();
+  if (!strategyId) throw new Error("strategy id mancante");
+
+  const conn = await getDbConnection();
+  try {
+    await conn.beginTransaction();
+
+    // opzionale: verifica esistenza (lock per evitare race)
+    const [rows] = await conn.query(
+      "SELECT id FROM strategies_v2 WHERE id = ? FOR UPDATE",
+      [strategyId]
+    );
+    if (!rows.length) {
+      await conn.rollback();
+      const err = new Error(`strategy non trovata: ${strategyId}`);
+      err.code = "NOT_FOUND";
+      throw err;
+    }
+
+    // 1) elimina i simboli collegati
+    const [symRes] = await conn.execute(
+      "DELETE FROM strategy_symbol WHERE strategy_id = ?",
+      [strategyId]
+    );
+
+    // 2) elimina la strategia
+    const [strRes] = await conn.execute(
+      "DELETE FROM strategies_v2 WHERE id = ?",
+      [strategyId]
+    );
+
+    await conn.commit();
+    return {
+      ok: true,
+      id: strategyId,
+      deleted: {
+        strategies: strRes.affectedRows || 0,
+        symbols: symRes.affectedRows || 0,
+      },
+    };
+  } catch (e) {
+    try { await conn.rollback(); } catch {}
+    throw e;
+  } finally {
+    if (typeof conn.release === "function") conn.release();
+    else if (typeof conn.end === "function") await conn.end();
+  }
+}
+
 if(!process.env.FAST_SIMUL)
   syncStrategyStart();
 
@@ -771,6 +987,8 @@ module.exports = {
   syncStrategyOnce,
   createStrategyV2,
   listStrategiesV2,
-  getStrategyV2
+  getStrategyV2,
+  modifyStrategyV2,
+  deleteStrategyV2
 
 };

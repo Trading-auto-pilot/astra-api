@@ -20,13 +20,21 @@ function makeWsHub({ cfg }) {
     };
 
     // Aggregazione configurabile
+    // Aggregazione configurabile (ma SOLO per candele/tick)
     let pipe = sendRaw;
     if (opts.aggregate === 'lastPerSymbol') {
-      pipe = makeLastPerKey(opts.rateMs || 200, (m)=> (m.symbol||m.S||'').toUpperCase(), sendRaw);
+      const agg = makeLastPerKey(
+        opts.rateMs || 200,
+        (m)=> (m.symbol||m.S||'').toUpperCase(),
+        sendRaw
+      );
+      pipe = (m) => (m?.type === 'candle' || m?.type === 'tick') ? agg(m) : sendRaw(m);
     } else if (opts.aggregate === 'throttle') {
-      pipe = makeThrottler(opts.rateMs || 200, sendRaw);
+      const thr = makeThrottler(opts.rateMs || 200, sendRaw);
+      pipe = (m) => (m?.type === 'candle' || m?.type === 'tick') ? thr(m) : sendRaw(m);
     } else if (opts.aggregate === 'tickToBar1s') {
-      pipe = makeTickToBar1s(sendRaw);
+      const t2b = makeTickToBar1s(sendRaw);
+      pipe = (m) => (m?.type === 'tick') ? t2b(m) : sendRaw(m);
     }
 
     const entry = { socket, filter, pipe, stats, opts };
@@ -91,7 +99,7 @@ function parseClientOptions(url) {
     topics: toList('topics'),
     symbols: toList('symbols'),
     types: toList('types'),
-    aggregate: u.searchParams.get('aggregate') || 'lastPerSymbol', // throttle | lastPerSymbol | tickToBar1s
+    aggregate: u.searchParams.get('aggregate') || '', // throttle | lastPerSymbol | tickToBar1s
     rateMs: toNum('rateMs', 200)
   };
 }
