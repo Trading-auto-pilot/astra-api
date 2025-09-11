@@ -22,6 +22,33 @@ module.exports = (dbManager) => {
     }
   });
 
+  // PUT /api/v1/strategies  — salva strategies_v2 + strategy_symbol
+  router.put("/:id", async (req, res) => {
+    try {
+      // verifiche minime di coerenza (ulteriori controlli sono in createStrategyV2)
+      if (!req.body?.strategy || !Array.isArray(req.body?.symbols)) {
+        return res.status(400).json({ ok: false, error: "payload non valido" });
+      }
+
+      const result = await dbManager.modifyStrategyV2(req.params.id, req.body);
+      res.status(201).json(result); // { ok:true, id }
+    } catch (e) {
+      const msg = e?.message || String(e);
+      const code = /duplicate|foreign key|constraint/i.test(msg) ? 409 : 400;
+      res.status(code).json({ ok: false, error: msg });
+    }
+  });
+
+    router.delete("/:id", async (req, res) => {
+    try {
+      const result = await dbManager.deleteStrategyV2(req.params.id);
+      res.status(201).json(result); // { ok:true, id }
+    } catch (e) {
+      const msg = e?.message || String(e);
+      const code = /duplicate|foreign key|constraint/i.test(msg) ? 409 : 400;
+      res.status(code).json({ ok: false, error: msg });
+    }
+  });
 
     // GET tutte le strategie
   router.get("/", async (req, res) => {
