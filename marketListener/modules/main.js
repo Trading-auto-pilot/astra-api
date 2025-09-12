@@ -238,6 +238,9 @@ normalizeChannels(inCfg = {}, prev = {}) {
   };
 }
 
+getDbLogStatus() { return this.logger.getDbLogStatus()}
+setDbLogStatus(status) { return (this._statuslogger.setDbLogStatus(status))}
+
 }
 
 module.exports = marketListener;

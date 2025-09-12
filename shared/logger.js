@@ -5,7 +5,7 @@ const axios = require('axios');
 
 const levels = ['trace', 'log', 'info', 'warning', 'error'];
 const dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
-const enableDbLog = process.env.ENABLE_DB_LOG === 'true';
+let enableDbLog = process.env.ENABLE_DB_LOG === 'true';
 
 // ANSI color codes
 const COLORS = {
@@ -176,8 +176,14 @@ function createLogger(
       currentIndex = levels.indexOf(currentLevel);
       console.log(`[logger] Livello di log aggiornato a: ${newLevel}`);
     },
+    getDbLogStatus : () => {
+      return (enableDbLog);
+    },
+    setDbLogStatus : (status) => {
+      enableDbLog = status;
+      return ({success:true, setDbLogStatus:enableDbLog })
+    },
     attachBus: (newBus) => { bus = newBus || null; }
-
   };
 
   return logger;
