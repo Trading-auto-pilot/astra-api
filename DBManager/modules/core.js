@@ -219,10 +219,15 @@ async function getDbConnection() {
   }
 }
 
+function getDbLogStatus() { return logger.getDbLogStatus()}
+function setDbLogStatus(status) { return (logger.setDbLogStatus(status))}
+
 
 module.exports = {
   getDbConnection,
   safe,
   formatDateForMySQL,
-  sanitizeData
+  sanitizeData,
+  getDbLogStatus,
+  setDbLogStatus
 };

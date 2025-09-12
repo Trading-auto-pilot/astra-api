@@ -5,13 +5,22 @@ let logger = null;
 
 function makeWsHub({ cfg }) {
   const clients = new Map(); // id -> {socket, filter, pipe, stats, opts}
+     const describeOpts = (opts={}) => {
+    const t = (opts.types?.length ? opts.types.join(',') : '*');
+    const s = (opts.symbols?.length ? opts.symbols.join(',') : '*');
+    const tp = (opts.topics?.length ? opts.topics.join(',') : '*');
+    const agg = opts.aggregate || 'none';
+    const r = Number.isFinite(opts.rateMs) ? `${opts.rateMs}ms` : '-';
+    return `types=[${t}] symbols=[${s}] topics=[${tp}] | agg=${agg} rate=${r}`;
+  };
   logger = cfg.logger;
 
   function addClient(socket, req) {
     const id = uuidv4();
-    const stats = { sent: 0, dropped: 0, connectedAt: Date.now(), lastSentTs: null };
+    const stats = { sent: 0, dropped: 0, connectedAt: Date.now(), lastSentTs: null, seen: 0, matched: 0 };
     const opts = parseClientOptions(req.url);
     const filter = buildFilter(opts);
+    const filterDesc = describeOpts(opts);
 
     // pipeline di default: throttling per evitare flood
     const sendRaw = (obj) => {
@@ -37,7 +46,7 @@ function makeWsHub({ cfg }) {
       pipe = (m) => (m?.type === 'tick') ? t2b(m) : sendRaw(m);
     }
 
-    const entry = { socket, filter, pipe, stats, opts };
+    const entry = { socket, filter, pipe, stats, opts,filterDesc };
     clients.set(id, entry);
 
   logger.info('[wsHub] client connected', JSON.stringify({ id, readyState: socket.readyState, url: req.url }));
@@ -63,22 +72,37 @@ function makeWsHub({ cfg }) {
       if (msg.type === 'subscribe') {
         entry.opts = { ...entry.opts, ...msg.opts };
         entry.filter = buildFilter(entry.opts);
+        entry.filterDesc = describeOpts(entry.opts);
       }
     } catch {}
   }
 
 // wsHub.js
 function dispatch(msg) {
-  for (const { socket, filter, pipe } of clients.values()) {
+  for (const entry of clients.values()) {
+    const { socket, filter, pipe, stats } = entry;
     if (socket.readyState !== 1) continue;
-    try { if (filter(msg)) pipe(msg); } catch {}
+    try {
+      stats.seen++;
+      if (filter(msg)) { stats.matched++; pipe(msg); }
+    } catch {}
   }
 }
 
   function getClientsSnapshot() {
     const arr = [];
     for (const [id, v] of clients.entries()) {
-      arr.push({ id, connectedAt: v.stats.connectedAt, sent: v.stats.sent, dropped: v.stats.dropped, lastSentTs: v.stats.lastSentTs, opts: v.opts });
+      arr.push({
+        id,
+        connectedAt: v.stats.connectedAt,
+        sent: v.stats.sent,
+        dropped: v.stats.dropped,
+        lastSentTs: v.stats.lastSentTs,
+        seen: v.stats.seen,
+        matched: v.stats.matched,
+        opts: v.opts,
+        filter: v.filterDesc
+      });
     }
     return { count: clients.size, clients: arr };
   }
