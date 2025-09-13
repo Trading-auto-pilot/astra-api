@@ -2,18 +2,35 @@
 const { getDbConnection, formatDateForMySQL, safe } = require('./core');
 
 
-async function getAllLogs() {
-  const connection = await getDbConnection();
+// Prende le ultime `limit` righe ordinate per timestamp decrescente.
+// `timestampColumn` default 'ts' (cambia se la tua colonna è diversa: es. 'created_at' o 'timestamp')
+// Prende le ultime `limit` righe ordinate per `timestamp` (DESC).
+async function getAllLogs(limit = 100) {
+  const conn = await getDbConnection();
+
+  // valida/clampa il limite
+  const n = Number(limit);
+  const safeLimit = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 1000) : 100;
+
   try {
-    const [rows] = await connection.execute("SELECT * FROM logs");
+    const sql = `
+      SELECT *
+      FROM \`logs\`
+      WHERE \`timestamp\` IS NOT NULL
+      ORDER BY \`timestamp\` DESC
+      LIMIT ${safeLimit}   -- inietto intero validato
+    `;
+    const [rows] = await conn.query(sql);
     return rows;
   } catch (error) {
-    console.error('[getActiveBots] Errore durante il recupero dei bot attivi:', error);
+    console.error('[getAllLogs] Errore durante la lettura dei log:', error);
     throw error;
   } finally {
-      connection.release();
+    try { conn.release(); } catch {}
   }
 }
+
+
 
 async function insertLogs(logs) {
   if (!logs || logs.length === 0) return { success: false, error: 'Log array is empty' };

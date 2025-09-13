@@ -5,21 +5,37 @@ const cache = require('../../shared/cache');
 const router = express.Router();
 
 module.exports = (dbManager) => {
-  // 🔹 Recupera tutti i bot attivi
-  router.get('/', async (req, res) => {
-    const cacheKey = 'logs:all';
-    let data = await cache.get(cacheKey);
-    if (data) return res.json(data);
+// GET /logs?limit=123
+router.get('/', async (req, res) => {
+  // 1) valida/parsa limit
+  const n = Number(req.query.limit);
+  const limit = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 1000) : 100;
 
-    try {
-      const result = await dbManager.getAllLogs();
-      await cache.set(cacheKey, data);
-      res.json(result);
-    } catch (error) {
-      console.error('[GET /logs] Errore: ', err.message);
-      res.status(500).json({ error: 'Errore durante la lettura dei logs '+error.message, module: "[GET /logs]" });
+  const cacheKey = `logs:all:limit:${limit}`;
+
+  try {
+    // 2) prova cache
+    let cached = await cache.get(cacheKey);
+    if (cached) {
+      try { cached = typeof cached === 'string' ? JSON.parse(cached) : cached; } catch {}
+      return res.json(cached);
     }
-  });
+
+    // 3) DB
+    const result = await dbManager.getAllLogs(limit);
+
+    // 4) metti in cache (puoi aggiungere TTL se supportato)
+    try { await cache.set(cacheKey, JSON.stringify(result)); } catch {}
+
+    return res.json(result);
+  } catch (error) {
+    console.error('[GET /logs] Errore: ', error);
+    return res
+      .status(500)
+      .json({ error: 'Errore durante la lettura dei logs ' + (error?.message || String(error)), module: '[GET /logs]' });
+  }
+});
+
 
   router.post('/', async (req, res) => {
     try {
