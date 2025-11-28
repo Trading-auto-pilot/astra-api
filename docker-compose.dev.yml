@@ -1,0 +1,103 @@
+#version: '3.8'
+
+# env:
+#   ENV_NAME: ${{ github.ref_name }}
+#   #secrets
+#   MYSQL_ROOT_PASSWORD: ${{ secrets.MYSQL_ROOT_PASSWORD }}
+#   MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+#   #variabili
+#   MYSQL_DATABASE: ${{ vars.MYSQL_DATABASE }}
+#   MYSQL_USER : ${{ vars.MYSQL_USER }}
+#   ALPACA_MARKET_FEED : ${{ vars.ALPACA_MARKET_FEED }}
+#   ENV_MARKET : ${{ vars.ENV_MARKET }}
+#   ENV_ORDERS : ${{ vars.ENV_ORDERS }}
+#   ENV_TRADING : ${{ vars.ENV_TRADING }}
+#   LOG_LEVEL : ${{ vars.LOG_LEVEL }}
+
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_PORT : ${MYSQL_PORT}
+      MYSQL_HOST : ${MYSQL_HOST}
+    ports:
+      - "3306:3306"
+    networks:
+      - trading-net
+    depends_on:
+      redis:
+          condition: service_healthy
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - trading-net
+    command: ["redis-server", "--appendonly", "yes", "--save", "300", "10","--dir","/data"]
+    volumes:
+      - redis-data:/data
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  dbmanager:
+    image: expovin/dbmanager:${DBMANAGER_VERSION}
+    container_name: dbmanager
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    networks:
+      - trading-net
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+
+volumes:
+  mysql_data:
+  redis-data:
+  shared_cache_data:
+    external: true
+
+networks:
+  trading-net:
+    name:  trading-net
+    driver: bridge

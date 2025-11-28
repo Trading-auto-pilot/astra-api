@@ -1,22 +1,28 @@
 # Base image
 FROM node:20
 
-# Set working directory
+# Working directory root
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y curl
-
-# Copia la cartella LiveMarketListener e share dal context (la root del progetto)
-COPY cacheManager/ ./cacheManager/
+# Copy shared code (comune a tutti i microservizi)
 COPY shared/ ./shared/
-COPY cacheManager/package.json .
 
-# Installa le dipendenze
-RUN npm install
+# =========================
+# Microservizio specifico
+# =========================
+# Copia solo package.json per caching corretto
+COPY cacheManager/package*.json ./cacheManager/
 
+WORKDIR /app/cacheManager
 
-# Expose port
-EXPOSE 3000
+# Install dependencies
+RUN npm install --production
 
-# Default command
-CMD [ "node", "cacheManager/server.js" ]
+# Ora copia il resto dei sorgenti del microservizio
+COPY cacheManager/ ./
+
+# Porta esposta (placeholder)
+EXPOSE 3006
+
+# Start the server
+CMD ["node", "server.js"]

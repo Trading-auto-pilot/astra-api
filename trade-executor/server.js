@@ -1,30 +1,40 @@
-// server.js — solo endpoint operativi
-const { Router } = require('express');
+const createLogger = require('../shared/logger');
+const { RedisBus } = require('../shared/redisBus');
+const createApp = require('./endpoints');
+const port = process.env.PORT || 3001;
+
+const MICROSERVICE = 'TradeExecutor';
+const MODULE_NAME = 'RESTServer';
+const MODULE_VERSION = '1.0';
+
+(async () => {
+  const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info', {
+    autoModule: true, // opzionale: rileva automaticamente il modulo chiamante
+  });
+
+  const bus = new RedisBus({ env: process.env.APP_ENV || 'dev', name: 'api-cache', logger });
+  await bus.connect();
+  const app = await createApp({ bus, logger });
+
+  const server = app.listen(port, () => logger.info('Server listening on port '+port));
+
+  // ✅ Log degli errori globali
+  process.on('uncaughtException', err => {
+    logger.error('Uncaught Exception:', err);
+  });
+
+  process.on('unhandledRejection', err => {
+    logger.error('Unhandled Rejection:', err);
+  });
 
 
-module.exports = function buildServerRouter(ctx) {
-const { handleCandle } = ctx;
-const r = Router();
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    logger.info('[server] Terminazione SIGTERM ricevuta. Chiusura server...');
+    server.close(() => {
+      logger.info('[server] Server chiuso correttamente.');
+      process.exit(0);
+    });
+  });
+})();
 
-
-// Health leggero (operativo)
-r.get('/healthz', (_req, res) => res.json({ ok: true }));
-
-
-// Ingresso candela singola (operativo)
-r.post('/candle', async (req, res) => {
-await handleCandle(req.body);
-res.json({ ok: true });
-});
-
-
-// Ingresso batch candele (operativo)
-r.post('/candle/batch', async (req, res) => {
-const arr = Array.isArray(req.body) ? req.body : [];
-for (const c of arr) await handleCandle(c);
-res.json({ ok: true, count: arr.length });
-});
-
-
-return r;
-};

@@ -38,6 +38,7 @@ async function initializeSettings(dbManagerUrl, options = {}) {
     timeoutMs: optTimeout     = timeoutMs,
   } = options;
 
+  logger.log(`[initializeSettings] tentativo di connessione a ${dbManagerUrl}/settings`)
   try {
     const res = await withRetry(
       async () => {
