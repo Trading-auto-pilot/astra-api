@@ -10,6 +10,7 @@ class RedisBus {
     this.logger = opts.logger || console;
     this.json   = opts.json !== false;
     this.name   = opts.name || "redisBus";
+    this.env    = opts.env || process.env.APP_ENV || 'dev'; 
 
     this.channelsCfg = opts.channels || {};
     this.defaultIntervalMs = Number.isFinite(opts.defaultIntervalMs) ? opts.defaultIntervalMs : 500;
@@ -23,6 +24,38 @@ class RedisBus {
     this._connecting = false;
     this._connected  = false;
   }
+
+  // ---------- Key builder (env-aware) ----------
+  // Normalizza le parti e le unisce: "<env>:part1:part2:...".
+  key(...parts) {
+    const norm = (p) => String(p ?? '')
+      .trim()
+      .replace(/[:\s]/g, '-')   // niente ':' o spazi nelle parti
+      .toLowerCase();
+    return [this.env, ...parts.map(norm)].filter(Boolean).join(':');
+  }
+  setEnv(env) { this.env = env || 'dev'; return this; }
+
+  // ---------- KV helpers (cache) ----------
+  async get(key) {
+    if (!this._connected || !this.pub?.isOpen) return null;
+    const v = await this.pub.get(key);
+    if (!this.json) return v;
+    const parsed = safeParse(v);
+    return parsed === undefined ? v : parsed;
+  }
+  async set(key, value, opts) {
+    if (!this._connected || !this.pub?.isOpen) return false;
+    const payload = (this.json && typeof value !== 'string') ? JSON.stringify(value) : value;
+    if (opts?.EX) return !!(await this.pub.set(key, payload, { EX: opts.EX }));
+    return !!(await this.pub.set(key, payload));
+  }
+  async del(key) {
+    if (!this._connected || !this.pub?.isOpen) return 0;
+    return this.pub.del(key);
+  }
+
+
 
   /**
    * Svuota la coda dello scheduler `state` per il canale `key`
@@ -252,6 +285,7 @@ _ensureScheduler(key, cfg) {
   // ---- Debug helpers ----
   status() {
     return {
+      env: this.env,
       connected: this._connected,
       pubIsOpen: !!this.pub?.isOpen,
       subIsOpen: !!this.sub?.isOpen,

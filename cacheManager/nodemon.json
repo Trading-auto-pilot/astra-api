@@ -1,5 +1,14 @@
 {
-  "watch": ["server.js", "cacheManager.js", "shared/cache.js","shared/logger"],
-  "ignore": ["*.test.js", "node_modules","cache","Dockerfile","README.md","release.json"],
+  "watch": [
+    "server.js",
+    "modules/main.js"
+  ],
+  "ignore": [
+    "*.test.js",
+    "node_modules",
+    "Dockerfile",
+    "README.md",
+    "release.json"
+  ],
   "exec": "node server.js"
 }

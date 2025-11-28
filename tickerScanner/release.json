@@ -1,0 +1,9 @@
+{
+  "lastUpdate": "22/11/2025 21:28", 
+  "version": "0.1.0",
+  "microservice": "tickerScanner",
+
+  "note": [
+    "v.0.1.0 tickerScanner: Initial scaffolding generated from template."
+  ]
+}

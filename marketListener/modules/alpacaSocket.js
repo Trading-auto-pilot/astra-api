@@ -529,7 +529,7 @@ class AlpacaSocket extends EventEmitter {
         }
         if (changed) {
           this.orderActiveSet = fresh;
-          this.logger.debug('[orderActive] reconciled');
+          this.logger.log('[orderActive] reconciled');
         }
       } catch (e) {
         this.logger.error(`[orderActive][reconcile] ${e.message}`);

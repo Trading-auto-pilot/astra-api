@@ -1,0 +1,9 @@
+{
+  "lastUpdate": "__LAST_UPDATE__", 
+  "version": "__VERSION__",
+  "microservice": "__MICROSERVICE_NAME__",
+
+  "note": [
+    "v.__VERSION__ __MICROSERVICE_NAME__: Initial scaffolding generated from template."
+  ]
+}

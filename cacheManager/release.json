@@ -1,4 +1,9 @@
 {
-    "lastUpdate" : "20/05/2025",
-    "note" : ["v.1.1 Utilizzo delle chiavi API Alpaca via Variabili d'ambiente"]
+  "lastUpdate": "25/11/2025 17:53", 
+  "version": "0.1.0",
+  "microservice": "cacheManager",
+
+  "note": [
+    "v.0.1.0 cacheManager: Initial scaffolding generated from template."
+  ]
 }

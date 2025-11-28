@@ -13,5 +13,6 @@ module.exports = {
   ...require('./simul_account'),
   ...require('./transactions'),
   ...require('./settings'),
-  ...require('./strategy_stats')
+  ...require('./strategy_stats'),
+  ...require('./fundamentals')
 };

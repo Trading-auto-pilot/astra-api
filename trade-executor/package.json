@@ -1,23 +1,18 @@
 {
   "name": "trade-executor",
   "version": "1.0.0",
-  "private": true,
-  "description": "Trade executor microservice for trading-system",
-  "main": "main.js",
-  "type": "commonjs",
+  "main": "server.js",
   "scripts": {
-    "start": "node main.js",
-    "dev": "nodemon --watch . --ext js,json --exec node main.js"
+    "start": "node server.js",
+    "dev": "nodemon server.js"
   },
   "dependencies": {
-    "axios": "^1.7.0",
-    "express": "^4.19.2",
-    "redis": "^4.6.14"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.0"
-  },
-  "engines": {
-    "node": ">=18.18"
+    "axios": "^1.6.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.21.2",
+    "mysql2": "^3.4.0",
+    "redis": "^5.1.1",
+    "uuid": "^11.1.0"
   }
 }
