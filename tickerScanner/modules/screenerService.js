@@ -33,7 +33,7 @@ class ScreenerService {
    * Restituisce:
    *  { url, params, count, data }
    */
-  async runScreener() {
+  async runScreener(overrides = {}) {
     const apiKey = this.getSetting("FMP_API_KEY");
     if (!apiKey) {
       throw new Error("FMP_API_KEY setting is missing");
@@ -53,7 +53,18 @@ class ScreenerService {
       }
     }
 
-    // aggiungiamo la API KEY ai parametri
+    const overrideParams =
+      overrides && typeof overrides === "object" ? overrides : {};
+    params = { ...params, ...overrideParams };
+
+    if (Object.keys(overrideParams).length) {
+      this.logger.info(
+        "[ScreenerService] Screener params overridden from query string",
+        { overrides: overrideParams }
+      );
+    }
+
+    // aggiungiamo la API KEY ai parametri (ha sempre precedenza)
     params.apikey = apiKey;
 
     const searchParams = new URLSearchParams();

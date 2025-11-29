@@ -5,7 +5,7 @@ const path = require("path");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const createLogger = require("../../shared/logger");
-const { initializeSettings, getSetting } = require("../../shared/loadSettings");
+const { initializeSettings, getSetting, reloadSettings } = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
 const { asBool, asInt } = require("../../shared/helpers");
 const { AlpacaProvider } = require("./alpaca");
@@ -180,6 +180,36 @@ class CacheManager {
   // =========================================================
   async afterInit() {
     this.logger.info("[afterInit] No custom logic implemented (template).");
+  }
+
+  /**
+   * Ricarica i settings da DB senza riavviare il servizio.
+   */
+  async reloadSettings() {
+    this.logger.info("[reloadSettings] Reloading settings from DB...");
+    const ok = await reloadSettings(this.dbmanagerUrl);
+    if (!ok) {
+      this.logger.error("[reloadSettings] Failed to reload settings from DB");
+      throw new Error("reloadSettings failed");
+    }
+
+    this.delayBetweenMessages = asInt(
+      getSetting("PROCESS_DELAY_BETWEEN_MESSAGES"),
+      500
+    );
+
+    this.logger.info(
+      `[reloadSettings] Settings reloaded: delayBetweenMessages=${this.delayBetweenMessages}`
+    );
+
+    if (typeof this.afterSettingsReload === "function") {
+      await this.afterSettingsReload();
+    }
+
+    return {
+      ok: true,
+      delayBetweenMessages: this.delayBetweenMessages,
+    };
   }
 
   // =========================================================

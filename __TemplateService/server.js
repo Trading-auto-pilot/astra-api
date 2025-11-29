@@ -212,6 +212,32 @@ app.put("/dbLogger/:status", async (req, res) => {
   }
 });
 
+/**
+ * POST /settings/reload
+ * Ricarica i settings da DB senza riavviare il servizio.
+ */
+app.post("/settings/reload", requireReady, async (_req, res) => {
+  if (!serviceInstance?.reloadSettings) {
+    return res.status(501).json({
+      ok: false,
+      error: "reloadSettings() not implemented in this microservice",
+    });
+  }
+
+  try {
+    const data = await serviceInstance.reloadSettings();
+    return res.json({ ok: true, ...data });
+  } catch (e) {
+    logger.error(
+      `[POST /settings/reload] Error: ${e?.message || String(e)}`
+    );
+    return res.status(500).json({
+      ok: false,
+      error: e?.message || String(e),
+    });
+  }
+});
+
 /* --------------------------- ROUTES: STATUS ---------------------------- */
 /**
  * Router generico /status/*

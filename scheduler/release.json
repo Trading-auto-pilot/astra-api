@@ -1,0 +1,9 @@
+{
+  "lastUpdate": "29/11/2025 20:14", 
+  "version": "0.1.0",
+  "microservice": "scheduler",
+
+  "note": [
+    "v.0.1.0 scheduler: Initial scaffolding generated from template."
+  ]
+}

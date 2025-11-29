@@ -4,23 +4,20 @@
 const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
-
+const axios = require("axios");
 const MainModule = require("./modules/main");
-const createStatsModule = require("./modules/stats");
 const createLogger = require("../shared/logger");
-const createStatusRouter = require("./status"); // router standard /status/*
-
-//const statsModule = createStatsModule(cacheManager);
+const buildStatusRouter = require("./status"); // router standard /status/*
 
 dotenv.config();
 
 // =======================================================
 // PLACEHOLDER che verranno sostituiti dallo script
 // =======================================================
-const MICROSERVICE   = "cacheManager";   // es. "marketListener"
+const MICROSERVICE   = "scheduler";   // es. "marketListener"
 const MODULE_NAME    = "RESTServer";    // es. "RESTServer"
 const MODULE_VERSION = "0.1.0";      // es. "1.0.0"
-const DEFAULT_PORT   = 3006;                  // es. 3012 (numero)
+const DEFAULT_PORT   = 3014;                  // es. 3012 (numero)
 
 let logLevel = process.env.LOG_LEVEL || "info";
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, logLevel);
@@ -241,32 +238,59 @@ app.post("/settings/reload", requireReady, async (_req, res) => {
   }
 });
 
-app.use("/status", createStatusRouter(serviceInstance, logger, "CacheManager"));
-
-// Recupero candele
-app.get("/candles", async (req, res) => {
+// Ricarica manualmente i job da dbManager
+app.post("/scheduler/reload", async (req, res) => {
   try {
-    const { symbol, startDate, endDate, tf } = req.query;
-    if (!symbol || !startDate || !endDate) {
-      return res.status(400).json({ error: "symbol, startDate, endDate richiesti" });
+    const core = serviceInstance.getSchedulerCore();
+    if (!core) {
+      return res.status(500).json({ ok: false, error: "SchedulerCore non inizializzato" });
     }
-
-    const candles = await serviceInstance.getCandles(symbol, startDate, endDate, tf || "1Day");
-    res.json(candles);
-  } catch (err) {
-    logger.error(`[CACHE] Errore GET /candles: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    const out = await core.reloadJobs();
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message || String(e) });
   }
 });
 
+// Per vedere lo stato attuale dei job
+app.get("/scheduler/jobs", (req, res) => {
+  const core = serviceInstance.getSchedulerCore();
+  if (!core) {
+    return res.status(500).json({ ok: false, error: "SchedulerCore non inizializzato" });
+  }
+  res.json({ ok: true, items: core.getJobsSnapshot() });
+});
 
+// Crea/aggiorna un job nello scheduler (pass-through verso dbManager)
+app.post("/scheduler/jobs", async (req, res) => {
+  try {
+    const core = serviceInstance.getSchedulerCore();
+    if (!core) {
+      return res.status(500).json({ ok: false, error: "SchedulerCore non inizializzato" });
+    }
 
+    // giro la richiesta al dbManager (servizio interno)
+    const url = `${serviceInstance.dbmanagerUrl}/scheduler/jobs`;
+    const resp = await axios.post(url, req.body, { timeout: 15000 });
 
+    // dopo la creazione ricarico i job nello scheduler
+    await core.reloadJobs();
+
+    return res.json(resp.data);
+  } catch (e) {
+    serviceInstance.getLogger().error("[POST /scheduler/jobs] errore", e.message || e);
+    return res.status(500).json({
+      ok: false,
+      error: e.message || String(e),
+      module: "[POST /scheduler/jobs]"
+    });
+  }
+});
 /* --------------------------- ROUTES: STATUS ---------------------------- */
 /**
  * Router generico /status/*
  * Il modulo `status.js` deve usare `serviceInstance.getInfo()` se disponibile.
-
+ */
 app.use(
   "/status",
   requireReady,
@@ -276,7 +300,6 @@ app.use(
     moduleName: MODULE_NAME,
   })
 );
- */
 
 /* ----------------------------- STARTUP -------------------------------- */
 app.listen(port, () => {

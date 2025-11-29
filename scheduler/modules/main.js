@@ -8,21 +8,35 @@ const createLogger = require("../../shared/logger");
 const { initializeSettings, getSetting, reloadSettings } = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
 const { asBool, asInt } = require("../../shared/helpers");
+const { createSchedulerCore } = require("./schedulerCore");
 
 // =========================================================
 // PLACEHOLDER da sostituire via script di scaffolding
 // =========================================================
-const MICROSERVICE    = "__MICROSERVICE_NAME__";
+const MICROSERVICE    = "scheduler";
 const MODULE_NAME     = "main";
-const MODULE_VERSION  = "__MODULE_VERSION__";    // e.g. "0.1.0"
+const MODULE_VERSION  = "0.1.0";    // e.g. "0.1.0"
 
-class __CLASS_NAME__ {
+class Scheduler {
   constructor() {
     // =====================================================
     // URL DI TUTTI I MICROSERVIZI STANDARD DEL SISTEMA
     // =====================================================
 
-    // __SERVICE_URLS_BLOCK__
+    //     // Auto-generated service URLs from doc/ports.json
+    this.dbmanagerUrl = process.env.DBMANAGER_URL || "http://dbmanager:3002";
+    this.marketsimulatorUrl = process.env.MARKETSIMULATOR_URL || "http://marketsimulator:3003";
+    this.ordersimulatorUrl = process.env.ORDERSIMULATOR_URL || "http://ordersimulator:3004";
+    this.orderlistnerUrl = process.env.ORDERLISTNER_URL || "http://orderlistner:3005";
+    this.cachemanagerUrl = process.env.CACHEMANAGER_URL || "http://cachemanager:3006";
+    this.strategyUtilsUrl = process.env.STRATEGYUTILS_URL || "http://strategyUtils:3007";
+    this.alertingserviceUrl = process.env.ALERTINGSERVICE_URL || "http://alertingservice:3008";
+    this.capitalmanagerUrl = process.env.CAPITALMANAGER_URL || "http://capitalmanager:3009";
+    this.smaUrl = process.env.SMA_URL || "http://sma:3010";
+    this.sltpUrl = process.env.SLTP_URL || "http://sltp:3011";
+    this.livemarketlistnerUrl = process.env.LIVEMARKETLISTNER_URL || "http://livemarketlistner:3012";
+    this.tickerscannerUrl = process.env.TICKERSCANNER_URL || "http://tickerscanner:3013";
+    this.schedulerUrl = process.env.SCHEDULER_URL || "http://scheduler:3014";
 
 
     // =====================================================
@@ -80,6 +94,9 @@ class __CLASS_NAME__ {
 
     // Mini storage per metriche locali
     this.metrics = [];
+
+    // Scheduler core
+    this.schedulerCore = null;
   }
 
   // =========================================================
@@ -139,7 +156,18 @@ class __CLASS_NAME__ {
   // Hook custom per ogni microservizio (override)
   // =========================================================
   async afterInit() {
-    this.logger.info("[afterInit] No custom logic implemented (template).");
+    this.logger.info("[afterInit] Initializing SchedulerCore...");
+    this.schedulerCore = createSchedulerCore(this);
+    try {
+      await this.schedulerCore.init();
+      this.logger.info("[afterInit] SchedulerCore initialized.");
+    } catch (e) {
+      this.logger.error(
+        "[afterInit] SchedulerCore init failed, service will stay up; use /scheduler/reload after fixing DBManager",
+        e?.message || String(e)
+      );
+      // leave schedulerCore instantiated so it can be reused on manual reload
+    }
   }
 
   /**
@@ -287,10 +315,14 @@ class __CLASS_NAME__ {
     return { dbLogEnabled: false };
   }
 
+  getSchedulerCore() {
+    return this.schedulerCore;
+  }
+
   // Accesso diretto
   getBus()    { return this.bus; }
   getLogger() { return this.logger; }
   get status() { return this._status; }
 }
 
-module.exports = __CLASS_NAME__;
+module.exports = Scheduler;
