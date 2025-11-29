@@ -327,6 +327,45 @@ services:
       timeout: 10s
       retries: 5
 
+  scheduler:
+    image: expovin/scheduler:${SCHEDULER_VERSION}
+    container_name: scheduler
+    restart: unless-stopped
+    ports:
+      - "3014:3014"
+    networks:
+      - trading-net
+    depends_on:
+      dbmanager:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - REDIS_URL=redis://redis:6379
+      - DBMANAGER_URL=http://dbmanager:3002
+      - MARKETSIMULATOR_URL=http://marketsimulator:3003
+      - ORDERSIMULATOR_URL=http://ordersimulator:3004
+      - ORDERLISTNER_URL=http://orderlistner:3005
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - STRATEGYUTILS_URL=http://strategyUtils:3007
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
+      - CAPITALMANAGER_URL=http://capitalmanager:3009
+      - SMA_URL=http://sma:3010
+      - SLTP_URL=http://sltp:3011
+      - LIVEMARKETLISTNER_URL=http://livemarketlistner:3012
+      - TICKERSCANNER_URL=http://tickerscanner:3013
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3014/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
 
 volumes:
   mysql_data:

@@ -52,6 +52,7 @@ async function insertOrUpdateFundamentalsBulk(records) {
       "symbol",
       "sector",
       "industry",
+      "country",
 
       "valuation_score",
       "quality_score",
@@ -95,6 +96,7 @@ async function insertOrUpdateFundamentalsBulk(records) {
         r.symbol || null,
         r.sector ?? null,
         r.industry ?? null,
+        r.country ?? null,
 
         r.valuation_score ?? null,
         r.quality_score ?? null,
@@ -141,6 +143,7 @@ async function insertOrUpdateFundamentalsBulk(records) {
       ON DUPLICATE KEY UPDATE
         sector              = VALUES(sector),
         industry            = VALUES(industry),
+        country             = VALUES(country),
 
         valuation_score     = VALUES(valuation_score),
         quality_score       = VALUES(quality_score),

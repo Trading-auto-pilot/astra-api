@@ -5,7 +5,7 @@ const path = require("path");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const createLogger = require("../../shared/logger");
-const { initializeSettings, getSetting } = require("../../shared/loadSettings");
+const { initializeSettings, getSetting, reloadSettings } = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
 const { asBool, asInt } = require("../../shared/helpers");
 
@@ -64,6 +64,7 @@ function mapDbRowToScoredRecord(row) {
     symbol: row.symbol,
     sector: row.sector,
     industry: row.industry,
+    country: row.country,
     scores: {
       valuation: {
         score: row.valuation_score,
@@ -275,25 +276,57 @@ class TickerScanner {
   }
 
   /**
+   * Ricarica i settings da DB senza riavviare il servizio.
+   */
+  async reloadSettings() {
+    this.logger.info("[reloadSettings] Reloading settings from DB...");
+    const ok = await reloadSettings(this.dbmanagerUrl);
+    if (!ok) {
+      this.logger.error("[reloadSettings] Failed to reload settings from DB");
+      throw new Error("reloadSettings failed");
+    }
+
+    this.delayBetweenMessages = asInt(
+      getSetting("PROCESS_DELAY_BETWEEN_MESSAGES"),
+      500
+    );
+
+    this.logger.info(
+      `[reloadSettings] Settings reloaded: delayBetweenMessages=${this.delayBetweenMessages}`
+    );
+
+    if (typeof this.afterSettingsReload === "function") {
+      await this.afterSettingsReload();
+    }
+
+    return {
+      ok: true,
+      delayBetweenMessages: this.delayBetweenMessages,
+    };
+  }
+
+  /**
    * Avvia uno scan asincrono:
    * - chiama solo lo screener per sapere quanti ticker grezzi ci sono
    * - crea un job in stato queued
    * - lancia in background l’elaborazione completa (scanAndScoreUniverse)
    * - ritorna subito jobId + totalRawTickers
    */
-  async startScanJob() {
-    const screener = await this.runScreener();
+  async startScanJob(filterOverrides = {}, options = {}) {
+    const forceRefresh = !!options.forceRefresh;
+    const overrides = { ...filterOverrides }; // detach from req.query
+    const screener = await this.runScreener(overrides);
     const data = screener?.data || [];
     const totalRaw = data.length;
 
     const job = createScanJob(totalRaw);
     this.logger.info(
-      `[tickScanner] Scan job ${job.id} created with ${totalRaw} raw tickers`
+      `[tickScanner] Scan job ${job.id} created with ${totalRaw} raw tickers (forceRefresh=${forceRefresh})`
     );
 
     // esecuzione in background (fire & forget)
     setImmediate(() => {
-      this._runScanJob(job.id).catch((err) => {
+      this._runScanJob(job.id, overrides, { forceRefresh }).catch((err) => {
         this.logger.error(
           `[tickScanner] Scan job ${job.id} failed: ${err.message}`
         );
@@ -308,10 +341,10 @@ class TickerScanner {
     };
   }
 
-  async _runScanJob(jobId) {
+  async _runScanJob(jobId, filterOverrides = {}, options = {}) {
     updateScanJob(jobId, { status: "running" });
 
-    const result = await this.scanAndScoreUniverse(); // la funzione che abbiamo già
+    const result = await this.scanAndScoreUniverse(filterOverrides, options); // la funzione che abbiamo già
 
     updateScanJob(jobId, {
       status: "completed",
@@ -344,8 +377,8 @@ class TickerScanner {
   * Esegue lo screener usando i parametri letti da DB (getSetting)
   * e restituisce il risultato dell'API FMP.
   * */
-  async runScreener() {
-    return this.screener.runScreener();
+  async runScreener(filterOverrides = {}) {
+    return this.screener.runScreener(filterOverrides);
   }
 
   /**
@@ -358,9 +391,10 @@ class TickerScanner {
    *    - salvo su DB via /fundamentals/bulk (batch da 50)
    * 4) ritorno tutti i risultati (DB + nuovi)
    */
-  async scanAndScoreUniverse() {
+  async scanAndScoreUniverse(filterOverrides = {}, options = {}) {
+    const forceRefresh = !!options.forceRefresh;
     // 1) screener
-    const screener = await this.runScreener();
+    const screener = await this.runScreener(filterOverrides);
     const data = screener?.data || [];
     const symbols = data.map(d => d.symbol).filter(Boolean);
 
@@ -408,7 +442,7 @@ class TickerScanner {
 
     for (const sym of symbols) {
       const row = existingMap.get(sym);
-      if (row) {
+      if (row && !forceRefresh) {
         existingRecords.push(mapDbRowToScoredRecord(row));
       } else {
         missingSymbols.push(sym);
@@ -416,7 +450,7 @@ class TickerScanner {
     }
 
     this.logger.info(
-      `[scanAndScoreUniverse] Trovati ${existingRecords.length} simboli in DB, mancanti: ${missingSymbols.length}`
+      `[scanAndScoreUniverse] Trovati ${existingRecords.length} simboli in DB, mancanti: ${missingSymbols.length} (forceRefresh=${forceRefresh})`
     );
 
     // 3) per i mancanti: FMP + scoring + salvataggio bulk

@@ -212,6 +212,32 @@ app.put("/dbLogger/:status", async (req, res) => {
   }
 });
 
+/**
+ * POST /settings/reload
+ * Ricarica i settings da DB senza riavviare il servizio.
+ */
+app.post("/settings/reload", requireReady, async (_req, res) => {
+  if (!serviceInstance?.reloadSettings) {
+    return res.status(501).json({
+      ok: false,
+      error: "reloadSettings() not implemented in this microservice",
+    });
+  }
+
+  try {
+    const data = await serviceInstance.reloadSettings();
+    return res.json({ ok: true, ...data });
+  } catch (e) {
+    logger.error(
+      `[POST /settings/reload] Error: ${e?.message || String(e)}`
+    );
+    return res.status(500).json({
+      ok: false,
+      error: e?.message || String(e),
+    });
+  }
+});
+
 
 /**
  * GET /screener
@@ -248,7 +274,7 @@ app.get("/screener", requireReady, async (_req, res) => {
  *  - scoring (valuation/quality/risk/total)
  */
 // Avvio asincrono dello scan
-app.get("/scan", requireReady, async (_req, res) => {
+app.get("/scan", requireReady, async (req, res) => {
   if (!serviceInstance?.startScanJob) {
     return res.status(501).json({
       ok: false,
@@ -257,10 +283,36 @@ app.get("/scan", requireReady, async (_req, res) => {
   }
 
   try {
-    const info = await serviceInstance.startScanJob();
+    const overrides = { ...(req.query || {}) }; // query string > DB settings
+    const info = await serviceInstance.startScanJob(overrides);
     return res.json({ ok: true, ...info });
   } catch (e) {
     logger.error(`[GET /scan] Error: ${e?.message || String(e)}`);
+    return res.status(500).json({
+      ok: false,
+      error: e?.message || String(e),
+    });
+  }
+});
+
+/**
+ * GET /scan/force
+ * Esegue lo scan ignorando la cache locale (ricalcola e sovrascrive tutti i simboli).
+ */
+app.get("/scan/force", requireReady, async (req, res) => {
+  if (!serviceInstance?.startScanJob) {
+    return res.status(501).json({
+      ok: false,
+      error: "startScanJob() not implemented in this microservice",
+    });
+  }
+
+  try {
+    const overrides = { ...(req.query || {}) };
+    const info = await serviceInstance.startScanJob(overrides, { forceRefresh: true });
+    return res.json({ ok: true, ...info });
+  } catch (e) {
+    logger.error(`[GET /scan/force] Error: ${e?.message || String(e)}`);
     return res.status(500).json({
       ok: false,
       error: e?.message || String(e),

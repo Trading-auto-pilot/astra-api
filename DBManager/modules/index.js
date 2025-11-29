@@ -14,5 +14,6 @@ module.exports = {
   ...require('./transactions'),
   ...require('./settings'),
   ...require('./strategy_stats'),
-  ...require('./fundamentals')
+  ...require('./fundamentals'),
+  ...require('./scheduler')
 };

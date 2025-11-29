@@ -320,6 +320,7 @@ class ScoringService {
       symbol: fmpData.symbol,
       sector: fmpData.profile?.sector || null,
       industry: fmpData.profile?.industry || null,
+      country: fmpData.profile?.country || null,
       flat,
       scores: {
         valuation,

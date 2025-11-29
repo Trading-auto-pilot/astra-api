@@ -96,8 +96,18 @@ function getSetting(key) {
   return settingsCache[key] ?? null;
 }
 
+/**
+ * Forza un reload dei settings dal DB azzerando la cache interna.
+ */
+async function reloadSettings(dbManagerUrl, options = {}) {
+  settingsCache = null;
+  logger.info("[reloadSettings] Cache invalidata, ricarico impostazioni dal DB");
+  return initializeSettings(dbManagerUrl, options);
+}
+
 
 module.exports = {
   initializeSettings,
-  getSetting
+  getSetting,
+  reloadSettings
 };

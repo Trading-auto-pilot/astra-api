@@ -12,5 +12,6 @@
     "livemarketlistner": 3012,
     "mysql": 3306,
     "redis": 6379,
-    "tickerscanner": 3013
+    "tickerscanner": 3013,
+    "scheduler": 3014
 }

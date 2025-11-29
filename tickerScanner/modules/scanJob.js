@@ -27,6 +27,7 @@ function buildFundamentalsRecord(scored, momentumJson = null) {
     symbol:   scored.symbol,
     sector:   scored.sector ?? null,
     industry: scored.industry ?? null,
+    country:  scored.country ?? null,
 
     // ---- Scores aggregati ----
     valuation_score: valuation.score ?? null,
