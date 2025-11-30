@@ -194,7 +194,7 @@ jobs:
       run: |
         scp -o StrictHostKeyChecking=no .env $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/.env
 
-    - name: Deploy updated DB
+    - name: Deploy updated DB stack (MySQL only)
       run: |
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} GH_TOKEN=${GH_TOKEN} bash -s" <<'EOF'
           mkdir -p ~/deploy
@@ -204,9 +204,6 @@ jobs:
 
           echo "📥 Scarico docker-compose.build.yml..."
           curl -s -H "Authorization: token $GH_TOKEN" -o docker-compose.build.yml https://raw.githubusercontent.com/expovin/trading-system/refs/heads/PAPER/docker-compose.build.yml
-
-          echo "📥 Scarico db_update.sql..."
-          curl -H "Authorization: token $GH_TOKEN" -s -o db_update.sql https://raw.githubusercontent.com/expovin/trading-system/refs/heads/PAPER/db/db_update.sql
 
           if ! grep -q "services:" docker-compose.yml; then
             echo "❌ docker-compose.yml non valido o non trovato!"
@@ -229,31 +226,67 @@ jobs:
           echo "⏳ Attendo che mysql sia healthy..."
           until docker compose -p "$LOWER_PROJECT_NAME" ps --filter "status=running" | grep mysql | grep healthy; do
             if [ $attempt -ge $max_attempts ]; then
-              echo "❌ ${CONTAINER} non è diventato healthy dopo ${max_attempts} tentativi. Interrompo."
+              echo "❌ mysql non è diventato healthy dopo ${max_attempts} tentativi. Interrompo."
               exit 1
             fi
-            echo "⌛ ${CONTAINER} non ancora pronto, tentativo ${attempt}/${max_attempts}, riprovo tra 2s..."
+            echo "⌛ mysql non ancora pronto, tentativo ${attempt}/${max_attempts}, riprovo tra 2s..."
             sleep 2
             ((attempt++))
           done
-          echo "✅ mysql è healthy" 
+          echo "✅ mysql è healthy"
         EOF
 
-    - name: Copy DB migration scripts to server
+    - name: Copy DB restore script and dump to server
       run: |
-        scp -o StrictHostKeyChecking=no -r db apply-db-updates.sh $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/
+        scp -o StrictHostKeyChecking=no \
+          restore-env-db.sh \
+          Trading_${{ github.ref_name }}_dump.sql.tar.gz \
+          $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/
 
-    - name: 🔍 Debug - Contenuto della cartella db
-      run: ls -la db
-
-    - name: Run DB migrations on server
-      id: prepare
+    - name: Restore DB on server
       run: |
-        set +e
-        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << EOF
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -s" <<'EOF'
           cd ~/deploy
-          bash apply-db-updates.sh ${{ github.ref_name }}
+
+          # carico le variabili MYSQL_* da .env
+          set -a
+          . .env
+          set +a
+
+          echo "♻️ Ripristino DB Trading_$ENV_NAME da Trading_${ENV_NAME}_dump.sql.tar.gz"
+          bash restore-env-db.sh "$ENV_NAME" "Trading_${ENV_NAME}_dump.sql.tar.gz"
+        EOF
+
+    - name: Start all other container
+      run: |
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -s" <<'EOF'
+          cd ~/deploy
           
+          LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
+
+          # seleziona il compose corretto in base al branch
+          COMPOSE_FILE="docker-compose.${ENV_NAME}.yml"
+
+          if [ ! -f "$COMPOSE_FILE" ]; then
+            echo "❌ File $COMPOSE_FILE non trovato!"
+            exit 1
+          fi
+
+          echo "▶️ Avvio microservizi usando $COMPOSE_FILE"
+
+          docker compose \
+            -f "$COMPOSE_FILE" \
+            --env-file .env \
+            -p "$LOWER_PROJECT_NAME" \
+            up -d --remove-orphans --no-recreate
+
+          docker image prune -a -f
+        EOF
+
+    - name: Cleanup .env on server
+      run: |
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << EOF
+          rm -f /home/$GCP_USER/deploy/.env
         EOF
 
     - name: Crea shared cache volume se non esistente

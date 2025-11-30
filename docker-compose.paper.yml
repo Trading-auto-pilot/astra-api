@@ -1,0 +1,317 @@
+version: "3.9"
+name: "${ENV_NAME}"
+
+
+traefik:
+  image: traefik:v3.1
+  container_name: traefik
+  restart: unless-stopped
+  command:
+    # Provider Docker
+    - "--providers.docker=true"
+    - "--providers.docker.exposedByDefault=false"
+    # EntryPoints
+    - "--entrypoints.web.address=:80"
+    - "--entrypoints.websecure.address=:443"
+
+    # Redirect HTTP → HTTPS
+    - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+    - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+
+    # Let’s Encrypt (ACME via HTTP-01)
+    - "--certificatesresolvers.le.acme.email=${LETSENCRYPT_EMAIL}"
+    - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+    - "--certificatesresolvers.le.acme.httpchallenge=true"
+    - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+
+    # Dashboard (puoi disabilitarla in produzione o proteggerla via IP)
+    - "--api.dashboard=true"
+    - "--api.insecure=false"
+
+  ports:
+    - "80:80"
+    - "443:443"
+
+  volumes:
+    - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    - "traefik_letsencrypt:/letsencrypt"
+
+  networks:
+    - trading_net
+
+
+
+services:
+  # ======================
+  # CORE SERVICES (sempre ON)
+  # ======================
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_PORT : ${MYSQL_PORT}
+      MYSQL_HOST : ${MYSQL_HOST}
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "3306:3306"
+    depends_on:
+      redis:
+          condition: service_healthy
+    volumes:
+      - trading-system_mysql_data:/var/lib/mysql
+    networks:
+      - trading_net
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "300", "10","--dir","/data"]
+    volumes:
+      - redis-data:/data
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    ports:
+      - "6379:6379"
+    networks:
+      - trading_net
+
+  dbmanager:
+    image: expovin/dbmanager:${DBMANAGER_VERSION}
+    restart: unless-stopped
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    env_file:
+      - .env.paper
+    networks:
+      - trading_net
+
+  # ======================
+  # MICROSERVIZI ABILITABILI (via profiles)
+  # ======================
+
+  cachemanager:
+    image: expovin/cachemanager:${CACHEMANAGER_VERSION}
+    restart: unless-stopped
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+      - LOG_LEVEL=${LOG_LEVEL}
+      - REDIS_URL=redis://redis:6379
+      - APCA_API_KEY_ID=${APCA_API_KEY_ID}
+      - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
+    env_file:
+      - .env.paper
+    depends_on:
+      dbmanager:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3006/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - trading_net
+    profiles: ["cachemanager"]
+    labels:
+      - "traefik.enable=true"
+      # Router: https://api.trading.expovin.it/cachemanager/...
+      - "traefik.http.routers.cachemanager.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/cachemanager`)"
+      - "traefik.http.routers.cachemanager.entrypoints=websecure"
+      - "traefik.http.routers.cachemanager.tls.certresolver=le"
+      # Service: porta interna del container
+      - "traefik.http.services.cachemanager.loadbalancer.server.port=3006"
+      # Strip del prefisso /cachemanager prima di inoltrare alla app
+      - "traefik.http.middlewares.cachemanager-stripprefix.stripprefix.prefixes=/cachemanager"
+      - "traefik.http.routers.cachemanager.middlewares=cachemanager-stripprefix"
+
+  capitalmanager:
+    image: expovin/capitalmanager:${CAPITALMANAGER_VERSION}
+    restart: unless-stopped
+    env_file:
+      - .env.paper
+    depends_on:
+      - dbmanager
+    networks:
+      - trading_net
+    profiles: ["capitalmanager"]
+
+  alertingservice:
+    image: expovin/alertingservice:${ALERTINGSERVICE_VERSION}
+    restart: unless-stopped
+    env_file:
+      - .env.paper
+    depends_on:
+      - dbmanager
+    networks:
+      - trading_net
+    profiles: ["alertingservice"]
+
+  livemarketlistener:
+    image: expovin/livemarketlistener:${LIVEMARKETLISTENER_VERSION}
+    restart: unless-stopped
+    env_file:
+      - .env.paper
+    depends_on:
+      - dbmanager
+    networks:
+      - trading_net
+    profiles: ["livemarketlistener"]
+
+  orderlistner:
+    image: expovin/orderlistner:${ORDERLISTNER_VERSION}
+    restart: unless-stopped
+    env_file:
+      - .env.paper
+    depends_on:
+      - dbmanager
+    networks:
+      - trading_net
+    profiles: ["orderlistner"]
+
+  ordersimulator:
+    image: expovin/ordersimulator:${ORDERSIMULATOR_VERSION}
+    restart: unless-stopped
+    env_file:
+      - .env.paper
+    depends_on:
+      - dbmanager
+    networks:
+      - trading_net
+    profiles: ["simulator"]
+
+  marketsimulator:
+    image: expovin/marketsimulator:${MARKETSIMULATOR_VERSION}
+    restart: unless-stopped
+    env_file:
+      - .env.paper
+    depends_on:
+      - dbmanager
+    networks:
+      - trading_net
+    profiles: ["simulator"]
+
+  strategyutils:
+    image: expovin/strategyutils:${STRATEGYUTILS_VERSION}
+    restart: unless-stopped
+    env_file:
+      - .env.paper
+    depends_on:
+      - dbmanager
+    networks:
+      - trading_net
+    profiles: ["strategyutils"]
+
+  sma:
+    image: expovin/sma:${SMA_VERSION}
+    restart: unless-stopped
+    env_file:
+      - .env.paper
+    depends_on:
+      - dbmanager
+    networks:
+      - trading_net
+    profiles: ["sma"]
+
+  sltp:
+    image: expovin/sltp:${SLTP_VERSION}
+    restart: unless-stopped
+    env_file:
+      - .env.paper
+    depends_on:
+      - dbmanager
+    networks:
+      - trading_net
+    profiles: ["sltp"]
+
+  scheduler:
+    image: expovin/scheduler:${SCHEDULER_VERSION}
+    restart: unless-stopped
+    env_file:
+      - .env.paper
+    depends_on:
+      dbmanager:
+          condition: service_healthy
+    networks:
+      - trading_net
+    profiles: ["scheduler"]
+    labels:
+      - "traefik.enable=true"
+      # Router: https://api.trading.expovin.it/scheduler/...
+      - "traefik.http.routers.scheduler.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/scheduler`)"
+      - "traefik.http.routers.scheduler.entrypoints=websecure"
+      - "traefik.http.routers.scheduler.tls.certresolver=le"
+      # ⚠️ Sostituisci 3010 con la porta interna reale del tuo scheduler
+      - "traefik.http.services.scheduler.loadbalancer.server.port=3010"
+      # Strip del prefisso /scheduler
+      - "traefik.http.middlewares.scheduler-stripprefix.stripprefix.prefixes=/scheduler"
+      - "traefik.http.routers.scheduler.middlewares=scheduler-stripprefix"
+
+  tickerscanner:
+    image: expovin/tickerscanner:${TICKERSCANNER_VERSION}
+    restart: unless-stopped
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+      - LOG_LEVEL=${LOG_LEVEL}
+      - REDIS_URL=redis://redis:6379
+      - FMP_API_KEY=${FMP_API_KEY}
+    env_file:
+      - .env.paper
+    depends_on:
+      dbmanager:
+          condition: service_healthy
+    networks:
+      - trading_net
+    profiles: ["tickerscanner"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tickerscanner.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/tickerscanner`)"
+      - "traefik.http.routers.tickerscanner.entrypoints=websecure"
+      - "traefik.http.routers.tickerscanner.tls.certresolver=le"
+      - "traefik.http.services.tickerscanner.loadbalancer.server.port=3007"
+      - "traefik.http.middlewares.tickerscanner-stripprefix.stripprefix.prefixes=/tickerscanner"
+      - "traefik.http.routers.tickerscanner.middlewares=tickerscanner-stripprefix"
+
+volumes:
+  trading-system_mysql_data:
+    external: true
+  redis-data:
+  shared_cache_data:
+    external: true
+  traefik_letsencrypt:
+
+networks:
+  trading_net:
+    name:  trading_net
+    driver: bridge
