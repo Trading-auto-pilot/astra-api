@@ -6,7 +6,7 @@ function safeParse(s) { try { return JSON.parse(s); } catch { return undefined; 
 
 class RedisBus {
   constructor(opts = {}) {
-    this.url    = opts.url || process.env.REDIS_URL || "redis://localhost:6379";
+    this.url    = opts.url || process.env.REDIS_URL || "redis://redis:6379";
     this.logger = opts.logger || console;
     this.json   = opts.json !== false;
     this.name   = opts.name || "redisBus";

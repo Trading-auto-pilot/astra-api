@@ -71,6 +71,7 @@ class Scheduler {
     // =====================================================
     this.bus = new RedisBus({
       channels: this.communicationChannels,
+      url : process.env.REDIS_URL,
       name: MICROSERVICE
     });
 
