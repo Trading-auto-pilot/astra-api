@@ -7,3 +7,6 @@
 
 #Ignora la cartella logs
 logs/
+
+# DB dump versions
+db/versions/

@@ -130,6 +130,7 @@ jobs:
       run: |
         echo "LOG_LEVEL=${{ vars.LOG_LEVEL }}" > .env
         echo "ENV_NAME=${{ github.ref_name }}" >> .env
+        echo "LETSENCRYPT_EMAIL=${{ github.LETSENCRYPT_EMAIL }}" >> .env
         echo "MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}" >> .env
         echo "MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}" >> .env
         echo "MYSQL_DATABASE=${{ vars.MYSQL_DATABASE }}" >> .env
@@ -140,7 +141,7 @@ jobs:
         echo "ENV_ORDERS=${{ vars.ENV_ORDERS }}" >> .env
         echo "ENV_TRADING=${{ vars.ENV_TRADING }}" >> .env
         echo "NETWORK=${{ vars.NETWORK }}" >> .env
-         echo "ENABLE_DB_LOG=${{ vars.ENABLE_DB_LOG }}" >> .env
+        echo "ENABLE_DB_LOG=${{ vars.ENABLE_DB_LOG }}" >> .env
         echo "DBMANAGER_VERSION=${{ vars.DBMANAGER_VERSION }}" >> .env
         echo "CACHEMANAGER_VERSION=${{ vars.CACHEMANAGER_VERSION }}" >> .env
         echo "CAPITALMANAGER_VERSION=${{ vars.CAPITALMANAGER_VERSION }}" >> .env
@@ -152,9 +153,20 @@ jobs:
         echo "MYSQL_PORT=${{vars.MYSQL_PORT}}" >> .env
         echo "APCA_API_KEY_ID=${{secrets.APCA_API_KEY_ID}}" >> .env
         echo "APCA_API_SECRET_KEY=${{secrets.APCA_API_SECRET_KEY}}" >> .env
+        echo "FMP_API_KEY=${{secrets.FMP_API_KEY}}" >> .env
         echo "MARKETSIMULATOR_VERSION=${{vars.MARKETSIMULATOR_VERSION}}" >> .env
         echo "ORDERSIMULATOR_VERSION=${{vars.ORDERSIMULATOR_VERSION}}" >> .env
-
+        echo "DBMANAGER_URL=${{vars.DBMANAGER_URL}}" >> .env
+        echo "SMA_URL=${{vars.SMA_URL}}" >> .env
+        echo "SLTP_URL=${{vars.SLTP_URL}}" >> .env
+        echo "CAPITAL_MANAGER_URL=${{vars.CAPITAL_MANAGER_URL}}" >> .env
+        echo "ALERTINGMANAGER_URL=${{vars.ALERTINGMANAGER_URL}}" >> .env
+        echo "CACHEMANAGER_URL=${{vars.CACHEMANAGER_URL}}" >> .env
+        echo "REDIS_URL=${{vars.REDIS_URL}}" >> .env
+        echo "LIVEMARKETMANAGER_URL=${{vars.LIVEMARKETMANAGER_URL}}" >> .env
+        echo "MARKETSIMULATOR_URL=${{vars.MARKETSIMULATOR_URL}}" >> .env
+        echo "SCHEDULER_URL=${{vars.SCHEDULER_URL}}" >> .env
+        echo "TICKERSCANNER_URL=${{vars.TICKERSCANNER_URL}}" >> .env
 
     - name: Add .env with container versions from JS files
       run: |
@@ -199,15 +211,17 @@ jobs:
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} GH_TOKEN=${GH_TOKEN} bash -s" <<'EOF'
           mkdir -p ~/deploy
           cd ~/deploy
-          echo "📥 Scarico docker-compose.yml..."
-          curl -s -H "Authorization: token $GH_TOKEN" -o docker-compose.yml https://raw.githubusercontent.com/expovin/trading-system/refs/heads/PAPER/docker-compose.yml
+          COMPOSE_FILE="docker-compose.${ENV_NAME,,}.yml"
+
+          echo "📥 Scarico $COMPOSE_FILE..."
+          curl -s -H "Authorization: token $GH_TOKEN" -o "$COMPOSE_FILE" "https://raw.githubusercontent.com/expovin/trading-system/refs/heads/${ENV_NAME}/$COMPOSE_FILE"
 
           echo "📥 Scarico docker-compose.build.yml..."
-          curl -s -H "Authorization: token $GH_TOKEN" -o docker-compose.build.yml https://raw.githubusercontent.com/expovin/trading-system/refs/heads/PAPER/docker-compose.build.yml
+          curl -s -H "Authorization: token $GH_TOKEN" -o docker-compose.build.yml "https://raw.githubusercontent.com/expovin/trading-system/refs/heads/${ENV_NAME}/docker-compose.build.yml"
 
-          if ! grep -q "services:" docker-compose.yml; then
-            echo "❌ docker-compose.yml non valido o non trovato!"
-            cat docker-compose.yml
+          if ! grep -q "services:" "$COMPOSE_FILE"; then
+            echo "❌ $COMPOSE_FILE non valido o non trovato!"
+            cat "$COMPOSE_FILE"
             exit 1
           fi
 
@@ -216,9 +230,9 @@ jobs:
           echo "GitHub Token Length: ${#GH_TOKEN}"
           echo "Project Name: ${LOWER_PROJECT_NAME}"
 
-          docker compose -p "$LOWER_PROJECT_NAME" down
-          docker compose pull
-          docker compose --env-file .env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans mysql
+          docker compose -f "$COMPOSE_FILE" -p "$LOWER_PROJECT_NAME" down
+          docker compose -f "$COMPOSE_FILE" pull
+          docker compose -f "$COMPOSE_FILE" --env-file .env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans mysql
 
           max_attempts=10
           attempt=1
@@ -238,9 +252,16 @@ jobs:
 
     - name: Copy DB restore script and dump to server
       run: |
+        TAR_FILE=$(ls db/Trading_${{ github.ref_name }}_*.tar.gz 2>/dev/null | head -n 1)
+        if [[ -z "$TAR_FILE" ]]; then
+          echo "❌ Nessun file db/Trading_${{ github.ref_name }}_*.tar.gz trovato"
+          exit 1
+        fi
+        echo "📦 Tarball trovato: $TAR_FILE"
+
         scp -o StrictHostKeyChecking=no \
           restore-env-db.sh \
-          Trading_${{ github.ref_name }}_dump.sql.tar.gz \
+          "$TAR_FILE" \
           $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/
 
     - name: Restore DB on server
@@ -253,34 +274,49 @@ jobs:
           . .env
           set +a
 
-          echo "♻️ Ripristino DB Trading_$ENV_NAME da Trading_${ENV_NAME}_dump.sql.tar.gz"
-          bash restore-env-db.sh "$ENV_NAME" "Trading_${ENV_NAME}_dump.sql.tar.gz"
+          TAR_FILE=$(ls Trading_${ENV_NAME}_*.tar.gz 2>/dev/null | head -n 1)
+          if [[ -z "$TAR_FILE" ]]; then
+            echo "❌ Nessun file Trading_${ENV_NAME}_*.tar.gz trovato per il restore"
+            exit 1
+          fi
+
+          echo "♻️ Ripristino DB Trading_$ENV_NAME da $TAR_FILE"
+          bash restore-env-db.sh "$ENV_NAME" "$TAR_FILE"
         EOF
 
     - name: Start all other container
       run: |
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -s" <<'EOF'
           cd ~/deploy
-          
+
           LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
 
           # seleziona il compose corretto in base al branch
-          COMPOSE_FILE="docker-compose.${ENV_NAME}.yml"
+          COMPOSE_FILE="docker-compose.${ENV_NAME,,}.yml"
 
           if [ ! -f "$COMPOSE_FILE" ]; then
             echo "❌ File $COMPOSE_FILE non trovato!"
             exit 1
           fi
 
-          echo "▶️ Avvio microservizi usando $COMPOSE_FILE"
+          if [ ! -f "./deploy-with-profiles.sh" ]; then
+            echo "❌ Script deploy-with-profiles.sh non trovato in ~/deploy!"
+            exit 1
+          fi
 
-          docker compose \
-            -f "$COMPOSE_FILE" \
-            --env-file .env \
-            -p "$LOWER_PROJECT_NAME" \
-            up -d --remove-orphans --no-recreate
+          chmod +x ./deploy-with-profiles.sh
 
+          echo "▶️ Avvio microservizi dinamici per ambiente $ENV_NAME usando profili dal DB"
+
+          # Invoca lo script che:
+          #  1. legge i microservizi ON dal DB
+          #  2. calcola COMPOSE_PROFILES
+          #  3. esegue docker compose up con i profili corretti
+          ./deploy-with-profiles.sh "$ENV_NAME" "$COMPOSE_FILE" ".env"
+
+          echo "🧹 Pulizia immagini Docker"
           docker image prune -a -f
+
         EOF
 
     - name: Cleanup .env on server
@@ -306,7 +342,7 @@ jobs:
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -s" <<'EOF'
           cd ~/deploy
           LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
-          docker compose -f docker-compose.yml -f docker-compose.build.yml --env-file .env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans --no-recreate
+          docker compose -f "docker-compose.${ENV_NAME,,}.yml" -f docker-compose.build.yml --env-file .env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans --no-recreate
           docker image prune -a -f
         EOF
 
