@@ -87,7 +87,7 @@ wait_for_mysql_healthy() {
   if [ -z "$container_id" ]; then
     echo "❌ Impossibile trovare il container per '${project_name}-mysql-*'"
     exit 1
-  fi
+  }
 
   echo "⏳ Attendo che MySQL sia healthy..."
 
@@ -175,7 +175,7 @@ SQL
       -e "RENAME TABLE \`${MAIN_DB}\`.\`${tbl}\` TO \`${ENV_DB}\`.\`${tbl}\`;"
   done
 
-echo "📌 Ricreo le VIEW in ${ENV_DB}"
+  echo "📌 Ricreo le VIEW in ${ENV_DB}"
 
   VIEWS=$(mysql -N -h "$DB_HOST" -P "$DB_PORT" -u "$DB_ADMIN_USER" -p"$DB_ADMIN_PASS" \
     -e "SELECT TABLE_NAME 
@@ -191,7 +191,6 @@ echo "📌 Ricreo le VIEW in ${ENV_DB}"
     mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_ADMIN_USER" -p"$DB_ADMIN_PASS" \
       -e "USE \`${ENV_DB}\`; ${VIEW_DEF};"
   done
-
 
   echo "🗑️  Droppo il DB ${MAIN_DB} ormai vuoto..."
   mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_ADMIN_USER" -p"$DB_ADMIN_PASS" \
