@@ -1,4 +1,3 @@
-version: "3.9"
 name: "${ENV_NAME}"
 
 services:
@@ -36,9 +35,8 @@ services:
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "traefik_letsencrypt:/letsencrypt"
-
-  networks:
-    - trading_net
+    networks:
+      - trading_net
   # ======================
   # CORE SERVICES (sempre ON)
   # ======================
