@@ -87,7 +87,7 @@ wait_for_mysql_healthy() {
   if [ -z "$container_id" ]; then
     echo "❌ Impossibile trovare il container per '${project_name}-mysql-*'"
     exit 1
-  }
+  fi
 
   echo "⏳ Attendo che MySQL sia healthy..."
 
