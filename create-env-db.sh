@@ -9,9 +9,10 @@ set -euo pipefail
 # Risultato:
 #   trading_system_paper (copia completa)
 
-DB_HOST="${MYSQL_HOST:-localhost}"
+DB_HOST="127.0.0.1"
 DB_USER="${MYSQL_USER:-root}"
 DB_PASS="${MYSQL_PASSWORD:-example}"
+DB_PORT="${MYSQL_PORT:-3306}"
 
 # Utente applicativo a cui dare i permessi
 APP_USER="${APP_USER:-trading_user}"
@@ -29,7 +30,7 @@ TARGET_DB="${SRC_DB}_${ENV}"   # se vuoi proprio il punto: "${SRC_DB}.${ENV}"
 
 echo "Sorgente : ${SRC_DB}"
 echo "Destinaz.: ${TARGET_DB}"
-echo "Connessione a: $DB_HOST:$MYSQL_PORT come $DB_USER"
+echo "Connessione a: $DB_HOST:$DB_PORT come $DB_USER"
 echo "Concedo permessi a: ${APP_USER}@${APP_HOST}"
 
 # Drop & create del DB di destinazione
@@ -48,7 +49,7 @@ mysqldump -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" \
 
 
 echo "Verifica DB creato:"
-mysql -h "$DB_HOST" -P "$MYSQL_PORT" -u "$DB_USER" -p"$DB_PASS" \
+mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASS" \
   -e "SHOW DATABASES LIKE '${TARGET_DB}';"
 
 echo "Clonazione completata: ${SRC_DB} → ${TARGET_DB}"
