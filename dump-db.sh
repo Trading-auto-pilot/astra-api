@@ -18,7 +18,7 @@ AMBIENTE="$1"
 
 TS="$(date +%Y%m%d_%H%M%S)"
 
-SRC_DB="Trading_${AMBIENTE}"
+SRC_DB="Trading"
 
 # Path per dump e versioning
 DB_DIR="db"

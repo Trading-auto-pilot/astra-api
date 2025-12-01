@@ -4,14 +4,14 @@ set -euo pipefail
 # ---------------------------------------------------
 # 1️⃣ Parametri
 # ---------------------------------------------------
-if [ "$#" -ne 2 ]; then
-  echo "Uso: $0 <ENV_NAME> <DUMP_TAR_GZ>"
+if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
+  echo "Uso: $0 <ENV_NAME> [DUMP_TAR_GZ]"
   echo "Esempio: $0 PAPER Trading_PAPER_20251201.sql.tar.gz"
   exit 1
 fi
 
 ENV_NAME="$1"
-TAR_FILE="$2"
+TAR_FILE="${2:-}"
 
 # ---------------------------------------------------
 # 2️⃣ Carico variabili da .env (che contiene MYSQL_*)
@@ -54,11 +54,12 @@ ENV_DB="Trading_${ENV_NAME}"
 
 TS="$(date +'%Y%m%d_%H%M%S')"
 BACKUP_TAR_CREATED=""
+DB_DIR="db"
+mkdir -p "$DB_DIR"
 
 echo "Ambiente          : ${ENV_NAME}"
 echo "DB corrente       : ${MAIN_DB}"
 echo "DB ENV snapshot   : ${ENV_DB}"
-echo "File dump in input: ${TAR_FILE}"
 echo "Connessione admin : ${DB_HOST}:${DB_PORT} come ${DB_ADMIN_USER}"
 echo "Utente applicativo: ${DB_APP_USER}@'%'"
 
@@ -127,7 +128,7 @@ DB_ENV_EXISTS=$(mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_ADMIN_USER" -p"$DB_ADM
 if [ "$DB_ENV_EXISTS" -eq 0 ]; then
   echo "⚠️ Il database ${ENV_DB} non esiste ancora. Salto il backup iniziale."
 else
-  BACKUP_SQL="backup_${ENV_DB}_${TS}.sql"
+  BACKUP_SQL="${DB_DIR}/backup_${ENV_DB}_${TS}.sql"
   BACKUP_TAR="${BACKUP_SQL}.tar.gz"
 
   echo "📦 Eseguo backup del DB esistente: ${ENV_DB} → ${BACKUP_TAR}"
@@ -207,10 +208,16 @@ echo "🆕 Creo il DB vuoto: ${MAIN_DB}"
 mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_ADMIN_USER" -p"$DB_ADMIN_PASS" \
   -e "CREATE DATABASE \`${MAIN_DB}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
-if [ ! -f "$TAR_FILE" ]; then
-  echo "❌ File dump ${TAR_FILE} non trovato."
+if [ -z "$TAR_FILE" ]; then
+  TAR_FILE=$(ls -1t "${DB_DIR}/Trading_${ENV_NAME}_"*.tar.gz 2>/dev/null | head -n 1 || true)
+fi
+
+if [ -z "$TAR_FILE" ] || [ ! -f "$TAR_FILE" ]; then
+  echo "❌ File dump Trading_${ENV_NAME}_*.tar.gz non trovato in ${DB_DIR}"
   exit 1
 fi
+
+echo "File dump in input: ${TAR_FILE}"
 
 TMP_DIR=$(mktemp -d)
 echo "📂 Estraggo il dump da ${TAR_FILE} in ${TMP_DIR}"
