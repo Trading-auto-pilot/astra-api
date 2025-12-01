@@ -160,16 +160,37 @@ DROP DATABASE IF EXISTS \`${ENV_DB}\`;
 CREATE DATABASE \`${ENV_DB}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 SQL
 
-  echo "📁 Sposto le tabelle da ${MAIN_DB} a ${ENV_DB}..."
-  TABLES=$(mysql -N -h "$DB_HOST" -P "$DB_PORT" -u "$DB_ADMIN_USER" -p"$DB_ADMIN_PASS" \
-    -e "SELECT TABLE_NAME FROM information_schema.tables WHERE table_schema='${MAIN_DB}';")
+  echo "📌 Sposto solo le TABELLE (niente VIEW) da ${MAIN_DB} → ${ENV_DB}"
 
-  if [ -n "$TABLES" ]; then
-    for tbl in $TABLES; do
-      mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_ADMIN_USER" -p"$DB_ADMIN_PASS" \
-        -e "RENAME TABLE \`${MAIN_DB}\`.\`${tbl}\` TO \`${ENV_DB}\`.\`${tbl}\`;"
-    done
-  fi
+  TABLES=$(mysql -N -h "$DB_HOST" -P "$DB_PORT" -u "$DB_ADMIN_USER" -p"$DB_ADMIN_PASS" \
+    -e "SELECT TABLE_NAME 
+        FROM information_schema.tables 
+        WHERE table_schema='${MAIN_DB}' 
+          AND TABLE_TYPE='BASE TABLE';")
+
+  for tbl in $TABLES; do
+    echo "  → RENAME TABLE ${MAIN_DB}.${tbl} TO ${ENV_DB}.${tbl}"
+    mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_ADMIN_USER" -p"$DB_ADMIN_PASS" \
+      -e "RENAME TABLE \`${MAIN_DB}\`.\`${tbl}\` TO \`${ENV_DB}\`.\`${tbl}\`;"
+  done
+
+echo "📌 Ricreo le VIEW in ${ENV_DB}"
+
+  VIEWS=$(mysql -N -h "$DB_HOST" -P "$DB_PORT" -u "$DB_ADMIN_USER" -p"$DB_ADMIN_PASS" \
+    -e "SELECT TABLE_NAME 
+        FROM information_schema.views 
+        WHERE table_schema='${MAIN_DB}';")
+
+  for vw in $VIEWS; do
+    echo "  → Ricreo VIEW ${ENV_DB}.${vw}"
+
+    VIEW_DEF=$(mysql -N -h "$DB_HOST" -P "$DB_PORT" -u "$DB_ADMIN_USER" -p"$DB_ADMIN_PASS" \
+      -e "SHOW CREATE VIEW \`${MAIN_DB}\`.\`${vw}\`\G" | sed -n 's/^ *Create View: *//p')
+
+    mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_ADMIN_USER" -p"$DB_ADMIN_PASS" \
+      -e "USE \`${ENV_DB}\`; ${VIEW_DEF};"
+  done
+
 
   echo "🗑️  Droppo il DB ${MAIN_DB} ormai vuoto..."
   mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_ADMIN_USER" -p"$DB_ADMIN_PASS" \
