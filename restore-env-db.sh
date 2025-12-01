@@ -21,6 +21,7 @@ AMBIENTE="$1"
 TAR_FILE="$2"
 
 DB_NAME="Trading_${AMBIENTE}"
+PREV_DB="${DB_NAME}.prev"
 TS="$(date +'%Y%m%d_%H%M%S')"
 
 BACKUP_SQL="backup_${DB_NAME}_${TS}.sql"
@@ -28,6 +29,7 @@ BACKUP_TAR="${BACKUP_SQL}.tar.gz"
 
 echo "Ambiente          : ${AMBIENTE}"
 echo "DB da sostituire  : ${DB_NAME}"
+echo "DB precedente     : ${PREV_DB}"
 echo "File dump in input: ${TAR_FILE}"
 echo "Connessione a     : ${DB_HOST}:${DB_PORT} come ${DB_USER}"
 echo "Utente applicativo: ${APP_USER}@${APP_HOST}"
@@ -76,11 +78,35 @@ echo "File SQL estratto: ${SQL_IN_TAR}"
 # 3) DROP + CREATE + GRANT #
 ############################
 
-echo "Droppo e ricreo il DB: ${DB_NAME}"
+echo "Rinomino il DB esistente in ${PREV_DB} (se presente)"
 
-mysql -h "$DB_HOST" -P "$DB_PORT" --protocol=TCP \
-  -u "$DB_USER" -p"$DB_PASS" \
-  -e "DROP DATABASE IF EXISTS \`${DB_NAME}\`;"
+# verifica esistenza DB corrente
+DB_EXISTS=$(mysql -N -h "$DB_HOST" -P "$DB_PORT" --protocol=TCP -u "$DB_USER" -p"$DB_PASS" \
+  -e "SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name='${DB_NAME}';")
+
+if [ "$DB_EXISTS" -gt 0 ]; then
+  # elimina eventuale DB .prev precedente e ricrealo
+  mysql -h "$DB_HOST" -P "$DB_PORT" --protocol=TCP -u "$DB_USER" -p"$DB_PASS" \
+    -e "DROP DATABASE IF EXISTS \`${PREV_DB}\`; CREATE DATABASE \`${PREV_DB}\`;"
+
+  TABLES=$(mysql -N -h "$DB_HOST" -P "$DB_PORT" --protocol=TCP -u "$DB_USER" -p"$DB_PASS" \
+    -e "SELECT TABLE_NAME FROM information_schema.tables WHERE table_schema='${DB_NAME}';")
+
+  if [ -n "$TABLES" ]; then
+    for tbl in $TABLES; do
+      mysql -h "$DB_HOST" -P "$DB_PORT" --protocol=TCP -u "$DB_USER" -p"$DB_PASS" \
+        -e "RENAME TABLE \`${DB_NAME}\`.\`${tbl}\` TO \`${PREV_DB}\`.\`${tbl}\`;"
+    done
+  fi
+
+  # droppa il DB ormai vuoto
+  mysql -h "$DB_HOST" -P "$DB_PORT" --protocol=TCP -u "$DB_USER" -p"$DB_PASS" \
+    -e "DROP DATABASE IF EXISTS \`${DB_NAME}\`;"
+else
+  echo "Nessun DB ${DB_NAME} trovato: nessuna rinomina necessaria."
+fi
+
+echo "Creo il DB vuoto: ${DB_NAME}"
 
 mysql -h "$DB_HOST" -P "$DB_PORT" --protocol=TCP \
   -u "$DB_USER" -p"$DB_PASS" \
