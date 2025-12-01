@@ -209,11 +209,11 @@ mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_ADMIN_USER" -p"$DB_ADMIN_PASS" \
   -e "CREATE DATABASE \`${MAIN_DB}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
 if [ -z "$TAR_FILE" ]; then
-  TAR_FILE=$(ls -1t "${DB_DIR}/Trading_${ENV_NAME}_"*.tar.gz 2>/dev/null | head -n 1 || true)
+  TAR_FILE=$(ls -1t "Trading_${ENV_NAME}_"*.tar.gz 2>/dev/null | head -n 1 || true)
 fi
 
 if [ -z "$TAR_FILE" ] || [ ! -f "$TAR_FILE" ]; then
-  echo "❌ File dump Trading_${ENV_NAME}_*.tar.gz non trovato in ${DB_DIR}"
+  echo "❌ File dump Trading_${ENV_NAME}_*.tar.gz non trovato nella root"
   exit 1
 fi
 
