@@ -240,6 +240,18 @@ jobs:
           bash restore-env-db.sh "$ENV_NAME" "$TAR_FILE"
         EOF
 
+    - name: Copy deploy-with-profiles.sh to server
+      run: |
+        scp -o StrictHostKeyChecking=no \
+          deploy-with-profiles.sh \
+          $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/deploy-with-profiles.sh
+
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << 'EOF'
+          cd ~/deploy
+          chmod +x deploy-with-profiles.sh
+        EOF
+
+
     - name: Start all other container
       run: |
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -s" <<'EOF'
@@ -260,11 +272,8 @@ jobs:
             exit 1
           fi
 
-          chmod +x ./deploy-with-profiles.sh
-
           echo "▶️ Avvio microservizi dinamici per ambiente $ENV_NAME usando profili dal DB"
 
-          # Invoca lo script che:
           #  1. legge i microservizi ON dal DB
           #  2. calcola COMPOSE_PROFILES
           #  3. esegue docker compose up con i profili corretti
@@ -272,8 +281,8 @@ jobs:
 
           echo "🧹 Pulizia immagini Docker"
           docker image prune -a -f
-
         EOF
+
 
     - name: Cleanup .env on server
       run: |
