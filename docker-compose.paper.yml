@@ -110,8 +110,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    env_file:
-      - .env.paper
     networks:
       - trading_net
 
@@ -128,8 +126,6 @@ services:
       - REDIS_URL=redis://redis:6379
       - APCA_API_KEY_ID=${APCA_API_KEY_ID}
       - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
-    env_file:
-      - .env.paper
     depends_on:
       dbmanager:
         condition: service_healthy
@@ -159,8 +155,6 @@ services:
   capitalmanager:
     image: expovin/capitalmanager:${CAPITALMANAGER_VERSION}
     restart: unless-stopped
-    env_file:
-      - .env.paper
     depends_on:
       - dbmanager
     networks:
@@ -170,8 +164,6 @@ services:
   alertingservice:
     image: expovin/alertingservice:${ALERTINGSERVICE_VERSION}
     restart: unless-stopped
-    env_file:
-      - .env.paper
     depends_on:
       - dbmanager
     networks:
@@ -181,8 +173,6 @@ services:
   livemarketlistener:
     image: expovin/livemarketlistener:${LIVEMARKETLISTENER_VERSION}
     restart: unless-stopped
-    env_file:
-      - .env.paper
     depends_on:
       - dbmanager
     networks:
@@ -192,8 +182,6 @@ services:
   orderlistner:
     image: expovin/orderlistner:${ORDERLISTNER_VERSION}
     restart: unless-stopped
-    env_file:
-      - .env.paper
     depends_on:
       - dbmanager
     networks:
@@ -203,8 +191,6 @@ services:
   ordersimulator:
     image: expovin/ordersimulator:${ORDERSIMULATOR_VERSION}
     restart: unless-stopped
-    env_file:
-      - .env.paper
     depends_on:
       - dbmanager
     networks:
@@ -214,8 +200,6 @@ services:
   marketsimulator:
     image: expovin/marketsimulator:${MARKETSIMULATOR_VERSION}
     restart: unless-stopped
-    env_file:
-      - .env.paper
     depends_on:
       - dbmanager
     networks:
@@ -225,8 +209,6 @@ services:
   strategyutils:
     image: expovin/strategyutils:${STRATEGYUTILS_VERSION}
     restart: unless-stopped
-    env_file:
-      - .env.paper
     depends_on:
       - dbmanager
     networks:
@@ -236,8 +218,6 @@ services:
   sma:
     image: expovin/sma:${SMA_VERSION}
     restart: unless-stopped
-    env_file:
-      - .env.paper
     depends_on:
       - dbmanager
     networks:
@@ -247,8 +227,6 @@ services:
   sltp:
     image: expovin/sltp:${SLTP_VERSION}
     restart: unless-stopped
-    env_file:
-      - .env.paper
     depends_on:
       - dbmanager
     networks:
@@ -258,8 +236,6 @@ services:
   scheduler:
     image: expovin/scheduler:${SCHEDULER_VERSION}
     restart: unless-stopped
-    env_file:
-      - .env.paper
     depends_on:
       dbmanager:
           condition: service_healthy
@@ -286,8 +262,6 @@ services:
       - LOG_LEVEL=${LOG_LEVEL}
       - REDIS_URL=redis://redis:6379
       - FMP_API_KEY=${FMP_API_KEY}
-    env_file:
-      - .env.paper
     depends_on:
       dbmanager:
           condition: service_healthy
