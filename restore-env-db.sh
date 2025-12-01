@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Variabili d’ambiente standard
-DB_HOST="${MYSQL_HOST:-127.0.0.1}"
+DB_HOST="127.0.0.1"
 DB_PORT="${MYSQL_PORT:-3306}"
 DB_USER="${MYSQL_USER:-root}"
 DB_PASS="${MYSQL_PASSWORD:-example}"
