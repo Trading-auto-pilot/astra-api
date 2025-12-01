@@ -2,19 +2,19 @@
 set -euo pipefail
 
 # Uso:
-#   ./deploy-with-profiles.sh           # default ENV = PAPER
+#   ./deploy-with-profiles.sh                 # default ENV = PAPER
 #   ./deploy-with-profiles.sh PAPER
 #   ./deploy-with-profiles.sh LIVE
 
 ENV_NAME="${1:-PAPER}"
-COMPOSE_FILE="${2:-docker-compose.paper.yml}"
+COMPOSE_FILE="${2:-docker-compose.${ENV_NAME,,}.yml}"
 ENV_FILE="${3:-.env}"
 
 echo "🚀 Deploy environment: $ENV_NAME"
 echo "📄 Compose file:       $COMPOSE_FILE"
 echo "🔧 Env file:           $ENV_FILE"
 
-# 1) Carico le variabili da .env (le rende esportate per Node e docker compose)
+# 1) Carico le variabili da .env
 if [[ -f "$ENV_FILE" ]]; then
   set -a
   # shellcheck disable=SC1090
@@ -25,21 +25,70 @@ else
   exit 1
 fi
 
-# 2) Calcolo i profili dal DB
-PROFILES=$(node scripts/build-compose-profiles.js "$ENV_NAME")
+# 2) Controllo variabili MYSQL_* minime
+: "${MYSQL_HOST:?MYSQL_HOST non impostata in $ENV_FILE}"
+: "${MYSQL_USER:?MYSQL_USER non impostata in $ENV_FILE}"
+: "${MYSQL_PASSWORD:?MYSQL_PASSWORD non impostata in $ENV_FILE}"
+: "${MYSQL_DATABASE:?MYSQL_DATABASE non impostata in $ENV_FILE}"
+MYSQL_PORT="${MYSQL_PORT:-3306}"
+
+# 👉 Dall'host, 'mysql' non è risolvibile: uso sempre 127.0.0.1
+DB_HOST="$MYSQL_HOST"
+if [ "$DB_HOST" = "mysql" ]; then
+  DB_HOST="127.0.0.1"
+fi
+
+echo "🗄  Leggo i service_flags da ${MYSQL_DATABASE} (env='${ENV_NAME}') su ${DB_HOST}:${MYSQL_PORT}..."
+
+RAW_MS=$(mysql -N -h "$DB_HOST" -P "$MYSQL_PORT" \
+  -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" \
+  -e "SELECT microservice FROM service_flags WHERE env='${ENV_NAME}' AND enabled = 1 ORDER BY microservice;") || {
+    echo "❌ Errore nella query a service_flags"
+    exit 1
+  }
+
+PROFILES_LIST=""
+
+if [[ -z "${RAW_MS// }" ]]; then
+  echo "⚠️ Nessun microservizio abilitato in service_flags per env='${ENV_NAME}'"
+else
+  while IFS= read -r ms; do
+    ms_lc=$(echo "$ms" | tr '[:upper:]' '[:lower:]')
+
+    case "$ms_lc" in
+      marketsimulator|ordersimulator)
+        PROFILES_LIST+=$'\n'"simul"
+        ;;
+      *)
+        PROFILES_LIST+=$'\n'"$ms_lc"
+        ;;
+    esac
+  done <<< "$RAW_MS"
+fi
+
+# Rimuovo vuoti, dedup e trasformo in lista separata da virgole
+if [[ -n "${PROFILES_LIST// }" ]]; then
+  PROFILES=$(printf '%s\n' "$PROFILES_LIST" | sed '/^$/d' | sort -u | paste -sd, -)
+else
+  PROFILES=""
+fi
 
 echo "🧩 Profili attivi dal DB per $ENV_NAME: '${PROFILES}'"
 
-# Se non ci sono profili attivi, partiranno solo i servizi senza profiles (core)
-if [[ -z "$PROFILES" ]]; then
-  echo "⚠️ Nessun profilo attivo trovato, avvio solo i servizi core (senza profiles)..."
-fi
-
 LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
 
-# 3) Avvio/aggiorno stack con i profili calcolati
-COMPOSE_PROFILES="$PROFILES" \
+# 4) Avvio/aggiorno stack con i profili calcolati
+if [[ -n "$PROFILES" ]]; then
+  echo "▶️ Avvio docker compose con COMPOSE_PROFILES='${PROFILES}'"
+  COMPOSE_PROFILES="$PROFILES" \
+    docker compose -f "$COMPOSE_FILE" \
+      --env-file "$ENV_FILE" \
+      -p "$LOWER_PROJECT_NAME" \
+      up -d --remove-orphans
+else
+  echo "⚠️ Nessun profilo attivo: avvio solo i servizi CORE (senza profiles)"
   docker compose -f "$COMPOSE_FILE" \
-  --env-file "$ENV_FILE" \
-  -p "$LOWER_PROJECT_NAME" \
-  up -d --remove-orphans
+    --env-file "$ENV_FILE" \
+    -p "$LOWER_PROJECT_NAME" \
+    up -d --remove-orphans
+fi
