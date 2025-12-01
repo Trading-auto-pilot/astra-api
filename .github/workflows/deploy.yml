@@ -148,6 +148,9 @@ jobs:
         echo "ALERTINGSERVICE_VERSION=${{ vars.ALERTINGSERVICE_VERSION }}" >> .env
         echo "LIVEMARKETLISTENER_VERSION=${{ vars.LIVEMARKETLISTENER_VERSION }}" >> .env
         echo "ORDERLISTNER_VERSION=${{ vars.ORDERLISTNER_VERSION }}" >> .env
+        echo "STRATEGYUTILS_VERSION=${{ vars.STRATEGYUTILS_VERSION }}" >> .env
+        echo "TICKERSCANNER_VERSION=${{ vars.TICKERSCANNER_VERSION }}" >> .env
+        echo "SCHEDULER_VERSION=${{ vars.SCHEDULER_VERSION }}" >> .env
         echo "SMA_VERSION=${{ vars.SMA_VERSION }}" >> .env
         echo "SLTP_VERSION=${{ vars.SLTP_VERSION }}" >> .env
         echo "MYSQL_PORT=${{vars.MYSQL_PORT}}" >> .env
