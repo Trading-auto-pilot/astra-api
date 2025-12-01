@@ -1,47 +1,44 @@
 version: "3.9"
 name: "${ENV_NAME}"
 
+services:
 
-traefik:
-  image: traefik:v3.1
-  container_name: traefik
-  restart: unless-stopped
-  command:
-    # Provider Docker
-    - "--providers.docker=true"
-    - "--providers.docker.exposedByDefault=false"
-    # EntryPoints
-    - "--entrypoints.web.address=:80"
-    - "--entrypoints.websecure.address=:443"
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      # Provider Docker
+      - "--providers.docker=true"
+      - "--providers.docker.exposedByDefault=false"
+      # EntryPoints
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
 
-    # Redirect HTTP → HTTPS
-    - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
-    - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # Redirect HTTP → HTTPS
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
 
-    # Let’s Encrypt (ACME via HTTP-01)
-    - "--certificatesresolvers.le.acme.email=${LETSENCRYPT_EMAIL}"
-    - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
-    - "--certificatesresolvers.le.acme.httpchallenge=true"
-    - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+      # Let’s Encrypt (ACME via HTTP-01)
+      - "--certificatesresolvers.le.acme.email=${LETSENCRYPT_EMAIL}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.le.acme.httpchallenge=true"
+      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
 
-    # Dashboard (puoi disabilitarla in produzione o proteggerla via IP)
-    - "--api.dashboard=true"
-    - "--api.insecure=false"
+      # Dashboard (puoi disabilitarla in produzione o proteggerla via IP)
+      - "--api.dashboard=true"
+      - "--api.insecure=false"
 
-  ports:
-    - "80:80"
-    - "443:443"
+    ports:
+      - "80:80"
+      - "443:443"
 
-  volumes:
-    - "/var/run/docker.sock:/var/run/docker.sock:ro"
-    - "traefik_letsencrypt:/letsencrypt"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "traefik_letsencrypt:/letsencrypt"
 
   networks:
     - trading_net
-
-
-
-services:
   # ======================
   # CORE SERVICES (sempre ON)
   # ======================
