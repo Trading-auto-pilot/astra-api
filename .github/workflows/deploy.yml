@@ -236,8 +236,6 @@ jobs:
             exit 1
           fi
 
-          echo "Avvio il docker mysql per fare il restore"
-          docker compose -f docker-compose.${ENV_NAME,,}.yml --env-file .env up -d mysql
           echo "♻️ Ripristino DB Trading_$ENV_NAME da $TAR_FILE"
           bash restore-env-db.sh "$ENV_NAME" "$TAR_FILE"
         EOF
