@@ -34,7 +34,7 @@ done
 if [ "$#" -eq 2 ]; then
   OUTPUT_SQL="$2"
 else
-  OUTPUT_SQL="${SRC_DB}_${TS}.sql"
+  OUTPUT_SQL="Trading_${AMBIENTE}_${TS}.sql"
 fi
 
 OUTPUT_TAR="${OUTPUT_SQL}.tar.gz"
