@@ -261,8 +261,32 @@ jobs:
             exit 1
           fi
 
-          echo "♻️ Ripristino DB Trading_$ENV_NAME da $TAR_FILE"
+          MARKER_FILE=".last_db_restore_${ENV_NAME}.txt"
+
+          if [[ -f "$MARKER_FILE" ]]; then
+            LAST_RESTORED=$(cat "$MARKER_FILE")
+          else
+            LAST_RESTORED=""
+          fi
+
+          echo "📦 Dump corrente : $TAR_FILE"
+          echo "📝 Ultimo import : ${LAST_RESTORED:-<none>}"
+
+          if [[ "$TAR_FILE" == "$LAST_RESTORED" ]]; then
+            echo "✅ Il dump è lo stesso dell'ultimo restore. Skip ripristino DB."
+            exit 0
+          fi
+
+          echo "♻️ Ripristino DB Trading_${ENV_NAME} da $TAR_FILE"
           bash restore-env-db.sh "$ENV_NAME" "$TAR_FILE"
+
+          if [[ $? -eq 0 ]]; then
+            echo "$TAR_FILE" > "$MARKER_FILE"
+            echo "📝 Aggiornato marker di ultimo restore: $MARKER_FILE"
+          else
+            echo "❌ Errore nel restore, marker NON aggiornato."
+            exit 1
+          fi
         EOF
 
     - name: Copy deploy-with-profiles.sh to server

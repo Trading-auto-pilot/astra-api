@@ -4,6 +4,7 @@
   "microservice": "cacheManager",
 
   "note": [
-    "v.0.1.0 cacheManager: Initial scaffolding generated from template."
+    "0.1.0 cacheManager: Initial scaffolding generated from template.",
+    "2.0.0 cacheManager: Refactoring con multiprovider FMT + ALPACA"
   ]
 }
