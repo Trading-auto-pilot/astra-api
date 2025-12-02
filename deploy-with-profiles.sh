@@ -78,11 +78,31 @@ echo "🧩 Profili attivi dal DB per $ENV_NAME: '${PROFILES}'"
 LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
 
 # 4) Avvio/aggiorno stack con i profili calcolati
-echo "🛑 Fermiamo i container esistenti per l'ambiente $ENV_NAME"
-docker compose -f "$COMPOSE_FILE" \
+echo "🛑 Fermiamo solo i microservizi NON core per l'ambiente $ENV_NAME"
+
+CORE_SERVICES=("mysql" "redis" "traefik")
+
+ALL_SERVICES=$(docker compose -f "$COMPOSE_FILE" \
   --env-file "$ENV_FILE" \
   -p "$LOWER_PROJECT_NAME" \
-  down
+  config --services)
+
+for svc in $ALL_SERVICES; do
+  if [[ ! " ${CORE_SERVICES[@]} " =~ " ${svc} " ]]; then
+    echo "⛔ Stop microservizio: $svc"
+    docker compose -f "$COMPOSE_FILE" \
+      --env-file "$ENV_FILE" \
+      -p "$LOWER_PROJECT_NAME" \
+      stop "$svc"
+    docker compose -f "$COMPOSE_FILE" \
+      --env-file "$ENV_FILE" \
+      -p "$LOWER_PROJECT_NAME" \
+      rm -f "$svc"
+  else
+    echo "✅ Mantengo attivo il servizio core: $svc"
+  fi
+done
+
 
 echo "🧹 Pulizia immagini dangling prima del pull..."
 docker images --filter "dangling=true" -q | xargs -r docker rmi || true
