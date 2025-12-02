@@ -78,31 +78,51 @@ echo "🧩 Profili attivi dal DB per $ENV_NAME: '${PROFILES}'"
 LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
 
 # 4) Avvio/aggiorno stack con i profili calcolati
+echo "🛑 Fermiamo i container esistenti per l'ambiente $ENV_NAME"
+docker compose -f "$COMPOSE_FILE" \
+  --env-file "$ENV_FILE" \
+  -p "$LOWER_PROJECT_NAME" \
+  down
+
+echo "🧹 Pulizia immagini dangling prima del pull..."
+docker images --filter "dangling=true" -q | xargs -r docker rmi || true
+
 if [[ -n "$PROFILES" ]]; then
-  echo "⬇️  Pull immagini per profili='${PROFILES}'"
+  echo "⬇️ Scarico immagini per profili: ${PROFILES}"
   COMPOSE_PROFILES="$PROFILES" \
     docker compose -f "$COMPOSE_FILE" \
       --env-file "$ENV_FILE" \
       -p "$LOWER_PROJECT_NAME" \
       pull
 
-  echo "▶️ Avvio docker compose con COMPOSE_PROFILES='${PROFILES}'"
+  echo "🧹 Pulizia immagini dangling dopo il pull..."
+  docker images --filter "dangling=true" -q | xargs -r docker rmi || true
+
+  echo "▶️ Avvio stack con COMPOSE_PROFILES='${PROFILES}'"
   COMPOSE_PROFILES="$PROFILES" \
     docker compose -f "$COMPOSE_FILE" \
       --env-file "$ENV_FILE" \
       -p "$LOWER_PROJECT_NAME" \
-      up -d --remove-orphans
+      up -d --remove-orphans --force-recreate
+
 else
-  echo "⚠️ Nessun profilo attivo: avvio solo i servizi CORE (senza profiles)"
+  echo "⚠️ Nessun profilo attivo: avvio solo core services"
 
   docker compose -f "$COMPOSE_FILE" \
     --env-file "$ENV_FILE" \
     -p "$LOWER_PROJECT_NAME" \
     pull
 
+  echo "🧹 Pulizia immagini dangling dopo il pull..."
+  docker images --filter "dangling=true" -q | xargs -r docker rmi || true
+
   docker compose -f "$COMPOSE_FILE" \
     --env-file "$ENV_FILE" \
     -p "$LOWER_PROJECT_NAME" \
-    up -d --remove-orphans
+    up -d --remove-orphans --force-recreate
 fi
 
+echo "🧽 Pulizia finale immagini dangling..."
+docker images --filter "dangling=true" -q | xargs -r docker rmi || true
+
+echo "🎉 Deploy completato con successo per $ENV_NAME."
