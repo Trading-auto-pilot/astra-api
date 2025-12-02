@@ -239,7 +239,7 @@ app.post("/settings/reload", requireReady, async (_req, res) => {
 });
 
 // Ricarica manualmente i job da dbManager
-app.post("/scheduler/reload", async (req, res) => {
+app.post("/reload", async (req, res) => {
   try {
     const core = serviceInstance.getSchedulerCore();
     if (!core) {
@@ -253,7 +253,7 @@ app.post("/scheduler/reload", async (req, res) => {
 });
 
 // Per vedere lo stato attuale dei job
-app.get("/scheduler/jobs", (req, res) => {
+app.get("/jobs", (req, res) => {
   const core = serviceInstance.getSchedulerCore();
   if (!core) {
     return res.status(500).json({ ok: false, error: "SchedulerCore non inizializzato" });
@@ -262,7 +262,7 @@ app.get("/scheduler/jobs", (req, res) => {
 });
 
 // Crea/aggiorna un job nello scheduler (pass-through verso dbManager)
-app.post("/scheduler/jobs", async (req, res) => {
+app.post("/jobs", async (req, res) => {
   try {
     const core = serviceInstance.getSchedulerCore();
     if (!core) {
