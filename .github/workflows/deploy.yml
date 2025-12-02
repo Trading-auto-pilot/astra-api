@@ -93,13 +93,7 @@ jobs:
 
           VERSION=""
           if [[ -f "$RELEASE_FILE" ]]; then
-            VERSION=$(python - << PY
-              import json
-              with open("$RELEASE_FILE") as f:
-                  data = json.load(f)
-              print(data.get("version", ""))
-              PY
-              )
+            VERSION=$(grep -oE '"version"[[:space:]]*:[[:space:]]*"([^"]+)"' "$RELEASE_FILE" | head -n1 | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
           else
             echo "⚠️  $RELEASE_FILE non trovato per $service, userò solo :latest"
           fi
@@ -109,25 +103,16 @@ jobs:
             TAG_ARGS=( --tag "$DOCKERHUB_USERNAME/$name:latest" )
           else
             echo "🏷  Versione per $name: $VERSION (userò :$VERSION e :latest)"
-            TAG_ARGS=(
-              --tag "$DOCKERHUB_USERNAME/$name:latest"
-              --tag "$DOCKERHUB_USERNAME/$name:$VERSION"
-            )
+            TAG_ARGS=( --tag "$DOCKERHUB_USERNAME/$name:latest" --tag "$DOCKERHUB_USERNAME/$name:$VERSION" )
           fi
 
           echo "🔧 Building $name da directory $service..."
 
           if [ "$SKIP_PUSH" != "true" ]; then
-            docker buildx build \
-              --platform linux/amd64 \
-              --push \
-              "${TAG_ARGS[@]}" \
-              --cache-from=type=registry,ref=$DOCKERHUB_USERNAME/$name:cache \
-              --cache-to=type=registry,ref=$DOCKERHUB_USERNAME/$name:cache,mode=max \
-              -f "$service/Dockerfile" \
-              .
+            docker buildx build --platform linux/amd64 --push "${TAG_ARGS[@]}" --cache-from=type=registry,ref=$DOCKERHUB_USERNAME/$name:cache --cache-to=type=registry,ref=$DOCKERHUB_USERNAME/$name:cache,mode=max -f "$service/Dockerfile" .
           fi
         done
+
 
 
     - name: Setup SSH key
