@@ -1,9 +1,9 @@
 {
     "lastUpdate" : "29/11/2025",
-    "note" : [  "v.1.1 DBManager : First version test in PAPER environment",
-                "v.1.1 Aggiunta funzione updateStrategies con relativo endpoint",
-                "v.2.0 Refactoring completo suddividendo un file unico in vari moduli sotto /modules e /routes",
-                "v.2.0 Integrazione con REDIS per caching",
-                "v.2.5 Aggiunta di endpoint per Fundamentals e Scheduler"
+    "note" : [  "1.1.0 DBManager : First version test in PAPER environment",
+                "1.1.0 Aggiunta funzione updateStrategies con relativo endpoint",
+                "2.0.0 Refactoring completo suddividendo un file unico in vari moduli sotto /modules e /routes",
+                "2.0.1 Integrazione con REDIS per caching",
+                "2.5.0 Aggiunta di endpoint per Fundamentals e Scheduler"
             ]
 }
