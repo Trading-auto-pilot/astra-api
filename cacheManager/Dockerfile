@@ -1,28 +1,20 @@
-# Base image
 FROM node:20
 
-# Working directory root
 WORKDIR /app
 
-# Copy shared code (comune a tutti i microservizi)
+# (opzionale, se ti serve curl come negli altri)
+RUN apt-get update && apt-get install -y curl
+
+# Copia shared e microservizio
+COPY cacheManager/ ./cacheManager/
 COPY shared/ ./shared/
 
-# =========================
-# Microservizio specifico
-# =========================
-# Copia solo package.json per caching corretto
-COPY cacheManager/package*.json ./cacheManager/
+# Usa il package.json del microservizio ma nella root /app
+COPY cacheManager/package.json .
 
-WORKDIR /app/cacheManager
+# Installa le dipendenze in /app/node_modules
+RUN npm install --omit=dev
 
-# Install dependencies
-RUN npm install --production
-
-# Ora copia il resto dei sorgenti del microservizio
-COPY cacheManager/ ./
-
-# Porta esposta (placeholder)
 EXPOSE 3006
 
-# Start the server
-CMD ["node", "server.js"]
+CMD ["node", "cacheManager/server.js"]

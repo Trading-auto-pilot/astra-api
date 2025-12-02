@@ -1,28 +1,22 @@
-# Base image
 FROM node:20
 
 # Working directory root
 WORKDIR /app
 
-# Copy shared code (comune a tutti i microservizi)
+# (opzionale, se vuoi essere uniforme agli altri)
+RUN apt-get update && apt-get install -y curl
+
+# Copia microservizio e shared
+COPY scheduler/ ./scheduler/
 COPY shared/ ./shared/
 
-# =========================
-# Microservizio specifico
-# =========================
-# Copia solo package.json per caching corretto
-COPY scheduler/package*.json ./scheduler/
+# Usa il package.json del microservizio ma installa in /app/node_modules
+COPY scheduler/package.json .
 
-WORKDIR /app/scheduler
+RUN npm install --omit=dev
 
-# Install dependencies
-RUN npm install --production
-
-# Ora copia il resto dei sorgenti del microservizio
-COPY scheduler/ ./
-
-# Porta esposta (placeholder)
+# Porta esposta
 EXPOSE 3014
 
-# Start the server
-CMD ["node", "server.js"]
+# Avvia il server
+CMD ["node", "scheduler/server.js"]

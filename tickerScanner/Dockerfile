@@ -1,28 +1,22 @@
-# Base image
 FROM node:20
 
 # Working directory root
 WORKDIR /app
 
-# Copy shared code (comune a tutti i microservizi)
+# (opzionale ma utile come gli altri)
+RUN apt-get update && apt-get install -y curl
+
+# Copia microservizio e shared
+COPY tickerScanner/ ./tickerScanner/
 COPY shared/ ./shared/
 
-# =========================
-# Microservizio specifico
-# =========================
-# Copia solo package.json per caching corretto
-COPY tickerScanner/package*.json ./tickerScanner/
+# Installa dipendenze usando il package.json del microservizio
+COPY tickerScanner/package.json .
 
-WORKDIR /app/tickerScanner
+RUN npm install --omit=dev
 
-# Install dependencies
-RUN npm install --production
-
-# Ora copia il resto dei sorgenti del microservizio
-COPY tickerScanner/ ./
-
-# Porta esposta (placeholder)
+# Porta esposta
 EXPOSE 3013
 
-# Start the server
-CMD ["node", "server.js"]
+# Avvia il server
+CMD ["node", "tickerScanner/server.js"]

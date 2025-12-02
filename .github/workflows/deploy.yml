@@ -334,11 +334,11 @@ jobs:
         EOF
 
 
-    - name: Cleanup .env on server
-      run: |
-        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << EOF
-          rm -f /home/$GCP_USER/deploy/.env
-        EOF
+#    - name: Cleanup .env on server
+#      run: |
+#        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << EOF
+#          rm -f /home/$GCP_USER/deploy/.env
+#        EOF
 
     - name: Crea shared cache volume se non esistente
       if: false
