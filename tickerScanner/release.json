@@ -4,6 +4,7 @@
   "microservice": "tickerScanner",
 
   "note": [
-    "v.0.1.0 tickerScanner: Initial scaffolding generated from template."
+    "v.0.1.0 tickerScanner: Initial scaffolding generated from template.",
+    "v.1.1.0 tickerScanner: Auto compilation test."
   ]
 }
