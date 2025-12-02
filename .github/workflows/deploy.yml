@@ -59,30 +59,12 @@ jobs:
 
         echo "✅ Controllo superato, proseguo con il deploy..."
 
-
     - name: Build and push all Docker images
       run: |
         if [[ "${{ github.ref_name }}" == "LIVE" ]]; then
           echo "⚠️  Skip build e push: il branch LIVE deve solo eseguire il deploy di immagini già pubblicate."
           exit 0
         fi
-
-        if [[ ! -f release.json ]]; then
-          echo "❌ release.json non trovato nella root del repo"
-          exit 1
-        fi
-
-        # Estrae il valore del campo "version" da release.json
-        VERSION=$(grep -oE '"version"[[:space:]]*:[[:space:]]*"([^"]+)"' release.json \
-          | head -n1 \
-          | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
-
-        if [[ -z "$VERSION" ]]; then
-          echo "❌ Impossibile leggere la versione da release.json"
-          exit 1
-        fi
-
-        echo "🏷  Versione immagini: $VERSION (useremo :$VERSION e :latest)"
 
         services=(
           DBManager
@@ -102,23 +84,47 @@ jobs:
 
         for service in "${services[@]}"; do
           name=$(basename "$service" | tr '[:upper:]' '[:lower:]')
+          RELEASE_FILE="$service/release.json"
 
           if [[ ! -f "$service/Dockerfile" ]]; then
-            echo "⚠️  Nessun Dockerfile per $service, salto..."
+            echo "⚠️  Nessun Dockerfile per $service, salto build/push..."
             continue
           fi
 
-          echo "🔧 Building $name da directory $service, versione $VERSION..."
+          VERSION=""
+          if [[ -f "$RELEASE_FILE" ]]; then
+            VERSION=$(python - << PY
+              import json
+              with open("$RELEASE_FILE") as f:
+                  data = json.load(f)
+              print(data.get("version", ""))
+              PY
+              )
+          else
+            echo "⚠️  $RELEASE_FILE non trovato per $service, userò solo :latest"
+          fi
+
+          if [[ -z "$VERSION" ]]; then
+            echo "🏷  Nessuna versione specifica per $name → tag solo :latest"
+            TAG_ARGS=( --tag "$DOCKERHUB_USERNAME/$name:latest" )
+          else
+            echo "🏷  Versione per $name: $VERSION (userò :$VERSION e :latest)"
+            TAG_ARGS=(
+              --tag "$DOCKERHUB_USERNAME/$name:latest"
+              --tag "$DOCKERHUB_USERNAME/$name:$VERSION"
+            )
+          fi
+
+          echo "🔧 Building $name da directory $service..."
 
           if [ "$SKIP_PUSH" != "true" ]; then
             docker buildx build \
               --platform linux/amd64 \
               --push \
-              --tag $DOCKERHUB_USERNAME/$name:latest \
-              --tag $DOCKERHUB_USERNAME/$name:$VERSION \
+              "${TAG_ARGS[@]}" \
               --cache-from=type=registry,ref=$DOCKERHUB_USERNAME/$name:cache \
               --cache-to=type=registry,ref=$DOCKERHUB_USERNAME/$name:cache,mode=max \
-              -f $service/Dockerfile \
+              -f "$service/Dockerfile" \
               .
           fi
         done
