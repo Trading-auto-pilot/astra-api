@@ -4,25 +4,22 @@ FROM node:20
 # Working directory root
 WORKDIR /app
 
-# Copy shared code (comune a tutti i microservizi)
+# (opzionale, ma utile se ti serve curl anche negli altri servizi)
+RUN apt-get update && apt-get install -y curl
+
+# =========================
+# Codice condiviso + servizio
+# =========================
+COPY __SERVICE_FOLDER__/ ./__SERVICE_FOLDER__/
 COPY shared/ ./shared/
 
-# =========================
-# Microservizio specifico
-# =========================
-# Copia solo package.json per caching corretto
-COPY __SERVICE_FOLDER__/package*.json ./__SERVICE_FOLDER__/
+# Usa il package.json del microservizio ma installa in /app/node_modules
+COPY __SERVICE_FOLDER__/package.json .
 
-WORKDIR /app/__SERVICE_FOLDER__
-
-# Install dependencies
-RUN npm install --production
-
-# Ora copia il resto dei sorgenti del microservizio
-COPY __SERVICE_FOLDER__/ ./
+RUN npm install --omit=dev
 
 # Porta esposta (placeholder)
 EXPOSE __PORT__
 
 # Start the server
-CMD ["node", "server.js"]
+CMD ["node", "__SERVICE_FOLDER__/server.js"]
