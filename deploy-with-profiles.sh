@@ -79,6 +79,13 @@ LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
 
 # 4) Avvio/aggiorno stack con i profili calcolati
 if [[ -n "$PROFILES" ]]; then
+  echo "⬇️  Pull immagini per profili='${PROFILES}'"
+  COMPOSE_PROFILES="$PROFILES" \
+    docker compose -f "$COMPOSE_FILE" \
+      --env-file "$ENV_FILE" \
+      -p "$LOWER_PROJECT_NAME" \
+      pull
+
   echo "▶️ Avvio docker compose con COMPOSE_PROFILES='${PROFILES}'"
   COMPOSE_PROFILES="$PROFILES" \
     docker compose -f "$COMPOSE_FILE" \
@@ -87,8 +94,15 @@ if [[ -n "$PROFILES" ]]; then
       up -d --remove-orphans
 else
   echo "⚠️ Nessun profilo attivo: avvio solo i servizi CORE (senza profiles)"
+
+  docker compose -f "$COMPOSE_FILE" \
+    --env-file "$ENV_FILE" \
+    -p "$LOWER_PROJECT_NAME" \
+    pull
+
   docker compose -f "$COMPOSE_FILE" \
     --env-file "$ENV_FILE" \
     -p "$LOWER_PROJECT_NAME" \
     up -d --remove-orphans
 fi
+
