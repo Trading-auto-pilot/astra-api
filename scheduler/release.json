@@ -1,10 +1,11 @@
 {
   "lastUpdate": "29/11/2025 20:14", 
-  "version": "1.1",
+  "version": "1.2",
   "microservice": "scheduler",
 
   "note": [
     "v.0.1.0 scheduler: Initial scaffolding generated from template.",
-    "v.1.1.0 scheduler: Endpoint adapt to Traefik."
+    "v.1.1.0 scheduler: Endpoint adapt to Traefik.",
+    "v.1.2.0 scheduler: Added Axios fix."
   ]
 }

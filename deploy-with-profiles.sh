@@ -107,6 +107,12 @@ done
 echo "🧹 Pulizia immagini dangling prima del pull..."
 docker images --filter "dangling=true" -q | xargs -r docker rmi || true
 
+echo "⬇️ Pull immagini CORE (mysql, redis, traefik, dbmanager)"
+docker compose -f "$COMPOSE_FILE" \
+  --env-file "$ENV_FILE" \
+  -p "$LOWER_PROJECT_NAME" \
+  pull mysql redis traefik dbmanager
+  
 if [[ -n "$PROFILES" ]]; then
   echo "⬇️ Scarico immagini per profili: ${PROFILES}"
   COMPOSE_PROFILES="$PROFILES" \
