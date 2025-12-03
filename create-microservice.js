@@ -201,6 +201,43 @@ function updateEnvFile(envPath, upperKey, urlEnvVar, port) {
   }
 }
 
+// aggiorna .github/workflows/deploy.yml aggiungendo il servizio nel blocco services=(...)
+function updateDeployWorkflow(rootDir, serviceName) {
+  const deployPath = path.join(rootDir, ".github", "workflows", "deploy.yml");
+  if (!fs.existsSync(deployPath)) {
+    console.warn("⚠️  .github/workflows/deploy.yml non trovato, skip aggiornamento services");
+    return;
+  }
+
+  const content = fs.readFileSync(deployPath, "utf8");
+  const servicesRegex = /(services=\(\n)([\s\S]*?)(\n\s*\))/m;
+  const match = content.match(servicesRegex);
+
+  if (!match) {
+    console.warn("⚠️  Blocco services=(...) non trovato in deploy.yml, nessuna modifica");
+    return;
+  }
+
+  const [, start, body, end] = match;
+  const entries = body
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  if (entries.includes(serviceName)) {
+    console.log(`   deploy.yml: ${serviceName} già presente in services, nessuna modifica`);
+    return;
+  }
+
+  const indentMatch = body.match(/\n?(\s*)\S/);
+  const entryIndent = indentMatch ? indentMatch[1] : "          ";
+  const newBody = [...entries, serviceName].map(name => `${entryIndent}${name}`).join("\n");
+  const newContent = content.replace(servicesRegex, `${start}${newBody}${end}`);
+
+  fs.writeFileSync(deployPath, newContent, "utf8");
+  console.log(`   deploy.yml: aggiunto ${serviceName} nella lista services`);
+}
+
 // ---------- main ----------
 
 (async () => {
@@ -370,6 +407,8 @@ function updateEnvFile(envPath, upperKey, urlEnvVar, port) {
       const envPath = path.join(rootDir, envName);
       updateEnvFile(envPath, upperKey, urlEnvVar, port);
     }
+
+    updateDeployWorkflow(rootDir, serviceName);
   }
 
   console.log("✅ Microservizio creato:");

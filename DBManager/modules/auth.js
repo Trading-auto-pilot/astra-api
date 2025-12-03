@@ -375,7 +375,356 @@ async function deleteUserPermission(userId, permId) {
   }
 }
 
+/**
+ * API KEYS
+ * Tabelle:
+ *   - api_keys
+ *   - user_permissions (con api_key_id)
+ */
+
+// ---- API KEYS CRUD ----
+
+async function getApiKeyByValue(apiKeyValue) {
+  const conn = await getDbConnection();
+  try {
+    const [rows] = await conn.query(
+      "SELECT * FROM api_keys WHERE api_key = ? LIMIT 1",
+      [apiKeyValue]
+    );
+    if (!rows.length) {
+      logger.info(`[getApiKeyByValue] not found api_key=${apiKeyValue}`);
+      return null;
+    }
+    return rows[0];
+  } catch (err) {
+    logger.error("[getApiKeyByValue] Error", err.message || err);
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+
+async function getAllApiKeys() {
+  const conn = await getDbConnection();
+  try {
+    const [rows] = await conn.query("SELECT * FROM api_keys ORDER BY id");
+    logger.info(`[getAllApiKeys] rows=${rows.length}`);
+    return rows;
+  } catch (err) {
+    logger.error("[getAllApiKeys] Error", err.message || err);
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function getApiKeyById(id) {
+  const conn = await getDbConnection();
+  try {
+    const [rows] = await conn.query(
+      "SELECT * FROM api_keys WHERE id = ?",
+      [id]
+    );
+    if (!rows.length) {
+      logger.info(`[getApiKeyById] not found id=${id}`);
+      return null;
+    }
+    return rows[0];
+  } catch (err) {
+    logger.error("[getApiKeyById] Error", err.message || err);
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function createApiKey(payload) {
+  const conn = await getDbConnection();
+  try {
+    const {
+      name,
+      api_key,
+      owner_user_id = null,
+      description = null,
+      is_active = true,
+      expires_at = null,
+    } = payload || {};
+
+    if (!name || !api_key) {
+      const msg = "name e api_key sono obbligatori";
+      logger.warning(`[createApiKey] ${msg}`);
+      const err = new Error(msg);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const [res] = await conn.query(
+      `INSERT INTO api_keys
+         (name, api_key, owner_user_id, description, is_active, expires_at)
+       VALUES (?,?,?,?,?,?)`,
+      [
+        name,
+        api_key,
+        owner_user_id,
+        description,
+        is_active ? 1 : 0,
+        expires_at,
+      ]
+    );
+
+    logger.info(`[createApiKey] created id=${res.insertId}`);
+    return { ok: true, id: res.insertId };
+  } catch (err) {
+    logger.error("[createApiKey] Error", err.message || err);
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function updateApiKey(id, payload) {
+  const conn = await getDbConnection();
+  try {
+    // costruiamo dinamicamente SET
+    const fields = [];
+    const values = [];
+
+    const allowed = [
+      "name",
+      "api_key",
+      "owner_user_id",
+      "description",
+      "is_active",
+      "expires_at",
+    ];
+
+    for (const key of allowed) {
+      if (payload.hasOwnProperty(key)) {
+        fields.push(`${key} = ?`);
+        if (key === "is_active") {
+          values.push(payload[key] ? 1 : 0);
+        } else {
+          values.push(payload[key]);
+        }
+      }
+    }
+
+    if (!fields.length) {
+      logger.warning("[updateApiKey] niente da aggiornare");
+      return { ok: false, updated: 0 };
+    }
+
+    values.push(id);
+
+    const [res] = await conn.query(
+      `UPDATE api_keys SET ${fields.join(", ")} WHERE id = ?`,
+      values
+    );
+
+    logger.info(
+      `[updateApiKey] id=${id} affectedRows=${res.affectedRows}`
+    );
+    return { ok: true, updated: res.affectedRows };
+  } catch (err) {
+    logger.error("[updateApiKey] Error", err.message || err);
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function deleteApiKey(id) {
+  const conn = await getDbConnection();
+  try {
+    const [res] = await conn.query(
+      "DELETE FROM api_keys WHERE id = ?",
+      [id]
+    );
+    logger.info(
+      `[deleteApiKey] id=${id} affectedRows=${res.affectedRows}`
+    );
+    return { ok: true, deleted: res.affectedRows };
+  } catch (err) {
+    logger.error("[deleteApiKey] Error", err.message || err);
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+// ---- PERMISSIONS per API KEY (tabella user_permissions) ----
+
+async function getPermissionsForApiKey(apiKeyId) {
+  const conn = await getDbConnection();
+  try {
+    const [rows] = await conn.query(
+      `
+      SELECT *
+      FROM user_permissions
+      WHERE api_key_id = ?
+      ORDER BY id
+      `,
+      [apiKeyId]
+    );
+    logger.info(
+      `[getPermissionsForApiKey] apiKeyId=${apiKeyId} rows=${rows.length}`
+    );
+    return rows;
+  } catch (err) {
+    logger.error(
+      "[getPermissionsForApiKey] Error",
+      err.message || err
+    );
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function addPermissionToApiKey(apiKeyId, payload) {
+  const conn = await getDbConnection();
+  try {
+    const {
+      permission_code,
+      resource_pattern,
+      http_method,
+      is_allowed = true,
+    } = payload || {};
+
+    if (!permission_code || !resource_pattern) {
+      const msg = "permission_code e resource_pattern sono obbligatori";
+      logger.warning(`[addPermissionToApiKey] ${msg}`);
+      const err = new Error(msg);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const [res] = await conn.query(
+      `
+      INSERT INTO user_permissions
+        (user_id, api_key_id, permission_code, resource_pattern, http_method, is_allowed)
+      VALUES (NULL, ?, ?, ?, ?, ?)
+      `,
+      [
+        apiKeyId,
+        permission_code,
+        resource_pattern,
+        http_method || null,
+        is_allowed ? 1 : 0,
+      ]
+    );
+
+    logger.info(
+      `[addPermissionToApiKey] apiKeyId=${apiKeyId} permId=${res.insertId}`
+    );
+    return { ok: true, id: res.insertId };
+  } catch (err) {
+    logger.error(
+      "[addPermissionToApiKey] Error",
+      err.message || err
+    );
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function updatePermissionForApiKey(apiKeyId, permId, payload) {
+  const conn = await getDbConnection();
+  try {
+    const fields = [];
+    const values = [];
+
+    const allowed = [
+      "permission_code",
+      "resource_pattern",
+      "http_method",
+      "is_allowed",
+    ];
+
+    for (const key of allowed) {
+      if (payload.hasOwnProperty(key)) {
+        fields.push(`${key} = ?`);
+        if (key === "is_allowed") {
+          values.push(payload[key] ? 1 : 0);
+        } else {
+          values.push(payload[key]);
+        }
+      }
+    }
+
+    if (!fields.length) {
+      logger.warning("[updatePermissionForApiKey] niente da aggiornare");
+      return { ok: false, updated: 0 };
+    }
+
+    values.push(apiKeyId, permId);
+
+    const [res] = await conn.query(
+      `
+      UPDATE user_permissions
+      SET ${fields.join(", ")}
+      WHERE api_key_id = ? AND id = ?
+      `,
+      values
+    );
+
+    logger.info(
+      `[updatePermissionForApiKey] apiKeyId=${apiKeyId} permId=${permId} affectedRows=${res.affectedRows}`
+    );
+    return { ok: true, updated: res.affectedRows };
+  } catch (err) {
+    logger.error(
+      "[updatePermissionForApiKey] Error",
+      err.message || err
+    );
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function deletePermissionForApiKey(apiKeyId, permId) {
+  const conn = await getDbConnection();
+  try {
+    const [res] = await conn.query(
+      `
+      DELETE FROM user_permissions
+      WHERE api_key_id = ? AND id = ?
+      `,
+      [apiKeyId, permId]
+    );
+    logger.info(
+      `[deletePermissionForApiKey] apiKeyId=${apiKeyId} permId=${permId} affectedRows=${res.affectedRows}`
+    );
+    return { ok: true, deleted: res.affectedRows };
+  } catch (err) {
+    logger.error(
+      "[deletePermissionForApiKey] Error",
+      err.message || err
+    );
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 module.exports = {
+  // API keys
+  getAllApiKeys,
+  getApiKeyById,
+  createApiKey,
+  updateApiKey,
+  deleteApiKey,
+  getApiKeyByValue,
+
+  // Permessi API key
+  getPermissionsForApiKey,
+  addPermissionToApiKey,
+  updatePermissionForApiKey,
+  deletePermissionForApiKey,
+  
   // utenti
   getAllUsers,
   getUserById,

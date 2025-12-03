@@ -80,6 +80,7 @@ jobs:
           strategies/sltp
           scheduler
           tickerScanner
+          authService
         )
 
         for service in "${services[@]}"; do

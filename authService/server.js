@@ -257,7 +257,10 @@ app.use(
 app.use(
   "/auth",
   requireReady,
-  buildAuthRouter({ service: serviceInstance, logger, moduleName: MODULE_NAME })
+  buildAuthRouter({
+    logger,
+    moduleName: "auth",
+  })
 );
 
 /* ----------------------------- STARTUP -------------------------------- */

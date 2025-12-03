@@ -170,5 +170,214 @@ module.exports = (dbManager) => {
     }
   });
 
+  // ================
+  // API KEYS CRUD
+  // ================
+
+  router.get("/api-keys", async (req, res) => {
+    try {
+      const rows = await dbManager.getAllApiKeys();
+      res.json(rows);
+    } catch (err) {
+      console.error("[GET /auth/api-keys] Error:", err.message || err);
+      res
+        .status(err.statusCode || 500)
+        .json({ error: "Errore durante la lettura delle API keys" });
+    }
+  });
+
+  router.get("/api-keys/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: "ID non valido" });
+    }
+
+    try {
+      const row = await dbManager.getApiKeyById(id);
+      if (!row) {
+        return res.status(404).json({ error: "API key non trovata" });
+      }
+      res.json(row);
+    } catch (err) {
+      console.error("[GET /auth/api-keys/:id] Error:", err.message || err);
+      res
+        .status(err.statusCode || 500)
+        .json({ error: "Errore durante la lettura della API key" });
+    }
+  });
+
+  router.post("/api-keys", async (req, res) => {
+    try {
+      const result = await dbManager.createApiKey(req.body || {});
+      res.json(result);
+    } catch (err) {
+      console.error("[POST /auth/api-keys] Error:", err.message || err);
+      res
+        .status(err.statusCode || 500)
+        .json({ error: err.message || "Errore durante la creazione API key" });
+    }
+  });
+
+  router.put("/api-keys/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: "ID non valido" });
+    }
+
+    try {
+      const result = await dbManager.updateApiKey(id, req.body || {});
+      res.json(result);
+    } catch (err) {
+      console.error("[PUT /auth/api-keys/:id] Error:", err.message || err);
+      res
+        .status(err.statusCode || 500)
+        .json({ error: "Errore durante l'aggiornamento API key" });
+    }
+  });
+
+  router.delete("/api-keys/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: "ID non valido" });
+    }
+
+    try {
+      const result = await dbManager.deleteApiKey(id);
+      res.json(result);
+    } catch (err) {
+      console.error("[DELETE /auth/api-keys/:id] Error:", err.message || err);
+      res
+        .status(err.statusCode || 500)
+        .json({ error: "Errore durante la cancellazione API key" });
+    }
+  });
+
+  // ===========================
+  // PERMISSIONS per API KEY
+  // ===========================
+
+  router.get("/api-keys/:id/permissions", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: "ID non valido" });
+    }
+
+    try {
+      const rows = await dbManager.getPermissionsForApiKey(id);
+      res.json(rows);
+    } catch (err) {
+      console.error(
+        "[GET /auth/api-keys/:id/permissions] Error:",
+        err.message || err
+      );
+      res
+        .status(err.statusCode || 500)
+        .json({
+          error: "Errore durante la lettura dei permessi API key",
+        });
+    }
+  });
+
+  router.post("/api-keys/:id/permissions", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: "ID non valido" });
+    }
+
+    try {
+      const result = await dbManager.addPermissionToApiKey(id, req.body || {});
+      res.json(result);
+    } catch (err) {
+      console.error(
+        "[POST /auth/api-keys/:id/permissions] Error:",
+        err.message || err
+      );
+      res
+        .status(err.statusCode || 500)
+        .json({
+          error: err.message || "Errore durante la creazione permesso API key",
+        });
+    }
+  });
+
+  router.put(
+    "/api-keys/:id/permissions/:permId",
+    async (req, res) => {
+      const id = Number(req.params.id);
+      const permId = Number(req.params.permId);
+      if (!id || !permId) {
+        return res.status(400).json({ error: "ID non valido" });
+      }
+
+      try {
+        const result = await dbManager.updatePermissionForApiKey(
+          id,
+          permId,
+          req.body || {}
+        );
+        res.json(result);
+      } catch (err) {
+        console.error(
+          "[PUT /auth/api-keys/:id/permissions/:permId] Error:",
+          err.message || err
+        );
+        res
+          .status(err.statusCode || 500)
+          .json({
+            error:
+              "Errore durante l'aggiornamento del permesso API key",
+          });
+      }
+    }
+  );
+
+  router.delete(
+    "/api-keys/:id/permissions/:permId",
+    async (req, res) => {
+      const id = Number(req.params.id);
+      const permId = Number(req.params.permId);
+      if (!id || !permId) {
+        return res.status(400).json({ error: "ID non valido" });
+      }
+
+      try {
+        const result = await dbManager.deletePermissionForApiKey(id, permId);
+        res.json(result);
+      } catch (err) {
+        console.error(
+          "[DELETE /auth/api-keys/:id/permissions/:permId] Error:",
+          err.message || err
+        );
+        res
+          .status(err.statusCode || 500)
+          .json({
+            error:
+              "Errore durante la cancellazione del permesso API key",
+          });
+      }
+    }
+  );
+
+  // GET /auth/api-keys/lookup?api_key=xxxx
+  router.get("/api-keys/lookup", async (req, res) => {
+    const apiKey = req.query.api_key;
+    if (!apiKey) {
+      return res.status(400).json({ error: "api_key è obbligatorio" });
+    }
+
+    try {
+      const row = await auth.getApiKeyByValue(apiKey);
+      if (!row) {
+        return res.status(404).json({ error: "API key non trovata" });
+      }
+      res.json(row);
+    } catch (err) {
+      console.error("[GET /auth/api-keys/lookup] Error:", err.message || err);
+      res
+        .status(err.statusCode || 500)
+        .json({ error: "Errore durante la ricerca API key" });
+    }
+  });
+
   return router;
 };

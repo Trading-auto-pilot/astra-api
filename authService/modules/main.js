@@ -12,7 +12,7 @@ const { asBool, asInt } = require("../../shared/helpers");
 // =========================================================
 // PLACEHOLDER da sostituire via script di scaffolding
 // =========================================================
-const MICROSERVICE    = "auth";
+const MICROSERVICE    = "authService";
 const MODULE_NAME     = "main";
 const MODULE_VERSION  = "1.0.0";    // e.g. "0.1.0"
 
@@ -36,7 +36,7 @@ class Auth {
     this.livemarketlistnerUrl = process.env.LIVEMARKETLISTNER_URL || "http://livemarketlistner:3012";
     this.tickerscannerUrl = process.env.TICKERSCANNER_URL || "http://tickerscanner:3013";
     this.schedulerUrl = process.env.SCHEDULER_URL || "http://scheduler:3014";
-    this.authUrl = process.env.AUTH_URL || "http://auth:3015";
+
 
 
     // =====================================================
