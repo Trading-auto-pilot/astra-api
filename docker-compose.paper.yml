@@ -121,6 +121,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - APCA_API_KEY_ID=${APCA_API_KEY_ID}
       - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
+      - FMP_API_KEY=${FMP_API_KEY}
     depends_on:
       dbmanager:
         condition: service_healthy
