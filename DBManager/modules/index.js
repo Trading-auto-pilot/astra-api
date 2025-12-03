@@ -15,5 +15,6 @@ module.exports = {
   ...require('./settings'),
   ...require('./strategy_stats'),
   ...require('./fundamentals'),
-  ...require('./scheduler')
+  ...require('./scheduler'),
+  ...require('./auth')
 };
