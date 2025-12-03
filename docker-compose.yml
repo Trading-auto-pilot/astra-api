@@ -366,7 +366,7 @@ services:
       timeout: 10s
       retries: 5
 
-  auth:
+  authservice:
     image: expovin/auth:${AUTH_VERSION}
     container_name: auth
     restart: unless-stopped

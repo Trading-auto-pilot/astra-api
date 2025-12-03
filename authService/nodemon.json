@@ -1,7 +1,9 @@
 {
   "watch": [
     "server.js",
-    "modules/main.js"
+    "auth.js",
+    "status.js",
+    "modules/"
   ],
   "ignore": [
     "*.test.js",
