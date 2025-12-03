@@ -222,6 +222,32 @@ jobs:
       run: |
         scp -o StrictHostKeyChecking=no .env $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/.env
 
+    - name: Copy docker-compose files to server
+      run: |
+        ENV_NAME="${{ github.ref_name }}"
+        LOWER_ENV_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
+
+        # Sorgente nel repo (es: docker-compose.PAPER.yml)
+        SRC_COMPOSE_FILE="docker-compose.${ENV_NAME}.yml"
+
+        if [ ! -f "$SRC_COMPOSE_FILE" ]; then
+          echo "❌ File $SRC_COMPOSE_FILE non trovato nel repo!"
+          exit 1
+        fi
+
+        echo "📤 Copio $SRC_COMPOSE_FILE su server come docker-compose.${LOWER_ENV_NAME}.yml"
+
+        scp -o StrictHostKeyChecking=no \
+          "$SRC_COMPOSE_FILE" \
+          "docker-compose.build.yml" \
+          $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/
+
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << EOF
+          cd ~/deploy
+          mv "$SRC_COMPOSE_FILE" "docker-compose.${LOWER_ENV_NAME}.yml"
+          echo "✅ docker-compose.${LOWER_ENV_NAME}.yml aggiornato"
+        EOF
+
     - name: Copy DB restore script and dump to server
       run: |
         TAR_FILE=$(ls db/Trading_${{ github.ref_name }}_*.tar.gz 2>/dev/null | head -n 1)
