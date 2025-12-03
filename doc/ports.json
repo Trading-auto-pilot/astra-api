@@ -13,5 +13,6 @@
     "mysql": 3306,
     "redis": 6379,
     "tickerscanner": 3013,
-    "scheduler": 3014
+    "scheduler": 3014,
+    "auth": 3015
 }
