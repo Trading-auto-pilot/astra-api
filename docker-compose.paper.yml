@@ -237,6 +237,18 @@ services:
     networks:
       - trading_net
     profiles: ["scheduler"]
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3014/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     labels:
       - "traefik.enable=true"
       # Router: https://api.trading.expovin.it/scheduler/...
@@ -254,8 +266,10 @@ services:
     restart: unless-stopped
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
-      - LOG_LEVEL=${LOG_LEVEL}
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
       - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL}
       - FMP_API_KEY=${FMP_API_KEY}
     depends_on:
       dbmanager:
@@ -263,6 +277,12 @@ services:
     networks:
       - trading_net
     profiles: ["tickerscanner"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3013/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.tickerscanner.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/tickerscanner`)"
