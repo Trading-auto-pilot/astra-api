@@ -256,7 +256,7 @@ services:
       - "traefik.http.routers.scheduler.entrypoints=websecure"
       - "traefik.http.routers.scheduler.tls.certresolver=le"
       # ⚠️ Sostituisci 3010 con la porta interna reale del tuo scheduler
-      - "traefik.http.services.scheduler.loadbalancer.server.port=3010"
+      - "traefik.http.services.scheduler.loadbalancer.server.port=3014"
       # Strip del prefisso /scheduler
       - "traefik.http.middlewares.scheduler-stripprefix.stripPrefix.prefixes=/scheduler"
       - "traefik.http.routers.scheduler.middlewares=scheduler-stripprefix"
@@ -288,7 +288,7 @@ services:
       - "traefik.http.routers.tickerscanner.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/tickerscanner`)"
       - "traefik.http.routers.tickerscanner.entrypoints=websecure"
       - "traefik.http.routers.tickerscanner.tls.certresolver=le"
-      - "traefik.http.services.tickerscanner.loadbalancer.server.port=3007"
+      - "traefik.http.services.tickerscanner.loadbalancer.server.port=3013"
       - "traefik.http.middlewares.tickerscanner-stripprefix.stripPrefix.prefixes=/tickerscanner"
       - "traefik.http.routers.tickerscanner.middlewares=tickerscanner-stripprefix"
 
