@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Script di dump: esporta il DB Trading_<AMBIENTE> in db/, ripulisce i DEFINER, comprime in .tar.gz e versiona i dump precedenti.
 set -euo pipefail
 shopt -s nullglob
 
