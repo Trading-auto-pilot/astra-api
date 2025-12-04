@@ -164,6 +164,7 @@ jobs:
         echo "ORDERLISTNER_VERSION=${{ vars.ORDERLISTNER_VERSION }}" >> .env
         echo "STRATEGYUTILS_VERSION=${{ vars.STRATEGYUTILS_VERSION }}" >> .env
         echo "TICKERSCANNER_VERSION=${{ vars.TICKERSCANNER_VERSION }}" >> .env
+        echo "AUTHSERVICE_VERSION=${{ vars.AUTHSERVICE_VERSION }}" >> .env
         echo "SCHEDULER_VERSION=${{ vars.SCHEDULER_VERSION }}" >> .env
         echo "SMA_VERSION=${{ vars.SMA_VERSION }}" >> .env
         echo "SLTP_VERSION=${{ vars.SLTP_VERSION }}" >> .env
@@ -184,6 +185,7 @@ jobs:
         echo "MARKETSIMULATOR_URL=${{vars.MARKETSIMULATOR_URL}}" >> .env
         echo "SCHEDULER_URL=${{vars.SCHEDULER_URL}}" >> .env
         echo "TICKERSCANNER_URL=${{vars.TICKERSCANNER_URL}}" >> .env
+        echo "AUTHSERVICE_URL=${{vars.AUTHSERVICE_URL}}" >> .env
 
     - name: Add .env with container versions from JS files
       run: |
