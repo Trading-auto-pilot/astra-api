@@ -260,16 +260,16 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
 
 
   // =========================
-  // 2) USER MANAGEMENT (auth/users...) - semplice routing verso DBManager
+  // 2) USER MANAGEMENT (auth/admin/user...) - semplice routing verso DBManager
   // =========================
 
-  // GET /auth/users
-  router.get("/users", async (req, res) => {
+  // GET /auth/admin/user
+  router.get("/admin/user", async (req, res) => {
     try {
       const users = await userClient.listUsers();
       return res.json(users);
     } catch (err) {
-      logger.error(`[${moduleName}] [GET /auth/users] ${err.message}`);
+      logger.error(`[${moduleName}] [GET /auth/admin/user] ${err.message}`);
       const status = err.response?.status || 500;
       return res
         .status(status)
@@ -277,8 +277,8 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
     }
   });
 
-  // GET /auth/users/:id
-  router.get("/users/:id", async (req, res) => {
+  // GET /auth/admin/user/:id
+  router.get("/admin/user/:id", async (req, res) => {
     const userId = req.params.id;
 
     try {
@@ -287,7 +287,7 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
       return res.json(user);
     } catch (err) {
       logger.error(
-        `[${moduleName}] [GET /auth/users/:id] ${err.message}`
+        `[${moduleName}] [GET /auth/admin/user/:id] ${err.message}`
       );
       const status = err.response?.status || 500;
       return res
@@ -296,10 +296,10 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
     }
   });
 
-  // POST /auth/users
+  // POST /auth/admin/user
   // ⛔ Nessun hashing qui: payload viene passato “as is” a DBManager.
-// POST /auth/users
-router.post("/users", async (req, res) => {
+// POST /auth/admin/user
+router.post("/admin/user", async (req, res) => {
   const body = req.body || {};
   const { username, password, password_hash, ...rest } = body;
 
@@ -335,7 +335,7 @@ router.post("/users", async (req, res) => {
     const result = await userClient.createUser(payload);
     return res.json(result);
   } catch (err) {
-    logger.error(`[${moduleName}] [POST /auth/users] ${err.message}`);
+    logger.error(`[${moduleName}] [POST /auth/admin/user] ${err.message}`);
     const status = err.response?.status || 500;
     return res
       .status(status)
@@ -344,8 +344,8 @@ router.post("/users", async (req, res) => {
 });
 
 
-  // PUT /auth/users/:id
-  router.put("/users/:id", async (req, res) => {
+  // PUT /auth/admin/user/:id
+  router.put("/admin/user/:id", async (req, res) => {
     const userId = req.params.id;
 
     try {
@@ -353,7 +353,7 @@ router.post("/users", async (req, res) => {
       return res.json(result);
     } catch (err) {
       logger.error(
-        `[${moduleName}] [PUT /auth/users/:id] ${err.message}`
+        `[${moduleName}] [PUT /auth/admin/user/:id] ${err.message}`
       );
       const status = err.response?.status || 500;
       return res
@@ -362,8 +362,8 @@ router.post("/users", async (req, res) => {
     }
   });
 
-  // DELETE /auth/users/:id
-  router.delete("/users/:id", async (req, res) => {
+  // DELETE /auth/admin/user/:id
+  router.delete("/admin/user/:id", async (req, res) => {
     const userId = req.params.id;
 
     try {
@@ -371,7 +371,7 @@ router.post("/users", async (req, res) => {
       return res.json(result);
     } catch (err) {
       logger.error(
-        `[${moduleName}] [DELETE /auth/users/:id] ${err.message}`
+        `[${moduleName}] [DELETE /auth/admin/user/:id] ${err.message}`
       );
       const status = err.response?.status || 500;
       return res
@@ -384,8 +384,8 @@ router.post("/users", async (req, res) => {
   // 3) PERMISSIONS MANAGEMENT (routing puro)
   // =========================
 
-  // GET /auth/users/:id/permissions
-  router.get("/users/:id/permissions", async (req, res) => {
+  // GET /auth/admin/user/:id/permissions
+  router.get("/admin/user/:id/permissions", async (req, res) => {
     const userId = req.params.id;
 
     try {
@@ -393,7 +393,7 @@ router.post("/users", async (req, res) => {
       return res.json(perms);
     } catch (err) {
       logger.error(
-        `[${moduleName}] [GET /auth/users/:id/permissions] ${err.message}`
+        `[${moduleName}] [GET /auth/admin/user/:id/permissions] ${err.message}`
       );
       const status = err.response?.status || 500;
       return res
@@ -402,8 +402,8 @@ router.post("/users", async (req, res) => {
     }
   });
 
-  // POST /auth/users/:id/permissions
-  router.post("/users/:id/permissions", async (req, res) => {
+  // POST /auth/admin/user/:id/permissions
+  router.post("/admin/user/:id/permissions", async (req, res) => {
     const userId = req.params.id;
 
     try {
@@ -411,7 +411,7 @@ router.post("/users", async (req, res) => {
       return res.json(result);
     } catch (err) {
       logger.error(
-        `[${moduleName}] [POST /auth/users/:id/permissions] ${err.message}`
+        `[${moduleName}] [POST /auth/admin/user/:id/permissions] ${err.message}`
       );
       const status = err.response?.status || 500;
       return res
@@ -420,8 +420,8 @@ router.post("/users", async (req, res) => {
     }
   });
 
-  // PUT /auth/users/:id/permissions/:permId
-  router.put("/users/:id/permissions/:permId", async (req, res) => {
+  // PUT /auth/admin/user/:id/permissions/:permId
+  router.put("/admin/user/:id/permissions/:permId", async (req, res) => {
     const userId = req.params.id;
     const permId = req.params.permId;
 
@@ -434,7 +434,7 @@ router.post("/users", async (req, res) => {
       return res.json(result);
     } catch (err) {
       logger.error(
-        `[${moduleName}] [PUT /auth/users/:id/permissions/:permId] ${err.message}`
+        `[${moduleName}] [PUT /auth/admin/user/:id/permissions/:permId] ${err.message}`
       );
       const status = err.response?.status || 500;
       return res
@@ -443,8 +443,8 @@ router.post("/users", async (req, res) => {
     }
   });
 
-  // DELETE /auth/users/:id/permissions/:permId
-  router.delete("/users/:id/permissions/:permId", async (req, res) => {
+  // DELETE /auth/admin/user/:id/permissions/:permId
+  router.delete("/admin/user/:id/permissions/:permId", async (req, res) => {
     const userId = req.params.id;
     const permId = req.params.permId;
 
@@ -453,7 +453,7 @@ router.post("/users", async (req, res) => {
       return res.json(result);
     } catch (err) {
       logger.error(
-        `[${moduleName}] [DELETE /auth/users/:id/permissions/:permId] ${err.message}`
+        `[${moduleName}] [DELETE /auth/admin/user/:id/permissions/:permId] ${err.message}`
       );
       const status = err.response?.status || 500;
       return res
@@ -466,13 +466,13 @@ router.post("/users", async (req, res) => {
   // 4) API KEYS MANAGEMENT
   // =========================
 
-  // GET /auth/api-keys
-  router.get("/api-keys", async (req, res) => {
+  // GET /auth/admin/api-keys
+  router.get("/admin/api-keys", async (req, res) => {
     try {
       const keys = await apiKeysClient.listApiKeys();
       return res.json(keys);
     } catch (err) {
-      logger.error(`[${moduleName}] [GET /auth/api-keys] ${err.message}`);
+      logger.error(`[${moduleName}] [GET /auth/admin/api-keys] ${err.message}`);
       const status = err.response?.status || 500;
       return res
         .status(status)
@@ -480,8 +480,8 @@ router.post("/users", async (req, res) => {
     }
   });
 
-  // GET /auth/api-keys/:id
-  router.get("/api-keys/:id", async (req, res) => {
+  // GET /auth/admin/api-keys/:id
+  router.get("/admin/api-keys/:id", async (req, res) => {
     const id = req.params.id;
 
     try {
@@ -489,7 +489,7 @@ router.post("/users", async (req, res) => {
       return res.json(key);
     } catch (err) {
       logger.error(
-        `[${moduleName}] [GET /auth/api-keys/:id] ${err.message}`
+        `[${moduleName}] [GET /auth/admin/api-keys/:id] ${err.message}`
       );
       const status = err.response?.status || 500;
       return res
@@ -498,14 +498,14 @@ router.post("/users", async (req, res) => {
     }
   });
 
-  // POST /auth/api-keys
-  router.post("/api-keys", async (req, res) => {
+  // POST /auth/admin/api-keys
+  router.post("/admin/api-keys", async (req, res) => {
     try {
       const result = await apiKeysClient.createApiKey(req.body || {});
       return res.json(result);
     } catch (err) {
       logger.error(
-        `[${moduleName}] [POST /auth/api-keys] ${err.message}`
+        `[${moduleName}] [POST /auth/admin/api-keys] ${err.message}`
       );
       const status = err.response?.status || 500;
       // DBManager manda già messaggio utile in err.message
@@ -518,15 +518,15 @@ router.post("/users", async (req, res) => {
     }
   });
 
-  // PUT /auth/api-keys/:id
-  router.put("/api-keys/:id", async (req, res) => {
+  // PUT /auth/admin/api-keys/:id
+  router.put("/admin/api-keys/:id", async (req, res) => {
     const id = req.params.id;
     try {
       const result = await apiKeysClient.updateApiKey(id, req.body || {});
       return res.json(result);
     } catch (err) {
       logger.error(
-        `[${moduleName}] [PUT /auth/api-keys/:id] ${err.message}`
+        `[${moduleName}] [PUT /auth/admin/api-keys/:id] ${err.message}`
       );
       const status = err.response?.status || 500;
       return res
@@ -535,15 +535,15 @@ router.post("/users", async (req, res) => {
     }
   });
 
-  // DELETE /auth/api-keys/:id
-  router.delete("/api-keys/:id", async (req, res) => {
+  // DELETE /auth/admin/api-keys/:id
+  router.delete("/admin/api-keys/:id", async (req, res) => {
     const id = req.params.id;
     try {
       const result = await apiKeysClient.deleteApiKey(id);
       return res.json(result);
     } catch (err) {
       logger.error(
-        `[${moduleName}] [DELETE /auth/api-keys/:id] ${err.message}`
+        `[${moduleName}] [DELETE /auth/admin/api-keys/:id] ${err.message}`
       );
       const status = err.response?.status || 500;
       return res
@@ -556,15 +556,15 @@ router.post("/users", async (req, res) => {
   // 5) API KEY PERMISSIONS
   // =========================
 
-  // GET /auth/api-keys/:id/permissions
-  router.get("/api-keys/:id/permissions", async (req, res) => {
+  // GET /auth/admin/api-keys/:id/permissions
+  router.get("/admin/api-keys/:id/permissions", async (req, res) => {
     const id = req.params.id;
     try {
       const perms = await apiKeysClient.listPermissionsForApiKey(id);
       return res.json(perms);
     } catch (err) {
       logger.error(
-        `[${moduleName}] [GET /auth/api-keys/:id/permissions] ${err.message}`
+        `[${moduleName}] [GET /auth/admin/api-keys/:id/permissions] ${err.message}`
       );
       const status = err.response?.status || 500;
       return res.status(status).json({
@@ -573,8 +573,8 @@ router.post("/users", async (req, res) => {
     }
   });
 
-  // POST /auth/api-keys/:id/permissions
-  router.post("/api-keys/:id/permissions", async (req, res) => {
+  // POST /auth/admin/api-keys/:id/permissions
+  router.post("/admin/api-keys/:id/permissions", async (req, res) => {
     const id = req.params.id;
     try {
       const result = await apiKeysClient.addPermissionToApiKey(
@@ -584,7 +584,7 @@ router.post("/users", async (req, res) => {
       return res.json(result);
     } catch (err) {
       logger.error(
-        `[${moduleName}] [POST /auth/api-keys/:id/permissions] ${err.message}`
+        `[${moduleName}] [POST /auth/admin/api-keys/:id/permissions] ${err.message}`
       );
       const status = err.response?.status || 500;
       return res.status(status).json({
@@ -596,9 +596,9 @@ router.post("/users", async (req, res) => {
     }
   });
 
-  // PUT /auth/api-keys/:id/permissions/:permId
+  // PUT /auth/admin/api-keys/:id/permissions/:permId
   router.put(
-    "/api-keys/:id/permissions/:permId",
+    "/admin/api-keys/:id/permissions/:permId",
     async (req, res) => {
       const id = req.params.id;
       const permId = req.params.permId;
@@ -612,7 +612,7 @@ router.post("/users", async (req, res) => {
         return res.json(result);
       } catch (err) {
         logger.error(
-          `[${moduleName}] [PUT /auth/api-keys/:id/permissions/:permId] ${err.message}`
+          `[${moduleName}] [PUT /auth/admin/api-keys/:id/permissions/:permId] ${err.message}`
         );
         const status = err.response?.status || 500;
         return res.status(status).json({
@@ -622,9 +622,9 @@ router.post("/users", async (req, res) => {
     }
   );
 
-  // DELETE /auth/api-keys/:id/permissions/:permId
+  // DELETE /auth/admin/api-keys/:id/permissions/:permId
   router.delete(
-    "/api-keys/:id/permissions/:permId",
+    "/admin/api-keys/:id/permissions/:permId",
     async (req, res) => {
       const id = req.params.id;
       const permId = req.params.permId;
@@ -635,7 +635,7 @@ router.post("/users", async (req, res) => {
         return res.json(result);
       } catch (err) {
         logger.error(
-          `[${moduleName}] [DELETE /auth/api-keys/:id/permissions/:permId] ${err.message}`
+          `[${moduleName}] [DELETE /auth/admin/api-keys/:id/permissions/:permId] ${err.message}`
         );
         const status = err.response?.status || 500;
         return res.status(status).json({

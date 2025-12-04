@@ -28,6 +28,9 @@ services:
       - "--api.dashboard=true"
       - "--api.insecure=false"
 
+      # log (opzionale)
+      - "--log.level=INFO"
+
     ports:
       - "80:80"
       - "443:443"
@@ -37,6 +40,15 @@ services:
       - "traefik_letsencrypt:/letsencrypt"
     networks:
       - trading_net
+
+    labels:
+      - "traefik.enable=true"
+
+      # 🔐 middleware di autenticazione → chiama authService /auth/validate
+      - "traefik.http.middlewares.auth-forward.forwardauth.address=http://authservice:3015/auth/validate"
+      - "traefik.http.middlewares.auth-forward.forwardauth.trustForwardHeader=true"
+      - "traefik.http.middlewares.auth-forward.forwardauth.authResponseHeaders=X-User-Id,X-Auth-Subject-Type"
+
   # ======================
   # CORE SERVICES (sempre ON)
   # ======================
@@ -147,6 +159,8 @@ services:
       # ✅ Middleware corretto: stripPrefix (camelCase)
       - "traefik.http.middlewares.cachemanager-stripprefix.stripPrefix.prefixes=/cachemanager"
       - "traefik.http.routers.cachemanager.middlewares=cachemanager-stripprefix"
+      # 🔐 protetto via forwardAuth → /auth/validate
+      - "traefik.http.routers.cachemanager.middlewares=auth-forward@docker"
 
   capitalmanager:
     image: expovin/capitalmanager:${CAPITALMANAGER_VERSION}
@@ -261,6 +275,8 @@ services:
       # Strip del prefisso /scheduler
       - "traefik.http.middlewares.scheduler-stripprefix.stripPrefix.prefixes=/scheduler"
       - "traefik.http.routers.scheduler.middlewares=scheduler-stripprefix"
+      # 🔐 protetto via forwardAuth → /auth/validate
+      - "traefik.http.routers.cachemanager.middlewares=auth-forward@docker"
 
   tickerscanner:
     image: expovin/tickerscanner:${TICKERSCANNER_VERSION}
@@ -292,6 +308,37 @@ services:
       - "traefik.http.services.tickerscanner.loadbalancer.server.port=3013"
       - "traefik.http.middlewares.tickerscanner-stripprefix.stripPrefix.prefixes=/tickerscanner"
       - "traefik.http.routers.tickerscanner.middlewares=tickerscanner-stripprefix"
+      # 🔐 protetto via forwardAuth → /auth/validate
+      - "traefik.http.routers.cachemanager.middlewares=auth-forward@docker"
+
+  autservice:
+    image: expovin/authservice:${AUTHSERVICE_VERSION}
+    restart: unless-stopped
+    networks:
+      - trading_net
+    depends_on:
+      dbmanager:
+          condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+
+      # 🔓 router PUBBLICO:
+      # /auth/login e /auth/validate → niente middleware, usati da client e Traefik
+      - "traefik.http.routers.auth-public.rule=Host(`api.trading.expovin.it`) && (PathPrefix(`/auth/login`) || PathPrefix(`/auth/validate`))"
+      - "traefik.http.routers.auth-public.entrypoints=websecure"
+      - "traefik.http.routers.auth-public.tls.certresolver=le"
+      - "traefik.http.routers.auth-public.service=auth-svc"
+
+      # 🔐 router ADMIN:
+      # /auth/admin/... → protetto da JWT/API_KEY via forwardAuth
+      - "traefik.http.routers.auth-admin.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/auth/admin`)"
+      - "traefik.http.routers.auth-admin.entrypoints=websecure"
+      - "traefik.http.routers.auth-admin.tls.certresolver=le"
+      - "traefik.http.routers.auth-admin.middlewares=auth-forward@docker"
+      - "traefik.http.routers.auth-admin.service=auth-svc"
+
+      # service condiviso che punta alla porta interna 3015
+      - "traefik.http.services.auth-svc.loadbalancer.server.port=3015"
 
 volumes:
   trading-system_mysql_data:
