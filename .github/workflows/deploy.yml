@@ -257,7 +257,7 @@ jobs:
 
     - name: Copy DB restore script and dump to server
       run: |
-        TAR_FILE=$(ls db/Trading_${{ github.ref_name }}_*.tar.gz 2>/dev/null | head -n 1)
+        TAR_FILE=$(ls -1t db/Trading_${{ github.ref_name }}_*.tar.gz 2>/dev/null | head -n 1)
         if [[ -z "$TAR_FILE" ]]; then
           echo "❌ Nessun file db/Trading_${{ github.ref_name }}_*.tar.gz trovato"
           exit 1
@@ -279,7 +279,7 @@ jobs:
           . .env
           set +a
 
-          TAR_FILE=$(ls Trading_${ENV_NAME}_*.tar.gz 2>/dev/null | head -n 1)
+          TAR_FILE=$(ls -1t Trading_${ENV_NAME}_*.tar.gz 2>/dev/null | head -n 1)
           if [[ -z "$TAR_FILE" ]]; then
             echo "❌ Nessun file Trading_${ENV_NAME}_*.tar.gz trovato per il restore"
             exit 1

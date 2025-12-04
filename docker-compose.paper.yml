@@ -160,7 +160,7 @@ services:
       - "traefik.http.middlewares.cachemanager-stripprefix.stripPrefix.prefixes=/cachemanager"
       - "traefik.http.routers.cachemanager.middlewares=cachemanager-stripprefix"
       # 🔐 protetto via forwardAuth → /auth/validate
-      - "traefik.http.routers.cachemanager.middlewares=auth-forward@docker"
+      - "traefik.http.routers.cachemanager.middlewares=cachemanager-stripprefix,auth-forward@docker"
 
   capitalmanager:
     image: expovin/capitalmanager:${CAPITALMANAGER_VERSION}
@@ -276,7 +276,7 @@ services:
       - "traefik.http.middlewares.scheduler-stripprefix.stripPrefix.prefixes=/scheduler"
       - "traefik.http.routers.scheduler.middlewares=scheduler-stripprefix"
       # 🔐 protetto via forwardAuth → /auth/validate
-      - "traefik.http.routers.cachemanager.middlewares=auth-forward@docker"
+      - "traefik.http.routers.scheduler.middlewares=scheduler-stripprefix,auth-forward@docker"
 
   tickerscanner:
     image: expovin/tickerscanner:${TICKERSCANNER_VERSION}
@@ -309,7 +309,7 @@ services:
       - "traefik.http.middlewares.tickerscanner-stripprefix.stripPrefix.prefixes=/tickerscanner"
       - "traefik.http.routers.tickerscanner.middlewares=tickerscanner-stripprefix"
       # 🔐 protetto via forwardAuth → /auth/validate
-      - "traefik.http.routers.cachemanager.middlewares=auth-forward@docker"
+      - "traefik.http.routers.tickerscanner.middlewares=tickerscanner-stripprefix,auth-forward@docker"
 
   autservice:
     image: expovin/authservice:${AUTHSERVICE_VERSION}
