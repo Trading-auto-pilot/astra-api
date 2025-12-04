@@ -10,6 +10,7 @@ services:
       # Provider Docker
       - "--providers.docker=true"
       - "--providers.docker.exposedByDefault=false"
+      - "--providers.docker.network=trading_net"
       # EntryPoints
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
@@ -311,7 +312,7 @@ services:
       # 🔐 protetto via forwardAuth → /auth/validate
       - "traefik.http.routers.tickerscanner.middlewares=tickerscanner-stripprefix,auth-forward@docker"
 
-  autservice:
+  authservice:
     image: expovin/authservice:${AUTHSERVICE_VERSION}
     restart: unless-stopped
     networks:
