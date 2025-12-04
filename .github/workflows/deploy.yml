@@ -187,39 +187,6 @@ jobs:
         echo "TICKERSCANNER_URL=${{vars.TICKERSCANNER_URL}}" >> .env
         echo "AUTHSERVICE_URL=${{vars.AUTHSERVICE_URL}}" >> .env
 
-    - name: Add .env with container versions from JS files
-      run: |
-        echo "📝 Genero .env con le versioni dei container dai file .js..."
-
-        for service in DBManager cacheManager capitalManager alertingService LiveMarketListener orderListner orderSimulator MarketSimulator strategies/sma strategies/sltp; do
-          name=$(basename "$service" | tr '[:upper:]' '[:lower:]')
-
-          version_file=$(find "$service" -type f -name "*.js" | while read -r f; do
-            file_base=$(basename "$f" .js | tr '[:upper:]' '[:lower:]')
-            if [[ "$file_base" == "$name" ]]; then
-              echo "$f"
-              break
-            fi
-          done)
-
-          if [[ -z "$version_file" ]]; then
-            echo "⚠️  Nessun file .js corrispondente trovato in $service, salto..."
-            continue
-          fi
-
-          version=$(grep -oE "MODULE_VERSION *= *['\"]([^'\"]+)['\"]" "$version_file" | head -n1 | sed -E "s/.*['\"]([^'\"]+)['\"].*/\1/" | tr -d '\r')
-
-          if [[ -n "$version" ]]; then
-            VAR_NAME=$(echo "${name}_version" | tr '[:lower:]' '[:upper:]')
-            echo "${VAR_NAME}=${version}" >> .env
-            echo "✅ Aggiunto ${VAR_NAME}=${version}"
-          else
-            echo "⚠️  Versione non trovata in $version_file, salto..."
-          fi
-        done
-
-        echo "✅ File .env generato:"
-        cat .env
 
     - name: Copy .env to server
       run: |
