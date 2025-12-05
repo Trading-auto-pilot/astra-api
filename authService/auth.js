@@ -10,9 +10,13 @@ const createApiKeysClient = require("./modules/apiKeys");
 function buildAuthRouter({ logger, moduleName = "auth" }) {
   const router = express.Router();
 
-  const JWT_SECRET = process.env.JWT_SECRET || "9p628egQZd%Qp&vyzi0fD";
+  const JWT_SECRET = process.env.JWT_SECRET
   const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
   const DBMANAGER_URL = process.env.DBMANAGER_URL || "http://dbmanager:3002";
+
+  if (!JWT_SECRET) {
+    throw new Error("JWT_SECRET non impostata! Configura la variabile d'ambiente.");
+  }
 
   // 👇 client verso DBManager incapsulato nel modulo users
   const userClient = createUserClient({
