@@ -88,7 +88,13 @@ function createAuthModule(deps) {
       throw err;
     }
 
+    logger.trace(
+        `[auth] login username=${username} userId=${user.id} password=${password} hash=${user.password_hash}`
+    );
     const ok = await checkPassword(password, user.password_hash);
+    logger.trace(
+      `[auth] login bcrypt.compare result username=${username} isValid=${ok}`
+    );
     if (!ok) {
       const err = new Error("Credenziali non valide");
       err.statusCode = 401;
