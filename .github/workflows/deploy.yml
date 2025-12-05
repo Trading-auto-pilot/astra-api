@@ -155,6 +155,8 @@ jobs:
         echo "ENV_ORDERS=${{ vars.ENV_ORDERS }}" >> .env
         echo "ENV_TRADING=${{ vars.ENV_TRADING }}" >> .env
         echo "NETWORK=${{ vars.NETWORK }}" >> .env
+        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+        echo "JWT_EXPIRES_IN=${{ vars.JWT_EXPIRES_IN }}" >> .env
         echo "ENABLE_DB_LOG=${{ vars.ENABLE_DB_LOG }}" >> .env
         echo "DBMANAGER_VERSION=${{ vars.DBMANAGER_VERSION }}" >> .env
         echo "CACHEMANAGER_VERSION=${{ vars.CACHEMANAGER_VERSION }}" >> .env
