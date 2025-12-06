@@ -145,8 +145,8 @@ jobs:
         echo "LOG_LEVEL=${{ vars.LOG_LEVEL }}" > .env
         echo "ENV_NAME=${{ github.ref_name }}" >> .env
         echo "LETSENCRYPT_EMAIL=${{ github.LETSENCRYPT_EMAIL }}" >> .env
-        echo "MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}" >> .env
-        echo "MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}" >> .env
+        echo "MYSQL_ROOT_PASSWORD='${{ secrets.MYSQL_ROOT_PASSWORD }}'" >> .env
+        echo "MYSQL_PASSWORD='${{ secrets.MYSQL_PASSWORD }}'" >> .env
         echo "MYSQL_DATABASE=${{ vars.MYSQL_DATABASE }}" >> .env
         echo "MYSQL_USER=${{ vars.MYSQL_USER }}" >> .env
         echo "MYSQL_HOST=${{vars.MYSQL_HOST}}" >> .env
@@ -155,7 +155,7 @@ jobs:
         echo "ENV_ORDERS=${{ vars.ENV_ORDERS }}" >> .env
         echo "ENV_TRADING=${{ vars.ENV_TRADING }}" >> .env
         echo "NETWORK=${{ vars.NETWORK }}" >> .env
-        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+        echo "JWT_SECRET='${{ secrets.JWT_SECRET }}'" >> .env
         echo "JWT_EXPIRES_IN=${{ vars.JWT_EXPIRES_IN }}" >> .env
         echo "ENABLE_DB_LOG=${{ vars.ENABLE_DB_LOG }}" >> .env
         echo "DBMANAGER_VERSION=${{ vars.DBMANAGER_VERSION }}" >> .env
@@ -171,9 +171,9 @@ jobs:
         echo "SMA_VERSION=${{ vars.SMA_VERSION }}" >> .env
         echo "SLTP_VERSION=${{ vars.SLTP_VERSION }}" >> .env
         echo "MYSQL_PORT=${{vars.MYSQL_PORT}}" >> .env
-        echo "APCA_API_KEY_ID=${{secrets.APCA_API_KEY_ID}}" >> .env
-        echo "APCA_API_SECRET_KEY=${{secrets.APCA_API_SECRET_KEY}}" >> .env
-        echo "FMP_API_KEY=${{secrets.FMP_API_KEY}}" >> .env
+        echo "APCA_API_KEY_ID='${{secrets.APCA_API_KEY_ID}}'" >> .env
+        echo "APCA_API_SECRET_KEY='${{secrets.APCA_API_SECRET_KEY}}'" >> .env
+        echo "FMP_API_KEY='${{secrets.FMP_API_KEY}}'" >> .env
         echo "MARKETSIMULATOR_VERSION=${{vars.MARKETSIMULATOR_VERSION}}" >> .env
         echo "ORDERSIMULATOR_VERSION=${{vars.ORDERSIMULATOR_VERSION}}" >> .env
         echo "DBMANAGER_URL=${{vars.DBMANAGER_URL}}" >> .env
