@@ -1,65 +1,90 @@
 "use strict";
 
-const minimatch = require("minimatch"); 
-// se vuoi usare wildcard tipo /scheduler/*
-// installalo se manca: npm install minimatch
+const minimatch = require("minimatch");
 
 module.exports = function buildAuthorization({ logger, userClient }) {
 
   /**
-   * Verifica se un utente/API_KEY è autorizzato a chiamare path/metodo.
-   *
-   * @param {object} params
-   * @param {"user"|"apiKey"} params.subjectType
-   * @param {number} params.subjectId
-   * @param {string} params.method - es. "GET"
-   * @param {string} params.path - es. "/scheduler/jobs"
-   *
-   * @returns {Promise<{allowed:boolean, reason:string}>}
+   * Verifica se un soggetto (user o apiKey) può chiamare path/metodo.
    */
   async function authorize({ subjectType, subjectId, method, path }) {
-    try {
-      logger.trace(`[authorization] checking ${subjectType}:${subjectId} ${method} ${path}`);
+    logger.trace(`[authorization] START check: ${subjectType}:${subjectId} → ${method} ${path}`);
 
-      // 1) recupero permessi da DBManager
+    try {
+      // 1) Recupero permessi dal DBManager
+      logger.trace(`[authorization] Fetching permissions for ${subjectType}:${subjectId}`);
       const perms = await userClient.getPermissionsForSubject(subjectType, subjectId);
 
       if (!Array.isArray(perms) || perms.length === 0) {
+        logger.trace(`[authorization] No permissions found → DENY`);
         return { allowed: false, reason: "No permissions found" };
       }
 
-      // 2) ADMIN_ALL → bypass totale
+      logger.trace(`[authorization] ${perms.length} permission(s) loaded from DB:`);
+
+      perms.forEach((p, idx) => {
+        logger.trace(
+          `  [perm ${idx}] code=${p.permission_code} allowed=${p.is_allowed} pattern="${p.resource_pattern}" method=${p.http_method}`
+        );
+      });
+
+      // 2) ADMIN_ALL → bypass
       const isAdmin = perms.some(
         (p) => p.permission_code === "ADMIN_ALL" && p.is_allowed
       );
+
       if (isAdmin) {
+        logger.trace(`[authorization] ADMIN_ALL detected → ALLOW`);
         return { allowed: true, reason: "ADMIN_ALL" };
       }
 
-      // 3) verifica permessi granulari
+      logger.trace(`[authorization] No ADMIN privilege → checking granular permissions...`);
+
+      // 3) Verifica permessi granulari
       for (const p of perms) {
-        if (!p.is_allowed) continue;
+        if (!p.is_allowed) {
+          logger.trace(`[authorization] Skipped perm "${p.permission_code}" → not allowed`);
+          continue;
+        }
 
-        // metodo
         const methodOk = p.http_method === "ANY" || p.http_method === method;
-        if (!methodOk) continue;
+        if (!methodOk) {
+          logger.trace(
+            `[authorization] Method mismatch: needed ${p.http_method}, got ${method}`
+          );
+          continue;
+        }
 
-        // pattern
         const pattern = p.resource_pattern || "";
-        if (!pattern) continue;
+        if (!pattern) {
+          logger.trace(
+            `[authorization] Skipped perm "${p.permission_code}" → no resource_pattern`
+          );
+          continue;
+        }
 
-        // matching stile wildcard: /scheduler/* oppure /scheduler/** oppure /scheduler/jobs
         const pathOk = minimatch(path, pattern, { nocase: true });
 
+        logger.trace(
+          `[authorization] Testing pattern "${pattern}" against path "${path}" → ${pathOk}`
+        );
+
         if (pathOk) {
-          return { allowed: true, reason: `Matched pattern ${pattern}` };
+          logger.trace(
+            `[authorization] MATCH! perm="${p.permission_code}" → ALLOW`
+          );
+          return {
+            allowed: true,
+            reason: `Matched pattern ${pattern}`,
+          };
         }
       }
 
+      logger.trace(`[authorization] No permission matched → DENY`);
       return { allowed: false, reason: "No matching permission" };
 
     } catch (err) {
-      logger.error("[authorization] error:", err.message);
+      logger.error(`[authorization] ERROR: ${err.message}`);
       return { allowed: false, reason: "Authorization error" };
     }
   }
