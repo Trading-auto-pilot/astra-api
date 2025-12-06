@@ -4,6 +4,7 @@ const bcryptjs=require("bcryptjs");
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const createAuthModule = require("./modules/auth");
+const authorization = require("./modules/authorization");
 const createUserClient = require("./modules/user");
 const createApiKeysClient = require("./modules/apiKeys");
 
@@ -122,6 +123,26 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
           `[${moduleName}] [/auth/validate] Utente autenticato userId=${userId} → ALLOW`
         );
 
+        // Autorizzazione Permessi
+        const subjectType = payload.subType;
+        const subjectId   = payload.subId;
+      
+        const method = req.get("X-Forwarded-Method") || req.method;
+        const path   = req.get("X-Forwarded-Uri") || req.originalUrl;
+      
+        const { allowed, reason } = await authorization.authorize({
+          subjectType,
+          subjectId,
+          method,
+          path
+        });
+
+        if (!allowed) {
+          logger.warning(`[auth] deny ${subjectType}:${subjectId} → ${method} ${path} (${reason})`);
+          return res.status(403).json({ error: "Accesso negato" });
+        }
+
+        
         res.setHeader("X-User-Id", String(userId));
         res.setHeader("X-Auth-Subject-Type", "user");
         return res.status(200).end();
