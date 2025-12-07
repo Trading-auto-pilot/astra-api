@@ -13,7 +13,7 @@ module.exports = function buildAuthorization({ logger, userClient }) {
     try {
       // 1) Recupero permessi dal DBManager
       logger.trace(`[authorization] Fetching permissions for ${subjectType}:${subjectId}`);
-      const perms = await userClient.getPermissionsForSubject(subjectType, subjectId);
+      const perms = await userClient.listUserPermissions(subjectId);
 
       if (!Array.isArray(perms) || perms.length === 0) {
         logger.trace(`[authorization] No permissions found → DENY`);
