@@ -131,13 +131,21 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
         const subjectId   = payload.subId   || userId;
 
         const method = req.get("X-Forwarded-Method") || req.method;
-        const path   = req.get("X-Forwarded-Uri") || req.originalUrl;
+        const forwardedUri    = req.get("X-Forwarded-Uri") || req.originalUrl;
+        const forwardedPrefix = req.get("X-Forwarded-Prefix") || "";
+
+        let pathForAuth;
+        if (forwardedPrefix && forwardedUri.startsWith("/")) {
+          pathForAuth = `${forwardedPrefix}${forwardedUri}`;
+        } else {
+          pathForAuth = forwardedPrefix || forwardedUri;
+        }
       
         const { allowed, reason } = await authorize({
           subjectType,
           subjectId,
           method,
-          path
+          path : pathForAuth
         });
 
         if (!allowed) {
