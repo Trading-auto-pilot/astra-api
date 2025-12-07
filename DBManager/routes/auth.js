@@ -170,6 +170,108 @@ module.exports = (dbManager) => {
     }
   });
 
+  //Navigazione client
+
+// LIST – tutte le pagine client per utente
+router.get("/users/:id/client-nav", async (req, res) => {
+  const userId = Number(req.params.id);
+
+  if (!userId) {
+    return res.status(400).json({ error: "ID non valido" });
+  }
+
+  try {
+    const rows = await dbManager.getUserClientNavigation(userId);
+    return res.json(rows);
+  } catch (err) {
+    console.error(
+      "[GET /auth/users/:id/client-nav] Errore:",
+      err.message || err
+    );
+    return res
+      .status(500)
+      .json({ error: "Errore durante la lettura della navigazione client" });
+  }
+});
+
+// CREATE – aggiunge una pagina per l’utente
+router.post("/users/:id/client-nav", async (req, res) => {
+  const userId = Number(req.params.id);
+  const { page } = req.body || {};
+
+  if (!userId) {
+    return res.status(400).json({ error: "ID non valido" });
+  }
+  if (!page) {
+    return res.status(400).json({ error: "Campo 'page' obbligatorio" });
+  }
+
+  try {
+    const result = await dbManager.addUserClientNavigation(userId, page);
+    return res.json(result);
+  } catch (err) {
+    console.error(
+      "[POST /auth/users/:id/client-nav] Errore:",
+      err.message || err
+    );
+    return res
+      .status(500)
+      .json({ error: "Errore durante l'inserimento della navigazione client" });
+  }
+});
+
+// UPDATE – modifica una pagina esistente
+router.put("/users/:id/client-nav/:navId", async (req, res) => {
+  const userId = Number(req.params.id);
+  const navId = Number(req.params.navId);
+  const { page } = req.body || {};
+
+  if (!userId || !navId) {
+    return res.status(400).json({ error: "ID non valido" });
+  }
+  if (!page) {
+    return res.status(400).json({ error: "Campo 'page' obbligatorio" });
+  }
+
+  try {
+    const result = await dbManager.updateUserClientNavigation(userId, navId, page);
+    return res.json(result);
+  } catch (err) {
+    console.error(
+      "[PUT /auth/users/:id/client-nav/:navId] Errore:",
+      err.message || err
+    );
+    return res
+      .status(500)
+      .json({ error: "Errore durante l'aggiornamento della navigazione client" });
+  }
+});
+
+// DELETE – rimuove una pagina dalla navigazione dell’utente
+router.delete("/users/:id/client-nav/:navId", async (req, res) => {
+  const userId = Number(req.params.id);
+  const navId = Number(req.params.navId);
+
+  if (!userId || !navId) {
+    return res.status(400).json({ error: "ID non valido" });
+  }
+
+  try {
+    const result = await dbManager.deleteUserClientNavigation(userId, navId);
+    return res.json(result);
+  } catch (err) {
+    console.error(
+      "[DELETE /auth/users/:id/client-nav/:navId] Errore:",
+      err.message || err
+    );
+    return res
+      .status(500)
+      .json({ error: "Errore durante la cancellazione della navigazione client" });
+  }
+});
+
+
+
   // ================
   // API KEYS CRUD
   // ================

@@ -4,7 +4,7 @@ const bcryptjs=require("bcryptjs");
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const createAuthModule = require("./modules/auth");
-const authorization = require("./modules/authorization");
+const buildAuthorization = require("./modules/authorization");
 const createUserClient = require("./modules/user");
 const createApiKeysClient = require("./modules/apiKeys");
 
@@ -24,6 +24,9 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
     logger,
     dbManagerUrl: DBMANAGER_URL,
   });
+
+  const { authorize } = buildAuthorization({ logger, userClient });
+
   const apiKeysClient = createApiKeysClient({ 
     logger, 
     dbManagerUrl: DBMANAGER_URL });
@@ -130,7 +133,7 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
         const method = req.get("X-Forwarded-Method") || req.method;
         const path   = req.get("X-Forwarded-Uri") || req.originalUrl;
       
-        const { allowed, reason } = await authorization.authorize({
+        const { allowed, reason } = await authorize({
           subjectType,
           subjectId,
           method,
@@ -287,6 +290,83 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
   // =========================
   // 2) USER MANAGEMENT (auth/admin/user...) - semplice routing verso DBManager
   // =========================
+
+  router.get("/admin/me", async (req, res) => {
+  const authHeader = req.headers["authorization"] || "";
+
+  try {
+    if (!authHeader.startsWith("Bearer ")) {
+      logger.warning(
+        `[${moduleName}] [/admin/me] Bearer token mancante`
+      );
+      return res.status(401).json({ error: "Token mancante" });
+    }
+
+    const token = authHeader.slice("Bearer ".length).trim();
+    if (!token) {
+      logger.warning(
+        `[${moduleName}] [/admin/me] Bearer token vuoto`
+      );
+      return res.status(401).json({ error: "Token mancante" });
+    }
+
+    let rawPayload;
+    try {
+      rawPayload = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      logger.warning(
+        `[${moduleName}] [/admin/me] JWT non valido: ${err.message}`
+      );
+      return res.status(401).json({ error: "Token non valido" });
+    }
+
+    // user id dal payload (compatibile con vari formati)
+    const userId =
+      rawPayload.sub || rawPayload.userId || rawPayload.subId;
+
+    if (!userId) {
+      logger.warning(
+        `[${moduleName}] [/admin/me] JWT senza userId`
+      );
+      return res.status(401).json({ error: "Token non valido" });
+    }
+
+    // 1️⃣ info utente (sanitizzata)
+    let user = null;
+    try {
+      const fullUser = await userClient.getUserById(userId);
+      user = auth.sanitizeUser(fullUser);
+    } catch (err) {
+      logger.warning(
+        `[${moduleName}] [/admin/me] getUserById error userId=${userId}: ${err.message}`
+      );
+    }
+
+    // 2️⃣ navigazione client
+    let clientNavigation = [];
+    try {
+      clientNavigation = await auth.cliNav(userId, logger);
+    } catch (err) {
+      logger.warning(
+        `[${moduleName}] [/admin/me] cliNav error userId=${userId}: ${err.message}`
+      );
+    }
+
+    // 3️⃣ payload token con iat/exp leggibili
+    const tokenPayload = auth.formatTokenPayload(rawPayload);
+
+    return res.json({
+      tokenPayload,
+      user,
+      clientNavigation,
+    });
+  } catch (err) {
+    logger.error(
+      `[${moduleName}] [/admin/me] Errore inatteso: ${err.message}`
+    );
+    return res.status(500).json({ error: "Errore interno" });
+  }
+});
 
   // GET /auth/admin/user
   router.get("/admin/user", async (req, res) => {
