@@ -1,6 +1,6 @@
 "use strict";
 
-const minimatch = require("minimatch");
+const { minimatch } = require("minimatch");
 
 module.exports = function buildAuthorization({ logger, userClient }) {
 
