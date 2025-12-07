@@ -1,11 +1,12 @@
 {
   "lastUpdate": "03/12/2025 14:14", 
-  "version": "1.2",
+  "version": "1.3",
   "microservice": "auth",
 
   "note": [
     "v.1.0.0 auth: Initial scaffolding generated from template.",
     "v.1.1.0 auth: Aggiunta log per debug login.",
-    "v.1.2.0 auth: Aggiunto modulo di autorizzazione"
+    "v.1.2.0 auth: Aggiunto modulo di autorizzazione",
+    "v.1.3.0 auth: Implementazione navigazione utente lato client"
   ]
 }

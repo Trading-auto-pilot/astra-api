@@ -1,11 +1,12 @@
 {
     "lastUpdate" : "29/11/2025",
-    "version": "2.6",
+    "version": "2.7",
     "note" : [  "1.1.0 DBManager : First version test in PAPER environment",
                 "1.1.0 Aggiunta funzione updateStrategies con relativo endpoint",
                 "2.0.0 Refactoring completo suddividendo un file unico in vari moduli sotto /modules e /routes",
                 "2.0.1 Integrazione con REDIS per caching",
                 "2.5.0 Aggiunta di endpoint per Fundamentals e Scheduler",
-                "2.6.0 Implementazione modulo autenticazione"
+                "2.6.0 Implementazione modulo autenticazione",
+                "2.7.0 Navigazione lato client"
             ]
 }

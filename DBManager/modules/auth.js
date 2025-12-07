@@ -375,6 +375,118 @@ async function deleteUserPermission(userId, permId) {
   }
 }
 
+
+// Navigazione Client
+
+/**
+ * Ritorna la navigazione client per un utente.
+ */
+async function getUserClientNavigation(userId) {
+  const conn = await getDbConnection();
+  try {
+    const [rows] = await conn.query(
+      `
+      SELECT
+        id,
+        user_id,
+        page,
+        created_at
+      FROM user_client_navigation
+      WHERE user_id = ?
+      ORDER BY id ASC
+      `,
+      [userId]
+    );
+    logger.info(
+      `[getUserClientNavigation] userId=${userId} rows=${rows.length}`
+    );
+    return rows;
+  } catch (err) {
+    logger.error("[getUserClientNavigation] Error", err.message || err);
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+/**
+ * Inserisce una nuova pagina di navigazione per l'utente.
+ */
+async function addUserClientNavigation(userId, page) {
+  const conn = await getDbConnection();
+  try {
+    const [res] = await conn.query(
+      `
+      INSERT INTO user_client_navigation (user_id, page)
+      VALUES (?, ?)
+      `,
+      [userId, page]
+    );
+    logger.info(
+      `[addUserClientNavigation] userId=${userId} page="${page}" insertId=${res.insertId}`
+    );
+    return { ok: true, id: res.insertId };
+  } catch (err) {
+    logger.error("[addUserClientNavigation] Error", err.message || err);
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+/**
+ * Aggiorna una pagina di navigazione esistente.
+ */
+async function updateUserClientNavigation(userId, navId, page) {
+  const conn = await getDbConnection();
+  try {
+    const [res] = await conn.query(
+      `
+      UPDATE user_client_navigation
+      SET page = ?
+      WHERE id = ? AND user_id = ?
+      `,
+      [page, navId, userId]
+    );
+    logger.info(
+      `[updateUserClientNavigation] userId=${userId} navId=${navId} affectedRows=${res.affectedRows}`
+    );
+    return { ok: true, updated: res.affectedRows };
+  } catch (err) {
+    logger.error("[updateUserClientNavigation] Error", err.message || err);
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+/**
+ * Cancella una pagina di navigazione dell'utente.
+ */
+async function deleteUserClientNavigation(userId, navId) {
+  const conn = await getDbConnection();
+  try {
+    const [res] = await conn.query(
+      `
+      DELETE FROM user_client_navigation
+      WHERE id = ? AND user_id = ?
+      `,
+      [navId, userId]
+    );
+    logger.info(
+      `[deleteUserClientNavigation] userId=${userId} navId=${navId} affectedRows=${res.affectedRows}`
+    );
+    return { ok: true, deleted: res.affectedRows };
+  } catch (err) {
+    logger.error("[deleteUserClientNavigation] Error", err.message || err);
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+
+
 /**
  * API KEYS
  * Tabelle:
@@ -731,6 +843,12 @@ module.exports = {
   createUser,
   updateUser,
   deleteUser,
+
+  //Navigazione utente lato client
+  getUserClientNavigation,
+  addUserClientNavigation,
+  updateUserClientNavigation,
+  deleteUserClientNavigation,
 
   // permessi
   getUserPermissions,

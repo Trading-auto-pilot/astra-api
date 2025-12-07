@@ -1,6 +1,6 @@
 // module/auth.js
 "use strict";
-
+const axios = require("axios");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 
@@ -225,10 +225,66 @@ function createAuthModule(deps) {
     return true;
   }
 
+  // ----------------------- User Client Navigation ----------------------- //
+
+  /**
+ * Ritorna la navigazione client per un utente (array di record user_client_navigation).
+ */
+
+function sanitizeUser(user) {
+  if (!user || typeof user !== "object") return user;
+  const cleaned = { ...user };
+  if ("password_hash" in cleaned) {
+    delete cleaned.password_hash;
+  }
+  return cleaned;
+}
+
+function formatTokenPayload(payload) {
+  if (!payload || typeof payload !== "object") return payload;
+
+  const out = { ...payload };
+
+  // iat / exp sono in secondi → trasformiamo in ISO leggibili
+  if (typeof payload.iat === "number") {
+    out.iat_human = new Date(payload.iat * 1000).toISOString();
+  }
+  if (typeof payload.exp === "number") {
+    out.exp_human = new Date(payload.exp * 1000).toISOString();
+  }
+
+  return out;
+}
+
+async function cliNav(userId) {
+  logger.trace(`[auth.cliNav] Fetch client navigation for userId=${userId}`);
+
+  try {
+    const url = `${process.env.DBMANAGER_URL}/auth/users/${userId}/client-nav`;
+    const resp = await axios.get(url);
+
+    const count = Array.isArray(resp.data) ? resp.data.length : 0;
+    logger.trace(
+      `[${moduleName}][auth.cliNav] userId=${userId} client-nav rows=${count}`
+    );
+
+    return resp.data || [];
+  } catch (err) {
+    logger.error(
+      `[${moduleName}][auth.cliNav] Error for userId=${userId}: ${err.message || err}`
+    );
+    throw err;
+  }
+}
+
+
   return {
     loginWithPassword,
     loginWithApiKey,
     validateForwardAuth,
+    cliNav,
+    sanitizeUser,
+    formatTokenPayload
   };
 }
 
