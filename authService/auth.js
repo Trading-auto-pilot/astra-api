@@ -127,9 +127,9 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
         );
 
         // Autorizzazione Permessi
-        const subjectType = payload.subType;
-        const subjectId   = payload.subId;
-      
+        const subjectType = payload.subType || "user";
+        const subjectId   = payload.subId   || userId;
+
         const method = req.get("X-Forwarded-Method") || req.method;
         const path   = req.get("X-Forwarded-Uri") || req.originalUrl;
       
