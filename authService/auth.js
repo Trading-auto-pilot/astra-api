@@ -149,7 +149,9 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
         });
 
         if (!allowed) {
-          logger.warning(`[auth] deny ${subjectType}:${subjectId} → ${method} ${path} (${reason})`);
+          logger.warning(
+            `[auth] deny ${subjectType}:${subjectId} → ${method} ${pathForAuth} (${reason})`
+          );
           return res.status(403).json({ error: "Accesso negato" });
         }
 
