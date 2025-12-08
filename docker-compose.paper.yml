@@ -394,12 +394,12 @@ services:
       # Router frontend → trading.expovin.it
       - "traefik.http.routers.astraai-frontend.rule=Host(`trading.expovin.it`)"
       - "traefik.http.routers.astraai-frontend.entrypoints=websecure"
-      - "traefik.http.routers.astraai-frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.astraai-frontend.tls.certresolver=le"
 
       # (opzionale) redirect http→https se non già fatto a livello globale
       - "traefik.http.routers.astraai-frontend-web.rule=Host(`trading.expovin.it`)"
       - "traefik.http.routers.astraai-frontend-web.entrypoints=web"
-      - "traefik.http.routers.astraai-frontend-web.middlewares=redirect-to-https"
+      - "traefik.http.routers.astraai-frontend-web.middlewares=redirect-to-https,cors-default@docker"
 
 
 volumes:
