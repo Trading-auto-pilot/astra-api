@@ -53,7 +53,7 @@ services:
       - "traefik.http.middlewares.auth-forward.forwardauth.authResponseHeaders=X-User-Id,X-Auth-Subject-Type"
 
       # CORS Configuration
-      - "traefik.http.middlewares.cors-default.headers.accessControlAllowOriginList=https://api.trading.expovin.it,http://localhost:5173"
+      - "traefik.http.middlewares.cors-default.headers.accessControlAllowOriginList=https://api.trading.expovin.it,https://trading.expovin.it,http://localhost:5173"
       - "traefik.http.middlewares.cors-default.headers.accessControlAllowMethods=GET,OPTIONS,PUT,POST,DELETE"
       - "traefik.http.middlewares.cors-default.headers.accessControlAllowHeaders=Content-Type,Authorization,X-Requested-With"
       - "traefik.http.middlewares.cors-default.headers.accessControlAllowCredentials=true"
@@ -397,9 +397,9 @@ services:
       - "traefik.http.routers.astraai-frontend.tls.certresolver=letsencrypt"
 
       # (opzionale) redirect http→https se non già fatto a livello globale
-      # - "traefik.http.routers.astraai-frontend-web.rule=Host(`trading.expovin.it`)"
-      # - "traefik.http.routers.astraai-frontend-web.entrypoints=web"
-      # - "traefik.http.routers.astraai-frontend-web.middlewares=redirect-to-https"
+      - "traefik.http.routers.astraai-frontend-web.rule=Host(`trading.expovin.it`)"
+      - "traefik.http.routers.astraai-frontend-web.entrypoints=web"
+      - "traefik.http.routers.astraai-frontend-web.middlewares=redirect-to-https"
 
 
 volumes:
