@@ -52,6 +52,12 @@ services:
       - "traefik.http.middlewares.auth-forward.forwardauth.trustForwardHeader=true"
       - "traefik.http.middlewares.auth-forward.forwardauth.authResponseHeaders=X-User-Id,X-Auth-Subject-Type"
 
+      # CORS Configuration
+      - "traefik.http.middlewares.cors-default.headers.accessControlAllowOriginList=https://api.trading.expovin.it,http://localhost:5173"
+      - "traefik.http.middlewares.cors-default.headers.accessControlAllowMethods=GET,OPTIONS,PUT,POST,DELETE"
+      - "traefik.http.middlewares.cors-default.headers.accessControlAllowHeaders=Content-Type,Authorization,X-Requested-With"
+      - "traefik.http.middlewares.cors-default.headers.accessControlAllowCredentials=true"
+
   # ======================
   # CORE SERVICES (sempre ON)
   # ======================
@@ -177,7 +183,7 @@ services:
       - "traefik.http.middlewares.cachemanager-stripprefix.stripPrefix.prefixes=/cachemanager"
       - "traefik.http.routers.cachemanager.middlewares=cachemanager-stripprefix"
       # 🔐 protetto via forwardAuth → /auth/validate
-      - "traefik.http.routers.cachemanager.middlewares=cachemanager-stripprefix,auth-forward@docker"
+      - "traefik.http.routers.cachemanager.middlewares=cachemanager-stripprefix,auth-forward@docker,cors-default@docker"
 
   capitalmanager:
     image: expovin/capitalmanager:${CAPITALMANAGER_VERSION}
@@ -297,7 +303,7 @@ services:
       - "traefik.http.middlewares.scheduler-stripprefix.stripPrefix.prefixes=/scheduler"
       - "traefik.http.routers.scheduler.middlewares=scheduler-stripprefix"
       # 🔐 protetto via forwardAuth → /auth/validate
-      - "traefik.http.routers.scheduler.middlewares=scheduler-stripprefix,auth-forward@docker"
+      - "traefik.http.routers.scheduler.middlewares=scheduler-stripprefix,auth-forward@docker,cors-default@docker"
 
   tickerscanner:
     image: expovin/tickerscanner:${TICKERSCANNER_VERSION}
@@ -334,7 +340,7 @@ services:
       - "traefik.http.middlewares.tickerscanner-stripprefix.stripPrefix.prefixes=/tickerscanner"
       - "traefik.http.routers.tickerscanner.middlewares=tickerscanner-stripprefix"
       # 🔐 protetto via forwardAuth → /auth/validate
-      - "traefik.http.routers.tickerscanner.middlewares=tickerscanner-stripprefix,auth-forward@docker"
+      - "traefik.http.routers.tickerscanner.middlewares=tickerscanner-stripprefix,auth-forward@docker,cors-default@docker"
 
   authservice:
     image: expovin/authservice:${AUTHSERVICE_VERSION}
@@ -368,7 +374,7 @@ services:
       - "traefik.http.routers.auth-admin.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/auth/admin`)"
       - "traefik.http.routers.auth-admin.entrypoints=websecure"
       - "traefik.http.routers.auth-admin.tls.certresolver=le"
-      - "traefik.http.routers.auth-admin.middlewares=auth-forward@docker"
+      - "traefik.http.routers.auth-admin.middlewares=auth-forward@docker,cors-default@docker"
       - "traefik.http.routers.auth-admin.service=auth-svc"
 
       # service condiviso che punta alla porta interna 3015
