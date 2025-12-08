@@ -90,6 +90,14 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
       `[${moduleName}] [/auth/validate] path=${originalPath} method=${originalMethod}`
     );
 
+    // 👇 BYPASS PRE-FLIGHT CORS
+    if (originalMethod === "OPTIONS") {
+      logger.log(
+        `[${moduleName}] [/auth/validate] preflight OPTIONS → ALLOW`
+      );
+      return res.status(200).end();
+    }
+
     try {
       // 1️⃣ JWT USER FLOW (Authorization: Bearer xxx)
       if (authHeader.startsWith("Bearer ")) {
