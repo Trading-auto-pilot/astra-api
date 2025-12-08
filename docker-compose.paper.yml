@@ -380,6 +380,28 @@ services:
       # service condiviso che punta alla porta interna 3015
       - "traefik.http.services.auth-svc.loadbalancer.server.port=3015"
 
+  astraai-frontend:
+    image: expovin/astraai-frontend:${ASTRAAI_VERSION}
+    restart: unless-stopped
+    profiles: ["frontend"]      # se usi i profiles come per gli altri
+    networks:
+      - trading_net             # stessa network di traefik
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=trading_net"
+
+      # Router frontend → trading.expovin.it
+      - "traefik.http.routers.astraai-frontend.rule=Host(`trading.expovin.it`)"
+      - "traefik.http.routers.astraai-frontend.entrypoints=websecure"
+      - "traefik.http.routers.astraai-frontend.tls.certresolver=letsencrypt"
+
+      # (opzionale) redirect http→https se non già fatto a livello globale
+      # - "traefik.http.routers.astraai-frontend-web.rule=Host(`trading.expovin.it`)"
+      # - "traefik.http.routers.astraai-frontend-web.entrypoints=web"
+      # - "traefik.http.routers.astraai-frontend-web.middlewares=redirect-to-https"
+
+
 volumes:
   trading-system_mysql_data:
     external: true
