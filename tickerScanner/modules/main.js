@@ -21,6 +21,7 @@ const ScreenerService = require("./screenerService");
 const FmpFundamentalsService = require("./fmpFundamentalsService");
 const ScoringService = require("./scoringService");
 const MomentumCalculator = require("./momentumCalculator");
+const FundamentalsService = require("./fundamentalsService");
 
 
 
@@ -212,6 +213,10 @@ class TickerScanner {
       ),
     });
 
+    this.fundamentalService = new FundamentalsService({
+      logger: this.logger,                // o this.logger.forModule('momentum')
+      dbmanagerUrl: this.dbmanagerUrl
+    });
 
   }
 

@@ -8,6 +8,7 @@ const cors = require("cors");
 const MainModule = require("./modules/main");
 const createLogger = require("../shared/logger");
 const buildStatusRouter = require("./status"); // router standard /status/*
+const buildFundamentalsRouter = require("./fundamentals");
 
 dotenv.config();
 
@@ -406,6 +407,17 @@ app.use(
   "/status",
   requireReady,
   buildStatusRouter({
+    service: serviceInstance,
+    logger,
+    moduleName: MODULE_NAME,
+  })
+);
+
+
+app.use(
+  "/fundamentals",
+  requireReady,
+  buildFundamentalsRouter({
     service: serviceInstance,
     logger,
     moduleName: MODULE_NAME,
