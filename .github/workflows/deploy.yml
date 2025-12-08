@@ -81,6 +81,7 @@ jobs:
           scheduler
           tickerScanner
           authService
+          astraai-frontend
         )
 
         for service in "${services[@]}"; do
@@ -187,8 +188,13 @@ jobs:
         echo "MARKETSIMULATOR_URL=${{vars.MARKETSIMULATOR_URL}}" >> .env
         echo "SCHEDULER_URL=${{vars.SCHEDULER_URL}}" >> .env
         echo "TICKERSCANNER_URL=${{vars.TICKERSCANNER_URL}}" >> .env
-        echo "AUTHSERVICE_URL=${{vars.AUTHSERVICE_URL}}" >> .env
+        echo "AUTHSERVICE_URL=${{vars.AUTHSERVICE_URL}}" >> .env 
+        echo "ASTRAAI_VERSION=${{vars.ASTRAAI_VERSION}}"
 
+        echo "DOCKERHUB_TOKEN=${{secrets.DOCKERHUB_TOKEN}}"
+        echo "GCP_HOST=${{secrets.GCP_HOST}}"
+        echo "GCP_USER=${{secrets.GCP_USER}}"
+        echo "GH_TOKEN=${{secrets.GH_TOKEN}}"
 
     - name: Copy .env to server
       run: |
