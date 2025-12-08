@@ -191,11 +191,12 @@ jobs:
         echo "AUTHSERVICE_URL=${{vars.AUTHSERVICE_URL}}" >> .env 
         echo "ASTRAAI_VERSION=${{vars.ASTRAAI_VERSION}}"
 
-        echo "DOCKERHUB_TOKEN=${{secrets.DOCKERHUB_TOKEN}}"
-        echo "GCP_HOST=${{secrets.GCP_HOST}}"
-        echo "GCP_USER=${{secrets.GCP_USER}}"
-        echo "GH_TOKEN=${{secrets.GH_TOKEN}}"
-
+        echo "DOCKERHUB_TOKEN=${{secrets.DOCKERHUB_TOKEN}}" >> .env
+        echo "GCP_HOST=${{secrets.GCP_HOST}}" >> .env
+        echo "GCP_USER=${{secrets.GCP_USER}}" >> .env
+        echo "GH_TOKEN=${{secrets.GH_TOKEN}}" >> .env
+        echo "SSH_PRIVATE_KEY=${{secrets.SSH_PRIVATE_KEY}}" >> .env
+ 
     - name: Copy .env to server
       run: |
         scp -o StrictHostKeyChecking=no .env $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/.env
