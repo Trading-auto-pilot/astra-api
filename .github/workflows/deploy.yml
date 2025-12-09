@@ -188,8 +188,9 @@ jobs:
         echo "MARKETSIMULATOR_URL=${{vars.MARKETSIMULATOR_URL}}" >> .env
         echo "SCHEDULER_URL=${{vars.SCHEDULER_URL}}" >> .env
         echo "TICKERSCANNER_URL=${{vars.TICKERSCANNER_URL}}" >> .env
-        echo "AUTHSERVICE_URL=${{vars.AUTHSERVICE_URL}}" >> .env 
-        echo "ASTRAAI_VERSION=${{vars.ASTRAAI_VERSION}}"
+        echo "AUTHSERVICE_URL=${{vars.AUTHSERVICE_URL}}" >> .env  
+        echo "ASTRAAI_VERSION=${{vars.ASTRAAI_VERSION}}" >> .env
+        echo "CORS_ORIGIN=${{vars.CORS_ORIGIN}}" >> .env
  
     - name: Copy .env to server
       run: |

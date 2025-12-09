@@ -18,10 +18,35 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-app.use(cors({
-  origin: 'http://localhost:5173', // indirizzo frontend
-  credentials: true // se usi cookie o auth
-}));
+// -------------------------------------------------------
+// CORS: singola origin o lista separata da virgole
+// -------------------------------------------------------
+/*
+const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin(origin, cb) {
+      if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  })
+);
+*/
+
+// -------------------------------------------------------
+// CORS: Gestione con Treafik davanti 
+// -------------------------------------------------------
+app.use(
+  cors({
+    origin: true,        // accetta l'origin, deciderà Traefik se restituire gli header
+    credentials: true,
+  })
+);
 
 
 const port = process.env.PORT || 3012;

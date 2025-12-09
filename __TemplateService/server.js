@@ -87,6 +87,17 @@ function requireReady(req, res, next) {
 
 /* -------------------------- ROUTES: OPERATIVE -------------------------- */
 
+// GET /release → ritorna release.json
+app.get("/release", async (req, res) => {
+  try {
+    const data = await serviceInstance.getReleaseInfo();
+    return res.json(data);
+  } catch (err) {
+    logger.error("[GET /release] Errore:", err.message);
+    return res.status(500).json({ error: "Impossibile leggere release.json" });
+  }
+});
+
 /**
  * PUT /connect
  * Route generica per avviare una connessione "live" (es. websocket/market).
