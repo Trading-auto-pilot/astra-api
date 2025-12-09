@@ -29,6 +29,7 @@ app.use(express.json());
 // -------------------------------------------------------
 // CORS: singola origin o lista separata da virgole
 // -------------------------------------------------------
+/*
 const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
   .split(",")
   .map((s) => s.trim())
@@ -40,6 +41,17 @@ app.use(
       if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
       return cb(new Error("Not allowed by CORS"));
     },
+    credentials: true,
+  })
+);
+*/
+
+// -------------------------------------------------------
+// CORS: Gestione con Treafik davanti 
+// -------------------------------------------------------
+app.use(
+  cors({
+    origin: true,        // accetta l'origin, deciderà Traefik se restituire gli header
     credentials: true,
   })
 );
@@ -87,6 +99,17 @@ function requireReady(req, res, next) {
 }
 
 /* -------------------------- ROUTES: OPERATIVE -------------------------- */
+
+// GET /release → ritorna release.json
+app.get("/release", async (req, res) => {
+  try {
+    const data = await serviceInstance.getReleaseInfo();
+    return res.json(data);
+  } catch (err) {
+    logger.error("[GET /release] Errore:", err.message);
+    return res.status(500).json({ error: "Impossibile leggere release.json" });
+  }
+});
 
 /**
  * PUT /connect

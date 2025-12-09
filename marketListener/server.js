@@ -19,19 +19,35 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, logLevel)
 const app = express();
 app.use(express.json());
 
+// -------------------------------------------------------
 // CORS: singola origin o lista separata da virgole
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
-  .split(',')
-  .map(s => s.trim())
+// -------------------------------------------------------
+/*
+const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
+  .split(",")
+  .map((s) => s.trim())
   .filter(Boolean);
 
-app.use(cors({
-  origin(origin, cb) {
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-    return cb(new Error('Not allowed by CORS'));
-  },
-  credentials: true
-}));
+app.use(
+  cors({
+    origin(origin, cb) {
+      if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  })
+);
+*/
+
+// -------------------------------------------------------
+// CORS: Gestione con Treafik davanti 
+// -------------------------------------------------------
+app.use(
+  cors({
+    origin: true,        // accetta l'origin, deciderà Traefik se restituire gli header
+    credentials: true,
+  })
+);
 
 const port = process.env.PORT || 3012;
 let marketListener;

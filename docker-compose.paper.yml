@@ -350,6 +350,7 @@ services:
       - DBMANAGER_URL=http://dbmanager:3002
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+      - CORS_ORIGIN=${CORS_ORIGIN}
       - TZ=Asia/Dubai
     networks:
       - trading_net
@@ -368,6 +369,7 @@ services:
       - "traefik.http.routers.auth-public.entrypoints=websecure"
       - "traefik.http.routers.auth-public.tls.certresolver=le"
       - "traefik.http.routers.auth-public.service=auth-svc"
+      - "traefik.http.routers.auth-public.middlewares=cors-default@docker"
 
       # 🔐 router ADMIN:
       # /auth/admin/... → protetto da JWT/API_KEY via forwardAuth
@@ -379,7 +381,7 @@ services:
 
       # service condiviso che punta alla porta interna 3015
       - "traefik.http.services.auth-svc.loadbalancer.server.port=3015"
-      - "traefik.http.routers.auth.middlewares=auth-forward@docker,cors-default@docker"
+
 
   astraai-frontend:
     image: expovin/astraai-frontend:${ASTRAAI_VERSION}
@@ -401,7 +403,7 @@ services:
       # (opzionale) redirect http→https se non già fatto a livello globale
       #- "traefik.http.routers.astraai-frontend-web.rule=Host(`trading.expovin.it`)"
       #- "traefik.http.routers.astraai-frontend-web.entrypoints=web"
-      - "traefik.http.routers.astraai-frontend-web.middlewares=redirect-to-https,cors-default@docker"
+      - "traefik.http.routers.astraai-frontend-web.middlewares=cors-default@docker"
 
 
 volumes:

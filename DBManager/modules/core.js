@@ -4,6 +4,8 @@ const mysql = require('mysql2/promise');
 const createLogger = require('../../shared/logger');
 const Alpaca = require('../../shared/Alpaca');
 const cache = require('../../shared/cache');
+const path = require("path");
+const fs = require("fs").promises;
 
 const AlpacaApi = new Alpaca();
 
@@ -222,6 +224,17 @@ async function getDbConnection() {
 function getDbLogStatus() { return logger.getDbLogStatus()}
 function setDbLogStatus(status) { return (logger.setDbLogStatus(status))}
 
+  async function  getReleaseInfo() {
+    const filePath = path.resolve(__dirname, "..", "release.json");
+    console.log(filePath)
+    try {
+      const raw = await fs.readFile(filePath, "utf8");
+      return JSON.parse(raw);
+    } catch (err) {
+      throw new Error(`Errore lettura release.json: ${err.message}`);
+    }
+  }
+
 
 module.exports = {
   getDbConnection,
@@ -229,5 +242,6 @@ module.exports = {
   formatDateForMySQL,
   sanitizeData,
   getDbLogStatus,
-  setDbLogStatus
+  setDbLogStatus,
+  getReleaseInfo
 };

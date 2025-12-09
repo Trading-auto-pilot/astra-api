@@ -182,6 +182,18 @@ class CacheManager {
     this.logger.info("[afterInit] No custom logic implemented (template).");
   }
 
+
+  async  getReleaseInfo() {
+    const filePath = path.resolve(__dirname, "..", "release.json");
+    console.log(filePath)
+    try {
+      const raw = await fs.readFile(filePath, "utf8");
+      return JSON.parse(raw);
+    } catch (err) {
+      throw new Error(`Errore lettura release.json: ${err.message}`);
+    }
+  }
+  
   /**
    * Ricarica i settings da DB senza riavviare il servizio.
    */

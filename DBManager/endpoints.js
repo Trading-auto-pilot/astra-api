@@ -47,6 +47,17 @@ module.exports = async function createApp({ bus, logger }) {
       });
     });
 
+  // GET /release → ritorna release.json
+  app.get("/release", async (req, res) => {
+    try {
+      const data = await dbManager.getReleaseInfo();
+      return res.json(data);
+    } catch (err) {
+      logger.error("[GET /release] Errore:", err.message);
+      return res.status(500).json({ error: "Impossibile leggere release.json" });
+    }
+  });
+
     // middleware/withTimeout.js
     function withTimeout(ms = 8000) {
       return (req, res, next) => {

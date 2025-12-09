@@ -3,7 +3,7 @@
 
 const path = require("path");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
-
+const fs = require("fs").promises;
 const createLogger = require("../../shared/logger");
 const { initializeSettings, getSetting, reloadSettings } = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
@@ -142,6 +142,19 @@ class __CLASS_NAME__ {
     this.logger.info("[afterInit] No custom logic implemented (template).");
   }
 
+
+  async  getReleaseInfo() {
+    const filePath = path.resolve(__dirname, "..", "release.json");
+    console.log(filePath)
+    try {
+      const raw = await fs.readFile(filePath, "utf8");
+      return JSON.parse(raw);
+    } catch (err) {
+      throw new Error(`Errore lettura release.json: ${err.message}`);
+    }
+  }
+
+  
   /**
    * Ricarica i settings da DB senza riavviare il servizio.
    */
