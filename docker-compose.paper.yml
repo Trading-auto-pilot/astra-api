@@ -92,7 +92,12 @@ services:
   redis:
     image: redis:7
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--save", "300", "10","--dir","/data"]
+    command:
+      [
+        "redis-server",
+        "--maxmemory", "512mb",
+        "--maxmemory-policy", "allkeys-lru"
+      ]
     volumes:
       - redis-data:/data
       - /etc/localtime:/etc/localtime:ro
