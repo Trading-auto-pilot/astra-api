@@ -188,9 +188,8 @@ services:
       - "traefik.http.services.cachemanager.loadbalancer.server.port=3006"
       # ✅ Middleware corretto: stripPrefix (camelCase)
       - "traefik.http.middlewares.cachemanager-stripprefix.stripPrefix.prefixes=/cachemanager"
-      - "traefik.http.routers.cachemanager.middlewares=cachemanager-stripprefix"
       # 🔐 protetto via forwardAuth → /auth/validate
-      - "traefik.http.routers.cachemanager.middlewares=cachemanager-stripprefix,auth-forward@docker,cors-default@docker"
+      - "traefik.http.routers.cachemanager.middlewares=cachemanager-stripprefix,cors-default@docker,auth-forward@docker"
 
   capitalmanager:
     image: expovin/capitalmanager:${CAPITALMANAGER_VERSION}
@@ -308,9 +307,8 @@ services:
       - "traefik.http.services.scheduler.loadbalancer.server.port=3014"
       # Strip del prefisso /scheduler
       - "traefik.http.middlewares.scheduler-stripprefix.stripPrefix.prefixes=/scheduler"
-      - "traefik.http.routers.scheduler.middlewares=scheduler-stripprefix"
       # 🔐 protetto via forwardAuth → /auth/validate
-      - "traefik.http.routers.scheduler.middlewares=scheduler-stripprefix,auth-forward@docker,cors-default@docker"
+      - "traefik.http.routers.scheduler.middlewares=scheduler-stripprefix,cors-default@docker,auth-forward@docker"
 
   tickerscanner:
     image: expovin/tickerscanner:${TICKERSCANNER_VERSION}
@@ -345,9 +343,8 @@ services:
       - "traefik.http.routers.tickerscanner.tls.certresolver=le"
       - "traefik.http.services.tickerscanner.loadbalancer.server.port=3013"
       - "traefik.http.middlewares.tickerscanner-stripprefix.stripPrefix.prefixes=/tickerscanner"
-      - "traefik.http.routers.tickerscanner.middlewares=tickerscanner-stripprefix"
       # 🔐 protetto via forwardAuth → /auth/validate
-      - "traefik.http.routers.tickerscanner.middlewares=tickerscanner-stripprefix,auth-forward@docker,cors-default@docker"
+      - "traefik.http.routers.tickerscanner.middlewares=tickerscanner-stripprefix,cors-default@docker,auth-forward@docker"
 
   authservice:
     image: expovin/authservice:${AUTHSERVICE_VERSION}
@@ -383,7 +380,7 @@ services:
       - "traefik.http.routers.auth-admin.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/auth/admin`)"
       - "traefik.http.routers.auth-admin.entrypoints=websecure"
       - "traefik.http.routers.auth-admin.tls.certresolver=le"
-      - "traefik.http.routers.auth-admin.middlewares=auth-forward@docker,cors-default@docker"
+      - "traefik.http.routers.auth-admin.middlewares=cors-default@docker,auth-forward@docker"
       - "traefik.http.routers.auth-admin.service=auth-svc"
 
       # service condiviso che punta alla porta interna 3015
