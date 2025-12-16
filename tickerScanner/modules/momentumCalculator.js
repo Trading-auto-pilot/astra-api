@@ -39,6 +39,28 @@ class MomentumCalculator {
     return sum / slice.length;
   }
 
+  _smaSlope(lastCloses, period, lookback = 5) {
+    if (!Array.isArray(lastCloses)) return null;
+    if (lastCloses.length < period + lookback) return null;
+
+    const current = this._sma(lastCloses, period);
+    const past = this._sma(lastCloses.slice(0, -lookback), period);
+
+    if (current == null || past == null) return null;
+    return current - past;
+  }
+
+  _scoreDistanceFromHigh(distance) {
+    if (distance == null || Number.isNaN(distance)) return null;
+    if (distance <= 0) return 0;           // già sui massimi
+    if (distance < 0.02) return 30;        // troppo vicino
+    if (distance < 0.05) return 60;
+    if (distance < 0.15) return 100;       // sweet spot: ancora spazio ma non troppo lontano
+    if (distance < 0.30) return 70;
+    if (distance < 0.50) return 40;
+    return 10;                             // troppo distante dai massimi
+  }
+
   _scoreFromReturn(ret) {
     if (ret == null) return null;
     if (ret <= 0) return 0;
@@ -95,6 +117,77 @@ class MomentumCalculator {
     // ordiniamo per timestamp crescente
     data.sort((a, b) => new Date(a.t) - new Date(b.t));
     return data;
+  }
+
+  _calculateDoubleTopPotential({ closes, lastClose, sma10, sma20, sma50, sma200 }) {
+    const numericCloses = (closes || []).filter((v) => Number.isFinite(v));
+    if (!numericCloses.length || lastClose == null) {
+      return { score: null, components: { reason: "not_enough_data" } };
+    }
+
+    const highestClose = Math.max(...numericCloses);
+    const distanceFromHigh =
+      highestClose > 0 ? (highestClose - lastClose) / highestClose : null;
+    const distanceScore = this._scoreDistanceFromHigh(distanceFromHigh);
+
+    const slopes = {
+      sma10: this._smaSlope(numericCloses, 10, 5),
+      sma20: this._smaSlope(numericCloses, 20, 5),
+      sma50: this._smaSlope(numericCloses, 50, 7),
+      sma200: this._smaSlope(numericCloses, 200, 15),
+    };
+
+    let maStructureScore = 0;
+    if (sma10 != null && sma20 != null && sma10 > sma20) maStructureScore += 15;
+    if (sma20 != null && sma50 != null && sma20 > sma50) maStructureScore += 15;
+    if (lastClose != null && sma10 != null && lastClose > sma10) maStructureScore += 10;
+    if (lastClose != null && sma20 != null && lastClose > sma20) maStructureScore += 5;
+    if (slopes.sma10 != null && slopes.sma10 > 0) maStructureScore += 15;
+    if (slopes.sma20 != null && slopes.sma20 > 0) maStructureScore += 15;
+    if (slopes.sma50 != null && slopes.sma50 > 0) maStructureScore += 10;
+    if (slopes.sma200 != null && slopes.sma200 < 0) maStructureScore += 15; // lungo periodo ancora in downtrend
+    if (maStructureScore > 100) maStructureScore = 100;
+
+    let longTermPressureScore = null;
+    if (sma50 != null && sma200 != null && sma200 !== 0) {
+      const spread = (sma50 - sma200) / Math.abs(sma200);
+      if (spread < -0.1) longTermPressureScore = 100;      // molto sotto la lunga → spazio di recupero
+      else if (spread < 0) longTermPressureScore = 80;
+      else if (spread < 0.05) longTermPressureScore = 50;
+      else longTermPressureScore = 25;
+    }
+
+    const pieces = [
+      { score: distanceScore, weight: 0.45 },
+      { score: maStructureScore, weight: 0.35 },
+      { score: longTermPressureScore, weight: 0.20 },
+    ];
+
+    let num = 0;
+    let den = 0;
+    for (const p of pieces) {
+      if (p.score != null) {
+        num += p.score * p.weight;
+        den += p.weight;
+      }
+    }
+
+    const weighted = den > 0 ? num / den : null;
+    const finalScore = weighted != null
+      ? Math.round(weighted * 100) / 100
+      : null;
+
+    return {
+      score: finalScore,
+      components: {
+        highestClose,
+        distanceFromHigh,
+        distanceScore,
+        maStructureScore,
+        longTermPressureScore,
+        slopes,
+      },
+    };
   }
 
   async calculateForSymbol(symbol) {
@@ -169,10 +262,21 @@ class MomentumCalculator {
         ? Math.round(weightedScore * 100) / 100
         : null;
 
+      // setup tipo double top / retest dei massimi
+      const doubleTop = this._calculateDoubleTopPotential({
+        closes,
+        lastClose,
+        sma10,
+        sma20,
+        sma50,
+        sma200,
+      });
+
       //const finalScore = Math.round(weightedScore * 100) / 100;
 
       return {
         score: finalScore,
+        doubleTopScore: doubleTop?.score ?? null,
         components: {
           lastClose,
           mom1m,
@@ -188,6 +292,7 @@ class MomentumCalculator {
           sma50,
           sma200,
           trendScore,
+          doubleTop,
         },
       };
     } catch (e) {
