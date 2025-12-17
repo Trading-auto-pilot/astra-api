@@ -40,6 +40,8 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
     findUserByUsername: userClient.findUserByUsername,
     findUserByApiKey: userClient.findUserByApiKey,
     getPermissionsForUser: userClient.getPermissionsForUser,
+    touchLastLoginAt: userClient.touchLastLoginAt,
+    listUserClientNavigation: userClient.listUserClientNavigation,
   });
 
   function pathMatches(pattern, path) {
@@ -582,6 +584,90 @@ router.post("/admin/user", async (req, res) => {
       return res
         .status(status)
         .json({ error: "Errore durante la cancellazione del permesso" });
+    }
+  });
+
+  // =========================
+  // 3b) USER CLIENT NAVIGATION MANAGEMENT (routing puro)
+  // =========================
+
+  // GET /auth/admin/user/:id/client-nav
+  router.get("/admin/user/:id/client-nav", async (req, res) => {
+    const userId = req.params.id;
+    try {
+      const rows = await userClient.listUserClientNavigation(userId);
+      return res.json(rows);
+    } catch (err) {
+      logger.error(
+        `[${moduleName}] [GET /auth/admin/user/:id/client-nav] ${err.message}`
+      );
+      const status = err.response?.status || 500;
+      return res
+        .status(status)
+        .json({ error: "Errore durante la lettura della navigazione client" });
+    }
+  });
+
+  // POST /auth/admin/user/:id/client-nav
+  router.post("/admin/user/:id/client-nav", async (req, res) => {
+    const userId = req.params.id;
+    try {
+      const result = await userClient.addUserClientNavigation(userId, req.body);
+      return res.json(result);
+    } catch (err) {
+      logger.error(
+        `[${moduleName}] [POST /auth/admin/user/:id/client-nav] ${err.message}`
+      );
+      const status = err.response?.status || 500;
+      return res.status(status).json({
+        error:
+          err.response?.data?.error ||
+          "Errore durante la creazione della navigazione client",
+      });
+    }
+  });
+
+  // PUT /auth/admin/user/:id/client-nav/:navId
+  router.put("/admin/user/:id/client-nav/:navId", async (req, res) => {
+    const userId = req.params.id;
+    const navId = req.params.navId;
+    try {
+      const result = await userClient.updateUserClientNavigation(
+        userId,
+        navId,
+        req.body
+      );
+      return res.json(result);
+    } catch (err) {
+      logger.error(
+        `[${moduleName}] [PUT /auth/admin/user/:id/client-nav/:navId] ${err.message}`
+      );
+      const status = err.response?.status || 500;
+      return res.status(status).json({
+        error:
+          err.response?.data?.error ||
+          "Errore durante l'aggiornamento della navigazione client",
+      });
+    }
+  });
+
+  // DELETE /auth/admin/user/:id/client-nav/:navId
+  router.delete("/admin/user/:id/client-nav/:navId", async (req, res) => {
+    const userId = req.params.id;
+    const navId = req.params.navId;
+    try {
+      const result = await userClient.deleteUserClientNavigation(userId, navId);
+      return res.json(result);
+    } catch (err) {
+      logger.error(
+        `[${moduleName}] [DELETE /auth/admin/user/:id/client-nav/:navId] ${err.message}`
+      );
+      const status = err.response?.status || 500;
+      return res.status(status).json({
+        error:
+          err.response?.data?.error ||
+          "Errore durante la cancellazione della navigazione client",
+      });
     }
   });
 

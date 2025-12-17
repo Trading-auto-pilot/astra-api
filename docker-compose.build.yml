@@ -44,6 +44,37 @@ services:
       context: .
       dockerfile: orderListner/Dockerfile
 
+  ordersimulator:
+    build:
+      context: .
+      dockerfile: orderSimulator/Dockerfile
+
+  marketsimulator:
+    build:
+      context: .
+      dockerfile: MarketSimulator/Dockerfile
+
+  # NOTE: in docker-compose.paper.yml esiste anche "strategyutils" (expovin/strategyutils),
+  # ma in questo repository non risulta presente un Dockerfile sorgente corrispondente.
+  # strategyutils:
+  #   build:
+  #     context: .
+  #     dockerfile: strategyUtils/Dockerfile
+
+  tickerscanner:
+    build:
+      context: .
+      dockerfile: tickerScanner/Dockerfile
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: scheduler/Dockerfile
+
+  authservice:
+    build:
+      context: .
+      dockerfile: authService/Dockerfile
 
   sma:
     build:
@@ -55,5 +86,11 @@ services:
       context: .
       dockerfile: strategies/sltp/Dockerfile
 
+  # NOTE: in docker-compose.paper.yml esiste anche "astraai-frontend" (expovin/astraai-frontend).
+  # Il sorgente sembra essere nel repo frontend separato "astraai" (sibling directory).
+  # astraai-frontend:
+  #   build:
+  #     context: ../astraai
+  #     dockerfile: Dockerfile
 
 

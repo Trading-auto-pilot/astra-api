@@ -109,6 +109,42 @@ function createUserClient({ logger, dbManagerUrl }) {
     return del(`/auth/users/${encodeURIComponent(id)}`);
   }
 
+  async function touchLastLoginAt(userId) {
+    return post(
+      `/auth/users/${encodeURIComponent(userId)}/last-login`,
+      {}
+    );
+  }
+
+  // ======================
+  // USER CLIENT NAVIGATION (proxy verso DBManager /auth/users/:id/client-nav...)
+  // ======================
+
+  async function listUserClientNavigation(userId) {
+    return get(`/auth/users/${encodeURIComponent(userId)}/client-nav`);
+  }
+
+  async function addUserClientNavigation(userId, payload) {
+    return post(`/auth/users/${encodeURIComponent(userId)}/client-nav`, payload);
+  }
+
+  async function updateUserClientNavigation(userId, navId, payload) {
+    return put(
+      `/auth/users/${encodeURIComponent(userId)}/client-nav/${encodeURIComponent(
+        navId
+      )}`,
+      payload
+    );
+  }
+
+  async function deleteUserClientNavigation(userId, navId) {
+    return del(
+      `/auth/users/${encodeURIComponent(userId)}/client-nav/${encodeURIComponent(
+        navId
+      )}`
+    );
+  }
+
   // ======================
   // PERMISSIONS (proxy verso DBManager /auth/users/:id/permissions...)
   // ======================
@@ -207,6 +243,13 @@ function createUserClient({ logger, dbManagerUrl }) {
     createUser,
     updateUser,
     deleteUser,
+    touchLastLoginAt,
+
+    // user client navigation
+    listUserClientNavigation,
+    addUserClientNavigation,
+    updateUserClientNavigation,
+    deleteUserClientNavigation,
 
     listUserPermissions,
     addUserPermission,

@@ -1,0 +1,454 @@
+name: "${ENV_NAME}"
+
+services:
+
+  traefik:
+    # Workaround: DockerHub (docker.io) may return 500 in some networks.
+    # Use GHCR mirror instead.
+    image: ghcr.io/traefik/traefik:v3.1
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      # Provider Docker
+      - "--providers.docker=true"
+      - "--providers.docker.exposedByDefault=false"
+      - "--providers.docker.network=trading_net"
+      # EntryPoints (solo HTTP)
+      - "--entrypoints.web.address=:80"
+
+      # Dashboard
+      - "--api.dashboard=true"
+      - "--api.insecure=false"
+
+      # log (opzionale)
+      - "--log.level=INFO"
+
+    ports:
+      - "8080:80"
+
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+
+    labels:
+      - "traefik.enable=true"
+
+      # 🔐 middleware di autenticazione → chiama authService /auth/validate
+      - "traefik.http.middlewares.auth-forward.forwardauth.address=http://authservice:3015/auth/validate"
+      - "traefik.http.middlewares.auth-forward.forwardauth.trustForwardHeader=true"
+      - "traefik.http.middlewares.auth-forward.forwardauth.authResponseHeaders=X-User-Id,X-Auth-Subject-Type"
+
+      # CORS Configuration (solo HTTP locale)
+      - "traefik.http.middlewares.cors-default.headers.accessControlAllowOriginList=http://localhost:8080,http://localhost:5173"
+      - "traefik.http.middlewares.cors-default.headers.accessControlAllowMethods=GET,OPTIONS,PUT,POST,DELETE"
+      - "traefik.http.middlewares.cors-default.headers.accessControlAllowHeaders=Content-Type,Authorization,X-Requested-With"
+      - "traefik.http.middlewares.cors-default.headers.accessControlAllowCredentials=true"
+
+  # ======================
+  # CORE SERVICES (sempre ON)
+  # ======================
+  mysql:
+    # Workaround: DockerHub (docker.io) may return 500 in some networks.
+    # Use Amazon ECR public mirror instead.
+    image: public.ecr.aws/docker/library/mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_PORT: ${MYSQL_PORT}
+      MYSQL_HOST: ${MYSQL_HOST}
+      TZ: Asia/Dubai
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "3306:3306"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - trading-system_mysql_data:/var/lib/mysql
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+
+  redis:
+    # Workaround: DockerHub (docker.io) may return 500 in some networks.
+    # Use Amazon ECR public mirror instead.
+    image: public.ecr.aws/docker/library/redis:7
+    restart: unless-stopped
+    command:
+      [
+        "redis-server",
+        "--appendonly", "no",
+        "--save", "",
+        "--maxmemory", "512mb",
+        "--maxmemory-policy", "allkeys-lru"
+      ]
+    volumes:
+      - redis-data:/data
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+      - TZ=Asia/Dubai
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    ports:
+      - "6379:6379"
+    networks:
+      - trading_net
+
+  dbmanager:
+    image: local/dbmanager:${DBMANAGER_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: DBManager/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - REDIS_URL=redis://redis:6379
+      - TZ=Asia/Dubai
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trading_net
+
+  # ======================
+  # MICROSERVIZI ABILITABILI (via profiles)
+  # ======================
+
+  cachemanager:
+    image: local/cachemanager:${CACHEMANAGER_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: cacheManager/Dockerfile
+    restart: unless-stopped
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+      - LOG_LEVEL=${LOG_LEVEL}
+      - REDIS_URL=redis://redis:6379
+      - APCA_API_KEY_ID=${APCA_API_KEY_ID}
+      - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
+      - FMP_API_KEY=${FMP_API_KEY}
+      - TZ=Asia/Dubai
+    depends_on:
+      dbmanager:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3006/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - trading_net
+    profiles: ["cachemanager"]
+    labels:
+      - "traefik.enable=true"
+      # Router: http://localhost:8080/cachemanager/...
+      - "traefik.http.routers.cachemanager.rule=Host(`localhost`) && PathPrefix(`/cachemanager`)"
+      - "traefik.http.routers.cachemanager.entrypoints=web"
+      # Service: porta interna del container
+      - "traefik.http.services.cachemanager.loadbalancer.server.port=3006"
+      # ✅ Middleware corretto: stripPrefix (camelCase)
+      - "traefik.http.middlewares.cachemanager-stripprefix.stripPrefix.prefixes=/cachemanager"
+      # 🔐 protetto via forwardAuth → /auth/validate
+      - "traefik.http.routers.cachemanager.middlewares=cachemanager-stripprefix,cors-default@docker,auth-forward@docker"
+      # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
+      - "traefik.http.routers.cachemanager-preflight.rule=Host(`localhost`) && PathPrefix(`/cachemanager`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.cachemanager-preflight.entrypoints=web"
+      - "traefik.http.routers.cachemanager-preflight.priority=10000"
+      - "traefik.http.routers.cachemanager-preflight.service=cachemanager"
+      - "traefik.http.routers.cachemanager-preflight.middlewares=cachemanager-stripprefix,cors-default@docker"
+
+  capitalmanager:
+    image: local/capitalmanager:${CAPITALMANAGER_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: capitalManager/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - dbmanager
+    networks:
+      - trading_net
+    profiles: ["capitalmanager"]
+
+  alertingservice:
+    image: local/alertingservice:${ALERTINGSERVICE_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: alertingService/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - dbmanager
+    networks:
+      - trading_net
+    profiles: ["alertingservice"]
+
+  livemarketlistener:
+    image: local/livemarketlistener:${LIVEMARKETLISTENER_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: LiveMarketListener/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - dbmanager
+    networks:
+      - trading_net
+    profiles: ["livemarketlistener"]
+
+  orderlistner:
+    image: local/orderlistner:${ORDERLISTNER_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: orderListner/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - dbmanager
+    networks:
+      - trading_net
+    profiles: ["orderlistner"]
+
+  ordersimulator:
+    image: local/ordersimulator:${ORDERSIMULATOR_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: orderSimulator/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - dbmanager
+    networks:
+      - trading_net
+    profiles: ["simulator"]
+
+  marketsimulator:
+    image: local/marketsimulator:${MARKETSIMULATOR_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: MarketSimulator/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - dbmanager
+    networks:
+      - trading_net
+    profiles: ["simulator"]
+
+  sma:
+    image: local/sma:${SMA_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: strategies/sma/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - dbmanager
+    networks:
+      - trading_net
+    profiles: ["sma"]
+
+  sltp:
+    image: local/sltp:${SLTP_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: strategies/sltp/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - dbmanager
+    networks:
+      - trading_net
+    profiles: ["sltp"]
+
+  scheduler:
+    image: local/scheduler:${SCHEDULER_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: scheduler/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      dbmanager:
+        condition: service_healthy
+    networks:
+      - trading_net
+    profiles: ["scheduler"]
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL}
+      - TZ=Asia/Dubai
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3014/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      # Router: http://localhost:8080/scheduler/...
+      - "traefik.http.routers.scheduler.rule=Host(`localhost`) && PathPrefix(`/scheduler`)"
+      - "traefik.http.routers.scheduler.entrypoints=web"
+      - "traefik.http.services.scheduler.loadbalancer.server.port=3014"
+      - "traefik.http.middlewares.scheduler-stripprefix.stripPrefix.prefixes=/scheduler"
+      - "traefik.http.routers.scheduler.middlewares=scheduler-stripprefix,cors-default@docker,auth-forward@docker"
+      # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
+      - "traefik.http.routers.scheduler-preflight.rule=Host(`localhost`) && PathPrefix(`/scheduler`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.scheduler-preflight.entrypoints=web"
+      - "traefik.http.routers.scheduler-preflight.priority=10000"
+      - "traefik.http.routers.scheduler-preflight.service=scheduler"
+      - "traefik.http.routers.scheduler-preflight.middlewares=scheduler-stripprefix,cors-default@docker"
+
+  tickerscanner:
+    image: local/tickerscanner:${TICKERSCANNER_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: tickerScanner/Dockerfile
+    restart: unless-stopped
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL}
+      - FMP_API_KEY=${FMP_API_KEY}
+      - TZ=Asia/Dubai
+    depends_on:
+      dbmanager:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    profiles: ["tickerscanner"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3013/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tickerscanner.rule=Host(`localhost`) && PathPrefix(`/tickerscanner`)"
+      - "traefik.http.routers.tickerscanner.entrypoints=web"
+      - "traefik.http.services.tickerscanner.loadbalancer.server.port=3013"
+      - "traefik.http.middlewares.tickerscanner-stripprefix.stripPrefix.prefixes=/tickerscanner"
+      - "traefik.http.routers.tickerscanner.middlewares=tickerscanner-stripprefix,cors-default@docker,auth-forward@docker"
+      # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
+      - "traefik.http.routers.tickerscanner-preflight.rule=Host(`localhost`) && PathPrefix(`/tickerscanner`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.tickerscanner-preflight.entrypoints=web"
+      - "traefik.http.routers.tickerscanner-preflight.priority=10000"
+      - "traefik.http.routers.tickerscanner-preflight.service=tickerscanner"
+      - "traefik.http.routers.tickerscanner-preflight.middlewares=tickerscanner-stripprefix,cors-default@docker"
+
+  authservice:
+    image: local/authservice:${AUTHSERVICE_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: authService/Dockerfile
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL}
+      - DBMANAGER_URL=http://dbmanager:3002
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - TZ=Asia/Dubai
+    networks:
+      - trading_net
+    depends_on:
+      dbmanager:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    labels:
+      - "traefik.enable=true"
+
+      # 🔓 router PUBBLICO: /auth/login e /auth/validate
+      - "traefik.http.routers.auth-public.rule=Host(`localhost`) && (PathPrefix(`/auth/login`) || PathPrefix(`/auth/validate`))"
+      - "traefik.http.routers.auth-public.entrypoints=web"
+      - "traefik.http.routers.auth-public.service=auth-svc"
+      - "traefik.http.routers.auth-public.middlewares=cors-default@docker"
+
+      # 🔐 router ADMIN: /auth/admin/... protetto da forwardAuth
+      - "traefik.http.routers.auth-admin.rule=Host(`localhost`) && PathPrefix(`/auth/admin`)"
+      - "traefik.http.routers.auth-admin.entrypoints=web"
+      - "traefik.http.routers.auth-admin.middlewares=cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.auth-admin.service=auth-svc"
+      # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
+      - "traefik.http.routers.auth-admin-preflight.rule=Host(`localhost`) && PathPrefix(`/auth/admin`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.auth-admin-preflight.entrypoints=web"
+      - "traefik.http.routers.auth-admin-preflight.priority=10000"
+      - "traefik.http.routers.auth-admin-preflight.service=auth-svc"
+      - "traefik.http.routers.auth-admin-preflight.middlewares=cors-default@docker"
+
+      - "traefik.http.services.auth-svc.loadbalancer.server.port=3015"
+
+  astraai-frontend:
+    image: local/astraai-frontend:${ASTRAAI_VERSION:-latest}
+    build:
+      context: ../astraai
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    profiles: ["frontend"]
+    networks:
+      - trading_net
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=trading_net"
+
+      # Router frontend → http://localhost:8080
+      - "traefik.http.routers.astraai-frontend.rule=Host(`localhost`)"
+      - "traefik.http.routers.astraai-frontend.entrypoints=web"
+
+volumes:
+  trading-system_mysql_data:
+    external: true
+  redis-data:
+  shared_cache_data:
+    external: true
+
+networks:
+  trading_net:
+    name: trading_net
+    driver: bridge

@@ -1,6 +1,5 @@
 // module/auth.js
 "use strict";
-const axios = require("axios");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 
@@ -15,6 +14,8 @@ const bcrypt = require("bcrypt");
  * @param {function} deps.findUserByUsername(username)
  * @param {function} deps.findUserByApiKey(apiKey)
  * @param {function} deps.getPermissionsForUser(userId)
+ * @param {function} [deps.touchLastLoginAt(userId)]
+ * @param {function} [deps.listUserClientNavigation(userId)]
  */
 function createAuthModule(deps) {
   const {
@@ -25,6 +26,8 @@ function createAuthModule(deps) {
     findUserByUsername,
     findUserByApiKey,
     getPermissionsForUser,
+    touchLastLoginAt,
+    listUserClientNavigation,
   } = deps;
 
   if (!jwtSecret) {
@@ -99,6 +102,16 @@ function createAuthModule(deps) {
       const err = new Error("Credenziali non valide");
       err.statusCode = 401;
       throw err;
+    }
+
+    if (typeof touchLastLoginAt === "function") {
+      try {
+        await touchLastLoginAt(user.id);
+      } catch (err) {
+        logger.warning(
+          `[${moduleName}] touchLastLoginAt failed userId=${user.id} err=${err.message}`
+        );
+      }
     }
 
     const payload = {
@@ -259,16 +272,20 @@ function formatTokenPayload(payload) {
 async function cliNav(userId) {
   logger.trace(`[auth.cliNav] Fetch client navigation for userId=${userId}`);
 
-  try {
-    const url = `${process.env.DBMANAGER_URL}/auth/users/${userId}/client-nav`;
-    const resp = await axios.get(url);
+  if (typeof listUserClientNavigation !== "function") {
+    const err = new Error("listUserClientNavigation non implementata");
+    err.statusCode = 500;
+    throw err;
+  }
 
-    const count = Array.isArray(resp.data) ? resp.data.length : 0;
+  try {
+    const rows = await listUserClientNavigation(userId);
+    const count = Array.isArray(rows) ? rows.length : 0;
     logger.trace(
       `[${moduleName}][auth.cliNav] userId=${userId} client-nav rows=${count}`
     );
 
-    return resp.data || [];
+    return rows || [];
   } catch (err) {
     logger.error(
       `[${moduleName}][auth.cliNav] Error for userId=${userId}: ${err.message || err}`
