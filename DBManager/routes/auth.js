@@ -43,6 +43,23 @@ module.exports = (dbManager) => {
     }
   });
 
+  // POST /auth/users/:id/last-login (aggiorna last_login_at)
+  router.post("/users/:id/last-login", async (req, res) => {
+    const userId = Number(req.params.id);
+    if (!userId) return res.status(400).json({ error: "ID non valido" });
+
+    try {
+      const result = await dbManager.updateLastLoginAt(userId);
+      await cache.del("auth:users:all");
+      return res.json(result);
+    } catch (err) {
+      console.error("[POST /auth/users/:id/last-login] Errore:", err.message);
+      res
+        .status(500)
+        .json({ error: "Errore durante l'aggiornamento last_login_at" });
+    }
+  });
+
   // POST /auth/users (password_hash deve arrivare già hashato)
   router.post("/users", async (req, res) => {
     const payload = req.body || {};

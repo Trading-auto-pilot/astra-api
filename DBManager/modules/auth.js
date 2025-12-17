@@ -75,6 +75,30 @@ async function getUserById(userId) {
 }
 
 /**
+ * Aggiorna il timestamp di last_login_at per un utente.
+ * (usato dopo login riuscito)
+ */
+async function updateLastLoginAt(userId) {
+  const conn = await getDbConnection();
+  try {
+    const [res] = await conn.query(
+      "UPDATE users SET last_login_at = NOW() WHERE id = ?",
+      [userId]
+    );
+
+    logger.info(
+      `[updateLastLoginAt] userId=${userId} affectedRows=${res.affectedRows}`
+    );
+    return { ok: true, updated: res.affectedRows };
+  } catch (err) {
+    logger.error("[updateLastLoginAt] Error", err.message || err);
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+/**
  * Crea un nuovo utente.
  * ATTENZIONE: ci si aspetta che password_hash sia già hashata (bcrypt) lato chiamante.
  * payload: { username, email, password_hash, is_active?, is_service? }
@@ -840,6 +864,7 @@ module.exports = {
   // utenti
   getAllUsers,
   getUserById,
+  updateLastLoginAt,
   createUser,
   updateUser,
   deleteUser,
