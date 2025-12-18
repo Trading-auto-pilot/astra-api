@@ -108,6 +108,11 @@ async function getSchedulerJobsForScheduler(onlyEnabled = true) {
         backoffMs: j.retry_backoff_ms || 5000,
       },
       timezone: j.timezone || "UTC",
+      // include both camelCase and snake_case for frontend compatibility
+      lastRunAt: j.last_run_at || null,
+      last_run_at: j.last_run_at || null,
+      lastStatus: j.last_status || null,
+      last_status: j.last_status || null,
       rules: rulesByJob.get(j.id) || [],
     }));
 
@@ -354,6 +359,10 @@ async function getSchedulerJobById(jobId) {
         backoffMs: job.retry_backoff_ms || 5000,
       },
       timezone: job.timezone || "UTC",
+      lastRunAt: job.last_run_at || null,
+      last_run_at: job.last_run_at || null,
+      lastStatus: job.last_status || null,
+      last_status: job.last_status || null,
       rules: rules.map((r) => ({
         id: r.id,
         ruleType: r.rule_type,
