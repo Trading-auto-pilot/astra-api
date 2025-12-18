@@ -83,6 +83,12 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
       req.headers["x-forwarded-uri"] || req.path || "/";
     const originalMethod =
       (req.headers["x-forwarded-method"] || req.method || "GET").toUpperCase();
+    const forwardedUri = req.headers["x-forwarded-uri"] || req.originalUrl || "/";
+    const forwardedPrefix = req.headers["x-forwarded-prefix"] || "";
+    const pathForAuth =
+      forwardedPrefix && forwardedUri.startsWith("/")
+        ? `${forwardedPrefix}${forwardedUri}`
+        : forwardedPrefix || forwardedUri || originalPath || "/";
 
     const authHeader = req.headers["authorization"] || "";
     const apiKeyHeader =
@@ -141,16 +147,6 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
         const subjectId   = payload.subId   || userId;
 
         const method = req.get("X-Forwarded-Method") || req.method;
-        const forwardedUri    = req.get("X-Forwarded-Uri") || req.originalUrl;
-        const forwardedPrefix = req.get("X-Forwarded-Prefix") || "";
-
-        let pathForAuth;
-        if (forwardedPrefix && forwardedUri.startsWith("/")) {
-          pathForAuth = `${forwardedPrefix}${forwardedUri}`;
-        } else {
-          pathForAuth = forwardedPrefix || forwardedUri;
-        }
-      
         const { allowed, reason } = await authorize({
           subjectType,
           subjectId,
@@ -233,16 +229,16 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
             .json({ error: "Errore durante la lettura permessi API key" });
         }
 
-        const allowed = hasPermission(perms, originalPath, originalMethod);
+        const allowed = hasPermission(perms, pathForAuth, originalMethod);
         if (!allowed) {
           logger.warning(
-            `[${moduleName}] [/auth/validate] Accesso NEGATO per API key id=${apiKeyRow.id} path=${originalPath} method=${originalMethod}`
+            `[${moduleName}] [/auth/validate] Accesso NEGATO per API key id=${apiKeyRow.id} path=${pathForAuth} method=${originalMethod}`
           );
           return res.status(403).json({ error: "Permesso negato" });
         }
 
         logger.log(
-          `[${moduleName}] [/auth/validate] Accesso CONSENTITO per API key id=${apiKeyRow.id} path=${originalPath} method=${originalMethod}`
+          `[${moduleName}] [/auth/validate] Accesso CONSENTITO per API key id=${apiKeyRow.id} path=${pathForAuth} method=${originalMethod}`
         );
 
         res.setHeader("X-Api-Key-Id", String(apiKeyRow.id));
@@ -726,13 +722,70 @@ router.post("/admin/user", async (req, res) => {
 
   // POST /auth/admin/api-keys
   router.post("/admin/api-keys", async (req, res) => {
+    const body = req.body || {};
+    const {
+      name,
+      api_key,
+      description,
+      expires_at,
+      owner_user_id,
+      email,
+      is_active,
+    } = body;
+
+    if (!name) {
+      return res.status(400).json({ error: "name è obbligatorio" });
+    }
+
+    let createdUserId = null;
     try {
-      const result = await apiKeysClient.createApiKey(req.body || {});
-      return res.json(result);
+      const generatedApiKey =
+        api_key ||
+        `ak_${require("crypto").randomBytes(24).toString("hex")}`;
+      const tempPassword = require("crypto")
+        .randomBytes(24)
+        .toString("hex");
+      const bcryptRounds = Number(process.env.BCRYPT_ROUNDS || 12);
+      const password_hash = await bcryptjs.hash(tempPassword, bcryptRounds);
+
+      const userPayload = {
+        username: name,
+        email: email ?? null,
+        password_hash,
+        is_active: is_active ?? true,
+        is_service: true,
+      };
+
+      const createdUser = await userClient.createUser(userPayload);
+      createdUserId = createdUser?.id ?? createdUser?.insertId ?? null;
+
+      const apiKeyPayload = {
+        name,
+        api_key: generatedApiKey,
+        description: description ?? null,
+        expires_at: expires_at ?? null,
+        owner_user_id: owner_user_id ?? createdUserId,
+        is_active: is_active ?? true,
+      };
+
+      const result = await apiKeysClient.createApiKey(apiKeyPayload);
+      // Return api_key only on creation.
+      return res.json({ ...result, user_id: createdUserId, api_key: generatedApiKey });
     } catch (err) {
       logger.error(
         `[${moduleName}] [POST /auth/admin/api-keys] ${err.message}`
       );
+
+      if (createdUserId) {
+        try {
+          await userClient.deleteUser(createdUserId);
+        } catch (rollbackErr) {
+          logger.warning(
+            `[${moduleName}] [POST /auth/admin/api-keys] rollback user delete failed userId=${createdUserId} err=${rollbackErr.message}`
+          );
+        }
+      }
+
       const status = err.response?.status || 500;
       // DBManager manda già messaggio utile in err.message
       return res.status(status).json({
@@ -748,7 +801,14 @@ router.post("/admin/user", async (req, res) => {
   router.put("/admin/api-keys/:id", async (req, res) => {
     const id = req.params.id;
     try {
-      const result = await apiKeysClient.updateApiKey(id, req.body || {});
+      const body = req.body || {};
+      const payload = {
+        ...body,
+        owner_user_id: body.owner_user_id === "" ? null : body.owner_user_id,
+        description: body.description === "" ? null : body.description,
+        expires_at: body.expires_at === "" ? null : body.expires_at,
+      };
+      const result = await apiKeysClient.updateApiKey(id, payload);
       return res.json(result);
     } catch (err) {
       logger.error(
@@ -757,7 +817,12 @@ router.post("/admin/user", async (req, res) => {
       const status = err.response?.status || 500;
       return res
         .status(status)
-        .json({ error: "Errore durante l'aggiornamento API key" });
+        .json({
+          error:
+            err.response?.data?.error ||
+            err.message ||
+            "Errore durante l'aggiornamento API key",
+        });
     }
   });
 
