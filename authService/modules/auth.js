@@ -104,6 +104,17 @@ function createAuthModule(deps) {
       throw err;
     }
 
+    const lastLoginAt = user.last_login_at ?? null;
+    logger.info(
+      `[${moduleName}] loginWithPassword userId=${user.id} last_login_at=${lastLoginAt}`
+    );
+
+    // Decide reset requirement based on the value BEFORE we update last_login_at.
+    const requiresPasswordReset = lastLoginAt === null || lastLoginAt === undefined;
+    logger.info(
+      `[${moduleName}] loginWithPassword userId=${user.id} requires_password_reset=${requiresPasswordReset}`
+    );
+
     if (typeof touchLastLoginAt === "function") {
       try {
         await touchLastLoginAt(user.id);
@@ -128,12 +139,14 @@ function createAuthModule(deps) {
 
     return {
       token,
+      requires_password_reset: requiresPasswordReset,
       user: {
         id: user.id,
         username: user.username,
         email: user.email,
         is_active: user.is_active,
         is_service: user.is_service,
+        last_login_at: lastLoginAt,
       },
     };
   }

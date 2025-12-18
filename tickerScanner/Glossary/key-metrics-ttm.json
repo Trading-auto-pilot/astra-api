@@ -1,0 +1,190 @@
+{
+  "symbol": {
+    "description": "Ticker del titolo.",
+    "valuation": "Neutro. Identificativo."
+  },
+
+  "marketCap": {
+    "description": "Capitalizzazione di mercato corrente.",
+    "valuation": "Neutro. Serve come base per multipli e yield."
+  },
+  "enterpriseValueTTM": {
+    "description": "Enterprise Value calcolato sugli ultimi 12 mesi.",
+    "valuation": "Neutro. Base per multipli EV più accurati del FY."
+  },
+
+  "evToSalesTTM": {
+    "description": "EV / Ricavi TTM.",
+    "valuation": "Più basso è meglio. >8–10 indica valutazione tirata salvo crescita eccezionale."
+  },
+  "evToOperatingCashFlowTTM": {
+    "description": "EV / Cash Flow Operativo TTM.",
+    "valuation": "Più basso è meglio. >30 indica titolo caro."
+  },
+  "evToFreeCashFlowTTM": {
+    "description": "EV / Free Cash Flow TTM.",
+    "valuation": "Molto importante. <20 attraente, >30–35 caro."
+  },
+  "evToEBITDATTM": {
+    "description": "EV / EBITDA TTM.",
+    "valuation": "Più basso è meglio. >25 molto caro."
+  },
+
+  "netDebtToEBITDATTM": {
+    "description": "Debito netto / EBITDA TTM.",
+    "valuation": "Più basso è meglio. <1 eccellente."
+  },
+  "currentRatioTTM": {
+    "description": "Attività correnti / Passività correnti (TTM).",
+    "valuation": "Ideale >1. <1 accettabile solo con cash flow molto forte."
+  },
+
+  "incomeQualityTTM": {
+    "description": "Qualità degli utili su base TTM (cash vs accounting).",
+    "valuation": "Vicino a 1 è eccellente. <0.8 warning."
+  },
+
+  "grahamNumberTTM": {
+    "description": "Prezzo teorico secondo Graham (TTM).",
+    "valuation": "Prezzo < Graham Number indica possibile sottovalutazione."
+  },
+  "grahamNetNetTTM": {
+    "description": "Net-Net value TTM.",
+    "valuation": "Negativo normale per large cap. Positivo = deep value."
+  },
+
+  "taxBurdenTTM": {
+    "description": "Quota di utile pre-tax che rimane dopo le tasse (TTM).",
+    "valuation": "Più alto e stabile è meglio."
+  },
+  "interestBurdenTTM": {
+    "description": "Impatto degli interessi sull’utile operativo (TTM).",
+    "valuation": "Vicino a 1 è ottimo. <0.8 indica pressione finanziaria."
+  },
+
+  "workingCapitalTTM": {
+    "description": "Capitale circolante netto TTM.",
+    "valuation": "Positivo più sicuro. Negativo accettabile se CCC e CF sono forti."
+  },
+  "investedCapitalTTM": {
+    "description": "Capitale investito operativo TTM.",
+    "valuation": "Neutro. Usato per ROIC."
+  },
+
+  "returnOnAssetsTTM": {
+    "description": "ROA su base TTM.",
+    "valuation": "Più alto è meglio. >10% eccellente."
+  },
+  "operatingReturnOnAssetsTTM": {
+    "description": "Rendimento operativo sugli asset TTM.",
+    "valuation": "Più alto è meglio. Indica efficienza reale."
+  },
+  "returnOnTangibleAssetsTTM": {
+    "description": "Rendimento sugli asset tangibili TTM.",
+    "valuation": "Più alto è meglio. Indica vantaggio competitivo."
+  },
+  "returnOnEquityTTM": {
+    "description": "ROE TTM.",
+    "valuation": "Alto è positivo, ma va letto insieme alla leva finanziaria."
+  },
+  "returnOnInvestedCapitalTTM": {
+    "description": "ROIC TTM.",
+    "valuation": "METRICA CHIAVE. >15% eccellente, >20% straordinario."
+  },
+  "returnOnCapitalEmployedTTM": {
+    "description": "ROCE TTM.",
+    "valuation": "Deve superare chiaramente il costo del capitale."
+  },
+
+  "earningsYieldTTM": {
+    "description": "Earnings Yield TTM (inverso del P/E).",
+    "valuation": "Più alto è meglio. <4% indica titolo caro."
+  },
+  "freeCashFlowYieldTTM": {
+    "description": "Free Cash Flow Yield TTM.",
+    "valuation": "Molto importante. >5–6% attraente, <3% caro."
+  },
+
+  "capexToOperatingCashFlowTTM": {
+    "description": "CAPEX / Operating Cash Flow TTM.",
+    "valuation": "Più basso è meglio. <30% indica asset-light."
+  },
+  "capexToDepreciationTTM": {
+    "description": "CAPEX / Ammortamenti TTM.",
+    "valuation": "≈1 mantenimento asset; >>1 espansione."
+  },
+  "capexToRevenueTTM": {
+    "description": "CAPEX / Ricavi TTM.",
+    "valuation": "Più basso è meglio. Dipende dal settore."
+  },
+
+  "salesGeneralAndAdministrativeToRevenueTTM": {
+    "description": "SG&A / Ricavi TTM.",
+    "valuation": "Più basso è meglio. Indica efficienza."
+  },
+  "researchAndDevelopementToRevenueTTM": {
+    "description": "R&D / Ricavi TTM.",
+    "valuation": "Positivo se sostenibile. Troppo basso = rischio innovazione."
+  },
+  "stockBasedCompensationToRevenueTTM": {
+    "description": "Compensi azionari / Ricavi TTM.",
+    "valuation": "Meglio basso. >5% = rischio diluizione."
+  },
+
+  "intangiblesToTotalAssetsTTM": {
+    "description": "Intangibili / Totale asset TTM.",
+    "valuation": "Meglio basso. Alto = rischio impairment."
+  },
+
+  "averageReceivablesTTM": {
+    "description": "Crediti medi TTM.",
+    "valuation": "Neutro. Da confrontare con ricavi."
+  },
+  "averagePayablesTTM": {
+    "description": "Debiti medi verso fornitori TTM.",
+    "valuation": "Neutro. Aumenti migliorano CCC."
+  },
+  "averageInventoryTTM": {
+    "description": "Magazzino medio TTM.",
+    "valuation": "Meglio basso e stabile."
+  },
+
+  "daysOfSalesOutstandingTTM": {
+    "description": "Giorni medi di incasso crediti TTM.",
+    "valuation": "Più basso è meglio. Aumenti sono warning."
+  },
+  "daysOfPayablesOutstandingTTM": {
+    "description": "Giorni medi di pagamento fornitori TTM.",
+    "valuation": "Più alto è meglio (entro limiti)."
+  },
+  "daysOfInventoryOutstandingTTM": {
+    "description": "Giorni medi di magazzino TTM.",
+    "valuation": "Più basso è meglio."
+  },
+  "operatingCycleTTM": {
+    "description": "Durata del ciclo operativo TTM.",
+    "valuation": "Più corto è meglio."
+  },
+  "cashConversionCycleTTM": {
+    "description": "Cash Conversion Cycle TTM.",
+    "valuation": "Negativo è eccellente."
+  },
+
+  "freeCashFlowToEquityTTM": {
+    "description": "Free Cash Flow disponibile agli azionisti TTM.",
+    "valuation": "Più alto e stabile è meglio."
+  },
+  "freeCashFlowToFirmTTM": {
+    "description": "Free Cash Flow disponibile per tutti i finanziatori TTM.",
+    "valuation": "Meglio alto e prevedibile."
+  },
+
+  "tangibleAssetValueTTM": {
+    "description": "Valore degli asset tangibili TTM.",
+    "valuation": "Neutro. Rilevante per valutazioni conservative."
+  },
+  "netCurrentAssetValueTTM": {
+    "description": "Attivi correnti meno passività totali TTM.",
+    "valuation": "Positivo = deep value. Negativo normale per big tech."
+  }
+}

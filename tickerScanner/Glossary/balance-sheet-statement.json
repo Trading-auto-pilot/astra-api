@@ -1,0 +1,242 @@
+{
+  "date": {
+    "description": "Data di riferimento dello stato patrimoniale.",
+    "valuation": "Più recente è meglio. Dati vecchi riducono l’affidabilità della valutazione."
+  },
+  "symbol": {
+    "description": "Ticker del titolo.",
+    "valuation": "Neutro. Identificativo."
+  },
+  "reportedCurrency": {
+    "description": "Valuta di reporting.",
+    "valuation": "Neutro. Attenzione al rischio cambio."
+  },
+  "cik": {
+    "description": "Identificativo SEC della società.",
+    "valuation": "Neutro. Solo identificativo."
+  },
+  "filingDate": {
+    "description": "Data di deposito del bilancio.",
+    "valuation": "Più recente è meglio. Ritardi possono essere warning."
+  },
+  "acceptedDate": {
+    "description": "Data di accettazione ufficiale del filing.",
+    "valuation": "Neutro."
+  },
+  "fiscalYear": {
+    "description": "Anno fiscale di riferimento.",
+    "valuation": "Neutro. Usato per confronti storici."
+  },
+  "period": {
+    "description": "Periodo contabile (FY = annuale).",
+    "valuation": "Neutro."
+  },
+  "cashAndCashEquivalents": {
+    "description": "Liquidità immediatamente disponibile.",
+    "valuation": "Meglio alta in rapporto al debito. Cuscinetto di sicurezza."
+  },
+  "shortTermInvestments": {
+    "description": "Investimenti finanziari a breve termine.",
+    "valuation": "Positivi se liquidi e di alta qualità."
+  },
+  "cashAndShortTermInvestments": {
+    "description": "Liquidità totale disponibile.",
+    "valuation": "Molto importante. Più alto = maggiore solidità finanziaria."
+  },
+  "netReceivables": {
+    "description": "Crediti netti verso clienti e terzi.",
+    "valuation": "Devono crescere in linea con i ricavi. Crescita eccessiva = rischio incassi."
+  },
+  "accountsReceivables": {
+    "description": "Crediti commerciali verso clienti.",
+    "valuation": "Meglio stabili rispetto ai ricavi. Aumenti rapidi sono warning."
+  },
+  "otherReceivables": {
+    "description": "Crediti non commerciali.",
+    "valuation": "Meglio bassi. Valori elevati riducono la qualità degli attivi."
+  },
+  "inventory": {
+    "description": "Rimanenze di magazzino.",
+    "valuation": "Meglio basse e ben gestite. Accumulo = rischio obsolescenza."
+  },
+  "prepaids": {
+    "description": "Costi pagati in anticipo.",
+    "valuation": "Neutro. Valori elevati possono ridurre flessibilità."
+  },
+  "otherCurrentAssets": {
+    "description": "Altre attività correnti.",
+    "valuation": "Meglio contenute. Troppo alte = bassa trasparenza."
+  },
+  "totalCurrentAssets": {
+    "description": "Totale attività correnti.",
+    "valuation": "Devono coprire agevolmente le passività correnti."
+  },
+  "propertyPlantEquipmentNet": {
+    "description": "Immobilizzazioni materiali nette.",
+    "valuation": "Neutro/positivo. Dipende dal settore. Troppo elevate = CAPEX heavy."
+  },
+  "goodwill": {
+    "description": "Avviamento da acquisizioni.",
+    "valuation": "Meglio basso. Valori elevati = rischio impairment."
+  },
+  "intangibleAssets": {
+    "description": "Attività immateriali capitalizzate.",
+    "valuation": "Neutro. Dipende dalla qualità e monetizzabilità."
+  },
+  "goodwillAndIntangibleAssets": {
+    "description": "Totale goodwill e intangibili.",
+    "valuation": "Meglio contenuti rispetto agli asset totali."
+  },
+  "longTermInvestments": {
+    "description": "Investimenti finanziari a lungo termine.",
+    "valuation": "Positivi se liquidi e redditizi. Rafforzano la solidità."
+  },
+  "taxAssets": {
+    "description": "Attività fiscali differite.",
+    "valuation": "Neutro. Troppo elevate = dipendenza da benefici fiscali futuri."
+  },
+  "otherNonCurrentAssets": {
+    "description": "Altre attività non correnti.",
+    "valuation": "Meglio basse. Valori elevati riducono trasparenza."
+  },
+  "totalNonCurrentAssets": {
+    "description": "Totale attività non correnti.",
+    "valuation": "Neutro. Conta la composizione più che il totale."
+  },
+  "otherAssets": {
+    "description": "Altre attività residuali.",
+    "valuation": "Idealmente zero o marginali."
+  },
+  "totalAssets": {
+    "description": "Totale attivo patrimoniale.",
+    "valuation": "Indica dimensione aziendale. Neutro se isolato."
+  },
+  "totalPayables": {
+    "description": "Totale debiti verso fornitori e terzi.",
+    "valuation": "Meglio gestiti e coerenti con il ciclo operativo."
+  },
+  "accountPayables": {
+    "description": "Debiti commerciali verso fornitori.",
+    "valuation": "Neutro. Aumenti possono indicare migliore gestione del capitale circolante."
+  },
+  "otherPayables": {
+    "description": "Altri debiti a breve.",
+    "valuation": "Meglio contenuti. Valori elevati = minore chiarezza."
+  },
+  "accruedExpenses": {
+    "description": "Costi maturati ma non ancora pagati.",
+    "valuation": "Neutro."
+  },
+  "shortTermDebt": {
+    "description": "Debito finanziario a breve termine.",
+    "valuation": "Meglio basso rispetto alla liquidità disponibile."
+  },
+  "capitalLeaseObligationsCurrent": {
+    "description": "Quota corrente dei leasing finanziari.",
+    "valuation": "Neutro. Da includere nel debito effettivo."
+  },
+  "taxPayables": {
+    "description": "Debiti verso autorità fiscali.",
+    "valuation": "Neutro. Valori elevati possono indicare pressione fiscale."
+  },
+  "deferredRevenue": {
+    "description": "Ricavi già incassati ma non ancora maturati.",
+    "valuation": "Positivo. Indica visibilità futura dei ricavi."
+  },
+  "otherCurrentLiabilities": {
+    "description": "Altre passività correnti.",
+    "valuation": "Meglio contenute. Valori elevati riducono trasparenza."
+  },
+  "totalCurrentLiabilities": {
+    "description": "Totale passività correnti.",
+    "valuation": "Devono essere coperte dalle attività correnti."
+  },
+  "longTermDebt": {
+    "description": "Debito finanziario a lungo termine.",
+    "valuation": "Accettabile se sostenibile. Alto = rischio leverage."
+  },
+  "deferredRevenueNonCurrent": {
+    "description": "Ricavi differiti a lungo termine.",
+    "valuation": "Positivo. Indica contratti di lungo periodo."
+  },
+  "deferredTaxLiabilitiesNonCurrent": {
+    "description": "Passività fiscali differite.",
+    "valuation": "Neutro. Attenzione se crescono rapidamente."
+  },
+  "otherNonCurrentLiabilities": {
+    "description": "Altre passività a lungo termine.",
+    "valuation": "Meglio contenute. Valori elevati = opacità."
+  },
+  "totalNonCurrentLiabilities": {
+    "description": "Totale passività non correnti.",
+    "valuation": "Neutro se sostenibili rispetto ai flussi di cassa."
+  },
+  "otherLiabilities": {
+    "description": "Altre passività residuali.",
+    "valuation": "Idealmente nulle o marginali."
+  },
+  "capitalLeaseObligations": {
+    "description": "Totale obbligazioni da leasing.",
+    "valuation": "Da includere nel debito. Meglio basso."
+  },
+  "totalLiabilities": {
+    "description": "Totale passività.",
+    "valuation": "Devono essere sostenibili rispetto agli asset e al cash flow."
+  },
+  "treasuryStock": {
+    "description": "Azioni proprie.",
+    "valuation": "Positivo se indica buyback. Neutro se zero."
+  },
+  "preferredStock": {
+    "description": "Azioni privilegiate.",
+    "valuation": "Neutro. Possono aumentare complessità finanziaria."
+  },
+  "commonStock": {
+    "description": "Capitale sociale ordinario.",
+    "valuation": "Neutro. Serve per struttura equity."
+  },
+  "retainedEarnings": {
+    "description": "Utili reinvestiti negli anni.",
+    "valuation": "Meglio positivi e crescenti. Negativi = leva o buyback aggressivi."
+  },
+  "additionalPaidInCapital": {
+    "description": "Capitale versato oltre il valore nominale.",
+    "valuation": "Neutro."
+  },
+  "accumulatedOtherComprehensiveIncomeLoss": {
+    "description": "Altri utili/perdite complessive accumulate.",
+    "valuation": "Meglio vicino a zero. Volatilità elevata = rischio."
+  },
+  "otherTotalStockholdersEquity": {
+    "description": "Altre componenti di equity.",
+    "valuation": "Neutro."
+  },
+  "totalStockholdersEquity": {
+    "description": "Patrimonio netto attribuibile agli azionisti.",
+    "valuation": "Molto importante. Meglio alto e stabile."
+  },
+  "totalEquity": {
+    "description": "Totale patrimonio netto.",
+    "valuation": "Chiave per solidità finanziaria."
+  },
+  "minorityInterest": {
+    "description": "Quota di terzi nelle controllate.",
+    "valuation": "Neutro. Valori elevati riducono quota degli azionisti."
+  },
+  "totalLiabilitiesAndTotalEquity": {
+    "description": "Totale passività + equity.",
+    "valuation": "Deve coincidere con totalAssets. Check di coerenza."
+  },
+  "totalInvestments": {
+    "description": "Totale investimenti finanziari.",
+    "valuation": "Positivo se liquidi e redditizi."
+  },
+  "totalDebt": {
+    "description": "Debito finanziario complessivo.",
+    "valuation": "Meglio basso rispetto a EBITDA e cash flow."
+  },
+  "netDebt": {
+    "description": "Debito netto (debito meno liquidità).",
+    "valuation": "Chiave assoluta. Più basso è meglio; negativo = eccellente."
+  }
+}

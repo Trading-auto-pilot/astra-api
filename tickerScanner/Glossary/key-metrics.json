@@ -1,0 +1,206 @@
+{
+  "symbol": {
+    "description": "Ticker del titolo.",
+    "valuation": "Neutro. Identificativo."
+  },
+  "date": {
+    "description": "Data di riferimento delle metriche.",
+    "valuation": "Più recente è meglio."
+  },
+  "fiscalYear": {
+    "description": "Anno fiscale di riferimento.",
+    "valuation": "Neutro."
+  },
+  "period": {
+    "description": "Periodo contabile (FY = annuale).",
+    "valuation": "Neutro."
+  },
+  "reportedCurrency": {
+    "description": "Valuta di reporting.",
+    "valuation": "Neutro. Attenzione al cambio per investitori non USD."
+  },
+
+  "marketCap": {
+    "description": "Capitalizzazione di mercato.",
+    "valuation": "Neutro. Serve per confronti relativi, non indica valore da sola."
+  },
+  "enterpriseValue": {
+    "description": "Valore complessivo dell’azienda (equity + debito netto).",
+    "valuation": "Neutro. Base per multipli EV."
+  },
+
+  "evToSales": {
+    "description": "Enterprise Value / Ricavi.",
+    "valuation": "Più basso è meglio. Accettabile alto solo per aziende di qualità/growth."
+  },
+  "evToOperatingCashFlow": {
+    "description": "EV / Cash Flow Operativo.",
+    "valuation": "Più basso è meglio. <15 molto attraente, >30 caro."
+  },
+  "evToFreeCashFlow": {
+    "description": "EV / Free Cash Flow.",
+    "valuation": "Più basso è meglio. >25–30 indica valutazione tirata."
+  },
+  "evToEBITDA": {
+    "description": "EV / EBITDA.",
+    "valuation": "Più basso è meglio. <10 value, 15–20 caro, >25 molto caro."
+  },
+
+  "netDebtToEBITDA": {
+    "description": "Debito netto / EBITDA.",
+    "valuation": "Più basso è meglio. <1 eccellente, >3 rischio."
+  },
+  "currentRatio": {
+    "description": "Attività correnti / Passività correnti.",
+    "valuation": "Ideale >1. <1 indica tensione di liquidità (accettabile per big tech)."
+  },
+
+  "incomeQuality": {
+    "description": "Qualità degli utili (cash vs accounting).",
+    "valuation": "Più vicino a 1 è meglio. <0.8 warning."
+  },
+
+  "grahamNumber": {
+    "description": "Prezzo teorico secondo Benjamin Graham.",
+    "valuation": "Se prezzo < Graham Number → potenziale undervaluation."
+  },
+  "grahamNetNet": {
+    "description": "Net-net value (attivi correnti - passività).",
+    "valuation": "Valori negativi normali per large cap. Positivo = deep value."
+  },
+
+  "taxBurden": {
+    "description": "Quota di utile pre-tax che rimane dopo le tasse.",
+    "valuation": "Più alto è meglio. Stabilità nel tempo è chiave."
+  },
+  "interestBurden": {
+    "description": "Impatto degli interessi sull’utile operativo.",
+    "valuation": "Vicino a 1 è ottimo. <0.8 indica pressione finanziaria."
+  },
+
+  "workingCapital": {
+    "description": "Capitale circolante netto.",
+    "valuation": "Positivo è più sicuro. Negativo accettabile se cash flow forte."
+  },
+  "investedCapital": {
+    "description": "Capitale investito operativo.",
+    "valuation": "Neutro. Serve per ROIC."
+  },
+
+  "returnOnAssets": {
+    "description": "Rendimento sugli asset totali.",
+    "valuation": "Più alto è meglio. >10% eccellente."
+  },
+  "operatingReturnOnAssets": {
+    "description": "Rendimento operativo sugli asset.",
+    "valuation": "Più alto è meglio. Indica efficienza operativa."
+  },
+  "returnOnTangibleAssets": {
+    "description": "Rendimento sugli asset tangibili.",
+    "valuation": "Più alto è meglio. Indica vero vantaggio competitivo."
+  },
+  "returnOnEquity": {
+    "description": "Rendimento sul capitale proprio.",
+    "valuation": "Alto è positivo, ma attenzione a leva finanziaria."
+  },
+  "returnOnInvestedCapital": {
+    "description": "ROIC – rendimento sul capitale investito.",
+    "valuation": "METRICA CHIAVE. >15% eccellente, >20% straordinario."
+  },
+  "returnOnCapitalEmployed": {
+    "description": "Rendimento sul capitale impiegato.",
+    "valuation": "Più alto è meglio. Deve superare il costo del capitale."
+  },
+
+  "earningsYield": {
+    "description": "Utile / Market Cap (inverso del P/E).",
+    "valuation": "Più alto è meglio. <4% indica titolo caro."
+  },
+  "freeCashFlowYield": {
+    "description": "Free Cash Flow / Market Cap.",
+    "valuation": "Molto importante. >5–6% attraente, <3% caro."
+  },
+
+  "capexToOperatingCashFlow": {
+    "description": "CAPEX / Cash Flow Operativo.",
+    "valuation": "Più basso è meglio. <30% indica asset-light."
+  },
+  "capexToDepreciation": {
+    "description": "CAPEX / Ammortamenti.",
+    "valuation": "≈1 indica mantenimento asset. >>1 indica espansione."
+  },
+  "capexToRevenue": {
+    "description": "CAPEX / Ricavi.",
+    "valuation": "Più basso è meglio. Dipende dal settore."
+  },
+
+  "salesGeneralAndAdministrativeToRevenue": {
+    "description": "SG&A / Ricavi.",
+    "valuation": "Più basso è meglio. Efficienza operativa."
+  },
+  "researchAndDevelopementToRevenue": {
+    "description": "R&D / Ricavi.",
+    "valuation": "Positivo se sostenibile. Troppo basso = rischio innovazione."
+  },
+  "stockBasedCompensationToRevenue": {
+    "description": "Compensi azionari / Ricavi.",
+    "valuation": "Meglio basso. >5% = rischio diluizione."
+  },
+
+  "intangiblesToTotalAssets": {
+    "description": "Intangibili / Totale asset.",
+    "valuation": "Meglio basso. Alto = rischio impairment."
+  },
+
+  "averageReceivables": {
+    "description": "Crediti medi.",
+    "valuation": "Neutro. Da confrontare con ricavi."
+  },
+  "averagePayables": {
+    "description": "Debiti medi verso fornitori.",
+    "valuation": "Neutro. Aumenti indicano miglior working capital."
+  },
+  "averageInventory": {
+    "description": "Magazzino medio.",
+    "valuation": "Meglio basso e stabile."
+  },
+
+  "daysOfSalesOutstanding": {
+    "description": "Giorni medi di incasso crediti.",
+    "valuation": "Più basso è meglio. Aumenti sono warning."
+  },
+  "daysOfPayablesOutstanding": {
+    "description": "Giorni medi di pagamento fornitori.",
+    "valuation": "Più alto è meglio (entro limiti)."
+  },
+  "daysOfInventoryOutstanding": {
+    "description": "Giorni medi di magazzino.",
+    "valuation": "Più basso è meglio."
+  },
+  "operatingCycle": {
+    "description": "Durata complessiva del ciclo operativo.",
+    "valuation": "Più corto è meglio."
+  },
+  "cashConversionCycle": {
+    "description": "Tempo netto di conversione cassa.",
+    "valuation": "Negativo è eccellente. Indica finanziamento tramite fornitori."
+  },
+
+  "freeCashFlowToEquity": {
+    "description": "Free Cash Flow disponibile agli azionisti.",
+    "valuation": "Più alto è meglio. Base per dividendi e buyback."
+  },
+  "freeCashFlowToFirm": {
+    "description": "Free Cash Flow disponibile per tutti i finanziatori.",
+    "valuation": "Meglio alto e stabile."
+  },
+
+  "tangibleAssetValue": {
+    "description": "Valore degli asset tangibili.",
+    "valuation": "Neutro. Rilevante per valutazioni asset-based."
+  },
+  "netCurrentAssetValue": {
+    "description": "Attivi correnti meno passività totali.",
+    "valuation": "Positivo = deep value. Negativo normale per big tech."
+  }
+}

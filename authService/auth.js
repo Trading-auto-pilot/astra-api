@@ -279,6 +279,9 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
 
     try {
       const result = await auth.loginWithPassword(username, password);
+      logger.info(
+        `[${moduleName}] login result requires_password_reset=${result?.requires_password_reset}`
+      );
       return res.json(result);
     } catch (err) {
       logger.error(`[${moduleName}] login error: ${err.message}`);
@@ -474,7 +477,21 @@ router.post("/admin/user", async (req, res) => {
     const userId = req.params.id;
 
     try {
-      const result = await userClient.updateUser(userId, req.body);
+      const body = req.body || {};
+      const { password, password_hash, ...rest } = body;
+      let finalPasswordHash = password_hash;
+
+      if (password) {
+        const bcryptRounds = Number(process.env.BCRYPT_ROUNDS || 12);
+        finalPasswordHash = await bcryptjs.hash(password, bcryptRounds);
+      }
+
+      const payload = {
+        ...rest,
+        ...(finalPasswordHash ? { password_hash: finalPasswordHash } : {}),
+      };
+
+      const result = await userClient.updateUser(userId, payload);
       return res.json(result);
     } catch (err) {
       logger.error(

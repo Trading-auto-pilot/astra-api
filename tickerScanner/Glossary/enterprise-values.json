@@ -1,0 +1,40 @@
+{
+  "symbol": {
+    "description": "Ticker del titolo.",
+    "valuation": "Neutro. Identificativo."
+  },
+  "date": {
+    "description": "Data di riferimento del prezzo e delle metriche.",
+    "valuation": "Più recente è meglio per valutazioni di timing."
+  },
+
+  "stockPrice": {
+    "description": "Prezzo corrente di una singola azione.",
+    "valuation": "Da confrontare con fair value, multipli e yield. Da solo non indica convenienza."
+  },
+
+  "numberOfShares": {
+    "description": "Numero totale di azioni in circolazione.",
+    "valuation": "Meglio stabile o in diminuzione. Riduzioni indicano buyback accretivi."
+  },
+
+  "marketCapitalization": {
+    "description": "Valore di mercato dell’equity (prezzo × azioni).",
+    "valuation": "Neutro. Base per multipli equity (P/E, P/FCF)."
+  },
+
+  "minusCashAndCashEquivalents": {
+    "description": "Liquidità e equivalenti di cassa sottratti per calcolare l’Enterprise Value.",
+    "valuation": "Più alto è meglio. Riduce il costo reale del business operativo."
+  },
+
+  "addTotalDebt": {
+    "description": "Debito totale aggiunto all’equity per ottenere l’Enterprise Value.",
+    "valuation": "Più basso è meglio a parità di cash flow. Va confrontato con EBITDA e FCF."
+  },
+
+  "enterpriseValue": {
+    "description": "Valore complessivo dell’azienda (Equity + Debito – Cassa).",
+    "valuation": "METRICA CHIAVE per confronti tra aziende. Usata per EV/EBITDA, EV/FCF."
+  }
+}

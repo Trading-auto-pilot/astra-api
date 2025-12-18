@@ -1,0 +1,49 @@
+{
+  "symbol": {
+    "description": "Ticker del titolo.",
+    "valuation": "Neutro. Identificativo."
+  },
+  "reportedCurrency": {
+    "description": "Valuta di reporting dei dati finanziari.",
+    "valuation": "Neutro. Attenzione al rischio cambio se diverso dalla valuta base dell’investitore."
+  },
+
+  "altmanZScore": {
+    "description": "Indice di solidità finanziaria e rischio di fallimento (Altman Z-Score).",
+    "valuation": ">3 = zona sicura, <1.8 = rischio distress. Più alto è meglio."
+  },
+  "piotroskiScore": {
+    "description": "Score di qualità fondamentale (0–9) basato su redditività, leva e efficienza.",
+    "valuation": "≥7 eccellente, 4–6 neutro, ≤3 debole. Più alto è meglio."
+  },
+
+  "workingCapital": {
+    "description": "Attività correnti meno passività correnti.",
+    "valuation": "Positivo è più sicuro. Negativo accettabile solo con cash flow molto forte e CCC negativo."
+  },
+  "totalAssets": {
+    "description": "Totale delle attività della società.",
+    "valuation": "Neutro. Serve come base per ROA, leverage e Z-Score."
+  },
+  "retainedEarnings": {
+    "description": "Utili reinvestiti cumulati nel tempo.",
+    "valuation": "Positivi indicano accumulo di valore. Negativi comuni in aziende con forti buyback."
+  },
+  "ebit": {
+    "description": "Utile operativo prima di interessi e imposte.",
+    "valuation": "Più alto e stabile è meglio. Base per redditività operativa e Z-Score."
+  },
+
+  "marketCap": {
+    "description": "Capitalizzazione di mercato corrente.",
+    "valuation": "Neutro. Serve per valutazioni relative e per l’Altman Z-Score (componente equity)."
+  },
+  "totalLiabilities": {
+    "description": "Totale delle passività (debiti + obbligazioni).",
+    "valuation": "Più basso è meglio a parità di asset e cash flow."
+  },
+  "revenue": {
+    "description": "Ricavi totali dell’esercizio.",
+    "valuation": "Meglio alti e crescenti. Base per efficienza e Z-Score."
+  }
+}

@@ -4,6 +4,8 @@
 const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
+const fs = require("fs/promises");
+const path = require("path");
 
 const MainModule = require("./modules/main");
 const createLogger = require("../shared/logger");
@@ -108,6 +110,41 @@ app.get("/release", async (req, res) => {
   } catch (err) {
     logger.error("[GET /release] Errore:", err.message);
     return res.status(500).json({ error: "Impossibile leggere release.json" });
+  }
+});
+
+/**
+ * GET /glossary/:fileName
+ * Ritorna un file JSON dalla cartella ./Glossary
+ * Esempio: /glossary/ratios-ttm.json
+ */
+app.get("/glossary/:fileName", async (req, res) => {
+  try {
+    const fileName = String(req.params.fileName || "").trim();
+    if (!fileName || !fileName.endsWith(".json")) {
+      return res.status(400).json({ error: "Invalid glossary filename" });
+    }
+    // Prevent path traversal
+    if (fileName.includes("/") || fileName.includes("\\") || fileName.includes("..")) {
+      return res.status(400).json({ error: "Invalid glossary filename" });
+    }
+
+    const glossaryDir = path.join(__dirname, "Glossary");
+    const filePath = path.join(glossaryDir, fileName);
+
+    const raw = await fs.readFile(filePath, "utf8");
+    const parsed = JSON.parse(raw);
+    return res.json(parsed);
+  } catch (err) {
+    if (err && (err.code === "ENOENT" || err.code === "ENOTDIR")) {
+      return res.status(404).json({ error: "Glossary file not found" });
+    }
+    if (err instanceof SyntaxError) {
+      logger.error(`[GET /glossary] Invalid JSON file: ${err.message}`);
+      return res.status(500).json({ error: "Invalid glossary file content" });
+    }
+    logger.error(`[GET /glossary] Error: ${err?.message || String(err)}`);
+    return res.status(500).json({ error: "Unable to load glossary file" });
   }
 });
 
