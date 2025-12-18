@@ -1,6 +1,7 @@
 "use strict";
 
 const { getDbConnection } = require("./core");
+const crypto = require("crypto");
 const createLogger = require("../../shared/logger");
 
 const MICROSERVICE = "DBManager";
@@ -587,13 +588,16 @@ async function createApiKey(payload) {
       expires_at = null,
     } = payload || {};
 
-    if (!name || !api_key) {
-      const msg = "name e api_key sono obbligatori";
+    if (!name) {
+      const msg = "name è obbligatorio";
       logger.warning(`[createApiKey] ${msg}`);
       const err = new Error(msg);
       err.statusCode = 400;
       throw err;
     }
+
+    const finalApiKey =
+      api_key || `ak_${crypto.randomBytes(24).toString("hex")}`;
 
     const [res] = await conn.query(
       `INSERT INTO api_keys
@@ -601,7 +605,7 @@ async function createApiKey(payload) {
        VALUES (?,?,?,?,?,?)`,
       [
         name,
-        api_key,
+        finalApiKey,
         owner_user_id,
         description,
         is_active ? 1 : 0,
@@ -610,7 +614,7 @@ async function createApiKey(payload) {
     );
 
     logger.info(`[createApiKey] created id=${res.insertId}`);
-    return { ok: true, id: res.insertId };
+    return { ok: true, id: res.insertId, api_key: finalApiKey };
   } catch (err) {
     logger.error("[createApiKey] Error", err.message || err);
     throw err;

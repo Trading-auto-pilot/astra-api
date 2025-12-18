@@ -306,7 +306,7 @@ router.delete("/users/:id/client-nav/:navId", async (req, res) => {
     }
   });
 
-  router.get("/api-keys/:id", async (req, res) => {
+  router.get("/api-keys/:id(\\d+)", async (req, res) => {
     const id = Number(req.params.id);
     if (!id) {
       return res.status(400).json({ error: "ID non valido" });
@@ -338,7 +338,7 @@ router.delete("/users/:id/client-nav/:navId", async (req, res) => {
     }
   });
 
-  router.put("/api-keys/:id", async (req, res) => {
+  router.put("/api-keys/:id(\\d+)", async (req, res) => {
     const id = Number(req.params.id);
     if (!id) {
       return res.status(400).json({ error: "ID non valido" });
@@ -355,7 +355,7 @@ router.delete("/users/:id/client-nav/:navId", async (req, res) => {
     }
   });
 
-  router.delete("/api-keys/:id", async (req, res) => {
+  router.delete("/api-keys/:id(\\d+)", async (req, res) => {
     const id = Number(req.params.id);
     if (!id) {
       return res.status(400).json({ error: "ID non valido" });
@@ -376,7 +376,7 @@ router.delete("/users/:id/client-nav/:navId", async (req, res) => {
   // PERMISSIONS per API KEY
   // ===========================
 
-  router.get("/api-keys/:id/permissions", async (req, res) => {
+  router.get("/api-keys/:id(\\d+)/permissions", async (req, res) => {
     const id = Number(req.params.id);
     if (!id) {
       return res.status(400).json({ error: "ID non valido" });
@@ -398,7 +398,7 @@ router.delete("/users/:id/client-nav/:navId", async (req, res) => {
     }
   });
 
-  router.post("/api-keys/:id/permissions", async (req, res) => {
+  router.post("/api-keys/:id(\\d+)/permissions", async (req, res) => {
     const id = Number(req.params.id);
     if (!id) {
       return res.status(400).json({ error: "ID non valido" });
@@ -421,7 +421,7 @@ router.delete("/users/:id/client-nav/:navId", async (req, res) => {
   });
 
   router.put(
-    "/api-keys/:id/permissions/:permId",
+    "/api-keys/:id(\\d+)/permissions/:permId(\\d+)",
     async (req, res) => {
       const id = Number(req.params.id);
       const permId = Number(req.params.permId);
@@ -452,7 +452,7 @@ router.delete("/users/:id/client-nav/:navId", async (req, res) => {
   );
 
   router.delete(
-    "/api-keys/:id/permissions/:permId",
+    "/api-keys/:id(\\d+)/permissions/:permId(\\d+)",
     async (req, res) => {
       const id = Number(req.params.id);
       const permId = Number(req.params.permId);
@@ -486,7 +486,7 @@ router.delete("/users/:id/client-nav/:navId", async (req, res) => {
     }
 
     try {
-      const row = await auth.getApiKeyByValue(apiKey);
+      const row = await dbManager.getApiKeyByValue(apiKey);
       if (!row) {
         return res.status(404).json({ error: "API key non trovata" });
       }
