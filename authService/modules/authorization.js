@@ -47,10 +47,12 @@ module.exports = function buildAuthorization({ logger, userClient }) {
           continue;
         }
 
-        const methodOk = p.http_method === "ANY" || p.http_method === method;
+        const permMethod = String(p.http_method || "ANY").toUpperCase();
+        const reqMethod = String(method || "ANY").toUpperCase();
+        const methodOk = permMethod === "ANY" || permMethod === reqMethod;
         if (!methodOk) {
           logger.trace(
-            `[authorization] Method mismatch: needed ${p.http_method}, got ${method}`
+            `[authorization] Method mismatch: needed ${permMethod}, got ${reqMethod}`
           );
           continue;
         }

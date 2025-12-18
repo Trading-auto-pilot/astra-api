@@ -16,7 +16,8 @@ class SchedulerCore {
 
     this.engine = new SchedulerEngine({
       logger: this.logger,
-      defaultTimezone: this.defaultTimezone
+      defaultTimezone: this.defaultTimezone,
+      dbmanagerUrl: this.dbmanagerUrl,
     });
 
     this.jobsCache = [];

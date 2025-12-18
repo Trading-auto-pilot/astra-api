@@ -158,5 +158,29 @@ module.exports = (dbManager) => {
     }
   });
 
+  // ---------------------------------------------------------------------
+  // PUT /scheduler/jobs/:id/last-run
+  // ---------------------------------------------------------------------
+  router.put("/jobs/:id/last-run", async (req, res) => {
+    const { id } = req.params;
+    const { last_run_at, last_status } = req.body || {};
+
+    try {
+      const result = await dbManager.updateSchedulerJobLastRun(id, {
+        last_run_at,
+        last_status,
+      });
+
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[PUT /scheduler/jobs/:id/last-run] Errore:", err.message);
+      return res.status(500).json({
+        ok: false,
+        error: "Errore durante l'aggiornamento dello stato job",
+        module: "[PUT /scheduler/jobs/:id/last-run]",
+      });
+    }
+  });
+
   return router;
 };
