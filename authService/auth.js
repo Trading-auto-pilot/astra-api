@@ -55,7 +55,10 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
 
   function isMethodAllowed(rowMethod, reqMethod) {
     if (!rowMethod) return true; // null → wildcard
-    return String(rowMethod).toUpperCase() === String(reqMethod).toUpperCase();
+    const normalizedRow = String(rowMethod).toUpperCase();
+    const normalizedReq = String(reqMethod).toUpperCase();
+    if (normalizedRow === "ANY") return true;
+    return normalizedRow === normalizedReq;
   }
 
   function hasPermission(perms, path, method) {

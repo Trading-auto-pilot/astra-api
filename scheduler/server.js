@@ -307,6 +307,56 @@ app.post("/jobs", async (req, res) => {
     });
   }
 });
+
+// Aggiorna un job nello scheduler (pass-through verso dbManager)
+app.put("/jobs/:id", async (req, res) => {
+  try {
+    const core = serviceInstance.getSchedulerCore();
+    if (!core) {
+      return res.status(500).json({ ok: false, error: "SchedulerCore non inizializzato" });
+    }
+
+    const { id } = req.params;
+    const url = `${serviceInstance.dbmanagerUrl}/scheduler/jobs/${id}`;
+    const resp = await axios.put(url, req.body, { timeout: 15000 });
+
+    await core.reloadJobs();
+
+    return res.json(resp.data);
+  } catch (e) {
+    serviceInstance.getLogger().error("[PUT /scheduler/jobs/:id] errore", e.message || e);
+    return res.status(500).json({
+      ok: false,
+      error: e.message || String(e),
+      module: "[PUT /scheduler/jobs/:id]"
+    });
+  }
+});
+
+// Cancella un job nello scheduler (pass-through verso dbManager)
+app.delete("/job/:id", async (req, res) => {
+  try {
+    const core = serviceInstance.getSchedulerCore();
+    if (!core) {
+      return res.status(500).json({ ok: false, error: "SchedulerCore non inizializzato" });
+    }
+
+    const { id } = req.params;
+    const url = `${serviceInstance.dbmanagerUrl}/scheduler/jobs/${id}`;
+    const resp = await axios.delete(url, { timeout: 15000 });
+
+    await core.reloadJobs();
+
+    return res.json(resp.data);
+  } catch (e) {
+    serviceInstance.getLogger().error("[DELETE /scheduler/job/:id] errore", e.message || e);
+    return res.status(500).json({
+      ok: false,
+      error: e.message || String(e),
+      module: "[DELETE /scheduler/job/:id]"
+    });
+  }
+});
 /* --------------------------- ROUTES: STATUS ---------------------------- */
 /**
  * Router generico /status/*

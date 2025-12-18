@@ -19,10 +19,12 @@ class SchedulerEngine {
    * @param {object} opts
    * @param {object} opts.logger    - logger del microservizio
    * @param {string} opts.defaultTimezone
+   * @param {string} opts.dbmanagerUrl
    */
-  constructor({ logger, defaultTimezone = "UTC" } = {}) {
+  constructor({ logger, defaultTimezone = "UTC", dbmanagerUrl } = {}) {
     this.logger = logger || console;
     this.defaultTimezone = defaultTimezone;
+    this.dbmanagerUrl = dbmanagerUrl;
     this.tasks = [];
   }
 
@@ -139,14 +141,44 @@ class SchedulerEngine {
         this.logger.info(
         `[_runJob] job=${job.jobKey} completato, status=${resp.status}`
         );
+      await this._updateLastRun(job, "success");
     } catch (err) {
         this.logger.error(
         `[_runJob] job=${job.jobKey} errore attempt=${attempt}: ${err.message || err}`
         );
+      await this._updateLastRun(job, "error");
 
       if (attempt < maxAttempts) {
         setTimeout(() => this._runJob(job, attempt + 1), backoffMs);
       }
+    }
+  }
+
+  async _updateLastRun(job, status) {
+    if (!this.dbmanagerUrl || !job?.id) return;
+
+    const now = new Date();
+    const date = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0"),
+    ].join("-");
+    const time = [
+      String(now.getHours()).padStart(2, "0"),
+      String(now.getMinutes()).padStart(2, "0"),
+      String(now.getSeconds()).padStart(2, "0"),
+    ].join(":");
+
+    try {
+      await axios.put(
+        `${this.dbmanagerUrl}/scheduler/jobs/${job.id}/last-run`,
+        { last_run_at: `${date} ${time}`, last_status: status },
+        { timeout: 8000 }
+      );
+    } catch (err) {
+      this.logger.warn(
+        `[_updateLastRun] job=${job.jobKey} update failed: ${err.message || err}`
+      );
     }
   }
 }

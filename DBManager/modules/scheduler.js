@@ -294,6 +294,33 @@ async function deleteSchedulerJob(jobId) {
 }
 
 /**
+ * Aggiorna last_run_at e last_status per un job.
+ */
+async function updateSchedulerJobLastRun(jobId, payload) {
+  const conn = await getDbConnection();
+  try {
+    const { last_run_at, last_status } = payload || {};
+    const [res] = await conn.query(
+      `
+      UPDATE scheduler_jobs
+      SET last_run_at = ?, last_status = ?
+      WHERE id = ?
+      `,
+      [last_run_at || null, last_status || null, jobId]
+    );
+    logger.info(
+      `[updateSchedulerJobLastRun] jobId=${jobId} affectedRows=${res.affectedRows}`
+    );
+    return { ok: true, updated: res.affectedRows };
+  } catch (err) {
+    logger.error("[updateSchedulerJobLastRun] Error", err.message || err);
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+/**
  * Legge un singolo job con rules.
  */
 async function getSchedulerJobById(jobId) {
@@ -355,4 +382,5 @@ module.exports = {
   updateSchedulerJobWithRules,
   deleteSchedulerJob,
   getSchedulerJobById,
+  updateSchedulerJobLastRun,
 };
