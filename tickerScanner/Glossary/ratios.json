@@ -1,0 +1,270 @@
+{
+  "symbol": {
+    "description": "Ticker del titolo.",
+    "valuation": "Neutro. Identificativo."
+  },
+  "date": {
+    "description": "Data di riferimento delle metriche.",
+    "valuation": "Più recente è meglio."
+  },
+  "fiscalYear": {
+    "description": "Anno fiscale di riferimento.",
+    "valuation": "Neutro."
+  },
+  "period": {
+    "description": "Periodo contabile (FY = annuale).",
+    "valuation": "Neutro."
+  },
+  "reportedCurrency": {
+    "description": "Valuta di reporting.",
+    "valuation": "Neutro."
+  },
+
+  "grossProfitMargin": {
+    "description": "Margine lordo sui ricavi.",
+    "valuation": "Più alto è meglio e stabile nel tempo. Indica pricing power."
+  },
+  "ebitMargin": {
+    "description": "Margine EBIT.",
+    "valuation": "Più alto è meglio. >15% molto buono, >25% eccellente."
+  },
+  "ebitdaMargin": {
+    "description": "Margine EBITDA.",
+    "valuation": "Più alto è meglio. Indica redditività operativa prima dei costi non monetari."
+  },
+  "operatingProfitMargin": {
+    "description": "Margine operativo.",
+    "valuation": "Deve essere alto e stabile. Compressione = warning."
+  },
+  "pretaxProfitMargin": {
+    "description": "Margine prima delle imposte.",
+    "valuation": "Meglio alto. Coerenza con EBIT indica qualità utili."
+  },
+  "continuousOperationsProfitMargin": {
+    "description": "Margine netto da operazioni continuative.",
+    "valuation": "Molto importante. Più alto e stabile è meglio."
+  },
+  "netProfitMargin": {
+    "description": "Margine netto.",
+    "valuation": "Chiave assoluta. >10% buono, >20% eccellente."
+  },
+  "bottomLineProfitMargin": {
+    "description": "Margine finale attribuibile agli azionisti.",
+    "valuation": "Deve essere alto e sostenibile."
+  },
+
+  "receivablesTurnover": {
+    "description": "Rotazione dei crediti.",
+    "valuation": "Più alto è meglio. Indica velocità di incasso."
+  },
+  "payablesTurnover": {
+    "description": "Rotazione dei debiti verso fornitori.",
+    "valuation": "Più basso è meglio (pagamenti più lenti, entro limiti)."
+  },
+  "inventoryTurnover": {
+    "description": "Rotazione del magazzino.",
+    "valuation": "Più alto è meglio. Basso = rischio obsolescenza."
+  },
+  "fixedAssetTurnover": {
+    "description": "Ricavi generati per unità di asset fissi.",
+    "valuation": "Più alto è meglio. Indica asset-light."
+  },
+  "assetTurnover": {
+    "description": "Ricavi / Totale asset.",
+    "valuation": "Più alto è meglio. Efficienza nell’uso degli asset."
+  },
+
+  "currentRatio": {
+    "description": "Attività correnti / Passività correnti.",
+    "valuation": "Ideale >1. <1 accettabile solo con forte cash flow."
+  },
+  "quickRatio": {
+    "description": "Liquidità rapida / Passività correnti.",
+    "valuation": "Meglio >1. <1 = dipendenza da flussi futuri."
+  },
+  "solvencyRatio": {
+    "description": "Capacità di far fronte agli impegni di lungo termine.",
+    "valuation": "Più alto è meglio. <0.3 = rischio."
+  },
+  "cashRatio": {
+    "description": "Liquidità immediata / Passività correnti.",
+    "valuation": "Più alto è meglio, ma raramente >0.5."
+  },
+
+  "priceToEarningsRatio": {
+    "description": "Prezzo / Utile per azione.",
+    "valuation": "Più basso è meglio. >30 indica titolo caro."
+  },
+  "priceToEarningsGrowthRatio": {
+    "description": "P/E rapportato alla crescita (PEG).",
+    "valuation": "Ideale ≈1. >2 indica sopravvalutazione."
+  },
+  "forwardPriceToEarningsGrowthRatio": {
+    "description": "PEG forward.",
+    "valuation": "Stessa lettura del PEG. Più basso è meglio."
+  },
+  "priceToBookRatio": {
+    "description": "Prezzo / Valore contabile.",
+    "valuation": "Basso è meglio, ma alto è normale per aziende di qualità."
+  },
+  "priceToSalesRatio": {
+    "description": "Prezzo / Ricavi.",
+    "valuation": "Più basso è meglio. >8–10 caro salvo growth eccezionale."
+  },
+  "priceToFreeCashFlowRatio": {
+    "description": "Prezzo / Free Cash Flow.",
+    "valuation": "Molto importante. <20 attraente, >30 caro."
+  },
+  "priceToOperatingCashFlowRatio": {
+    "description": "Prezzo / Cash Flow Operativo.",
+    "valuation": "Più basso è meglio. >25 caro."
+  },
+
+  "debtToAssetsRatio": {
+    "description": "Debito / Totale asset.",
+    "valuation": "Più basso è meglio. >50% rischio."
+  },
+  "debtToEquityRatio": {
+    "description": "Debito / Patrimonio netto.",
+    "valuation": "Più basso è meglio. Alto indica leva."
+  },
+  "debtToCapitalRatio": {
+    "description": "Debito / Capitale totale.",
+    "valuation": "Meglio <40–50%."
+  },
+  "longTermDebtToCapitalRatio": {
+    "description": "Debito LT / Capitale totale.",
+    "valuation": "Più basso è meglio."
+  },
+  "financialLeverageRatio": {
+    "description": "Leva finanziaria complessiva.",
+    "valuation": "Più basso è meglio. Alto amplifica rischi."
+  },
+
+  "workingCapitalTurnoverRatio": {
+    "description": "Ricavi / Capitale circolante.",
+    "valuation": "Negativo indica working capital negativo. Accettabile se cash flow forte."
+  },
+  "operatingCashFlowRatio": {
+    "description": "Cash flow operativo / Passività correnti.",
+    "valuation": "Più alto è meglio. <1 attenzione."
+  },
+  "operatingCashFlowSalesRatio": {
+    "description": "Cash flow operativo / Ricavi.",
+    "valuation": "Più alto è meglio. Indica qualità dei ricavi."
+  },
+  "freeCashFlowOperatingCashFlowRatio": {
+    "description": "Free CF / Operating CF.",
+    "valuation": "Vicino a 1 è eccellente."
+  },
+
+  "debtServiceCoverageRatio": {
+    "description": "Capacità di servire il debito.",
+    "valuation": "Più alto è meglio. <2 rischio."
+  },
+  "interestCoverageRatio": {
+    "description": "EBIT / Interessi.",
+    "valuation": "Più alto è meglio. 0 indica interessi trascurabili."
+  },
+  "shortTermOperatingCashFlowCoverageRatio": {
+    "description": "Copertura passività di breve con CF operativo.",
+    "valuation": "Più alto è meglio."
+  },
+  "operatingCashFlowCoverageRatio": {
+    "description": "Copertura totale passività con CF operativo.",
+    "valuation": "≈1 buono. <1 attenzione."
+  },
+  "capitalExpenditureCoverageRatio": {
+    "description": "Capacità del CF di coprire il CAPEX.",
+    "valuation": "Più alto è meglio. >3 molto solido."
+  },
+  "dividendPaidAndCapexCoverageRatio": {
+    "description": "Copertura dividendi + CAPEX.",
+    "valuation": "Più alto è meglio. <1 insostenibile."
+  },
+
+  "dividendPayoutRatio": {
+    "description": "Quota utili distribuita come dividendo.",
+    "valuation": "Moderata è ideale. Troppo alta limita crescita."
+  },
+  "dividendYield": {
+    "description": "Rendimento da dividendo.",
+    "valuation": "Più alto è meglio, ma va valutato con sostenibilità."
+  },
+  "dividendYieldPercentage": {
+    "description": "Dividend yield in percentuale.",
+    "valuation": "Stessa lettura del dividend yield."
+  },
+
+  "revenuePerShare": {
+    "description": "Ricavi per azione.",
+    "valuation": "Meglio alto e crescente."
+  },
+  "netIncomePerShare": {
+    "description": "Utile netto per azione.",
+    "valuation": "Molto importante. Deve crescere nel tempo."
+  },
+  "interestDebtPerShare": {
+    "description": "Debito per azione.",
+    "valuation": "Meglio basso."
+  },
+  "cashPerShare": {
+    "description": "Liquidità per azione.",
+    "valuation": "Più alto è meglio."
+  },
+  "bookValuePerShare": {
+    "description": "Valore contabile per azione.",
+    "valuation": "Neutro. Serve per confronti P/B."
+  },
+  "tangibleBookValuePerShare": {
+    "description": "Valore tangibile per azione.",
+    "valuation": "Più alto è meglio per valutazioni conservative."
+  },
+  "shareholdersEquityPerShare": {
+    "description": "Patrimonio netto per azione.",
+    "valuation": "Meglio alto e stabile."
+  },
+  "operatingCashFlowPerShare": {
+    "description": "Cash flow operativo per azione.",
+    "valuation": "Chiave. Deve crescere nel tempo."
+  },
+  "capexPerShare": {
+    "description": "CAPEX per azione.",
+    "valuation": "Neutro. Va confrontato con CF per share."
+  },
+  "freeCashFlowPerShare": {
+    "description": "Free Cash Flow per azione.",
+    "valuation": "METRICA CHIAVE. Più alto e crescente è meglio."
+  },
+
+  "netIncomePerEBT": {
+    "description": "Quota di EBT che diventa utile netto.",
+    "valuation": "Più alto è meglio. Indica efficienza fiscale."
+  },
+  "ebtPerEbit": {
+    "description": "EBT / EBIT.",
+    "valuation": "Vicino a 1 indica basso impatto finanziario."
+  },
+
+  "priceToFairValue": {
+    "description": "Prezzo / Valore equo stimato.",
+    "valuation": "<1 sottovalutato, >1 sopravvalutato."
+  },
+  "debtToMarketCap": {
+    "description": "Debito / Capitalizzazione.",
+    "valuation": "Più basso è meglio."
+  },
+  "effectiveTaxRate": {
+    "description": "Aliquota fiscale effettiva.",
+    "valuation": "Stabile e prevedibile è positivo."
+  },
+  "enterpriseValueMultiple": {
+    "description": "Multiplo EV (tipicamente EV/EBITDA).",
+    "valuation": "Più basso è meglio. >25 caro."
+  },
+
+  "dividendPerShare": {
+    "description": "Dividendo per azione.",
+    "valuation": "Meglio stabile o crescente."
+  }
+}

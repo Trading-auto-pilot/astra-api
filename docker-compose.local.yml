@@ -372,6 +372,12 @@ services:
       - "traefik.http.services.tickerscanner.loadbalancer.server.port=3013"
       - "traefik.http.middlewares.tickerscanner-stripprefix.stripPrefix.prefixes=/tickerscanner"
       - "traefik.http.routers.tickerscanner.middlewares=tickerscanner-stripprefix,cors-default@docker,auth-forward@docker"
+      # Public glossary (no auth): http://localhost:8080/tickerscanner/glossary/<file>.json
+      - "traefik.http.routers.tickerscanner-glossary.rule=Host(`localhost`) && PathPrefix(`/tickerscanner/glossary`)"
+      - "traefik.http.routers.tickerscanner-glossary.entrypoints=web"
+      - "traefik.http.routers.tickerscanner-glossary.priority=10010"
+      - "traefik.http.routers.tickerscanner-glossary.service=tickerscanner"
+      - "traefik.http.routers.tickerscanner-glossary.middlewares=tickerscanner-stripprefix,cors-default@docker"
       # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
       - "traefik.http.routers.tickerscanner-preflight.rule=Host(`localhost`) && PathPrefix(`/tickerscanner`) && Method(`OPTIONS`)"
       - "traefik.http.routers.tickerscanner-preflight.entrypoints=web"

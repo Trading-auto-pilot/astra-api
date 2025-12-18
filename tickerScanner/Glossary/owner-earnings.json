@@ -1,0 +1,47 @@
+{
+  "symbol": {
+    "description": "Ticker del titolo.",
+    "valuation": "Neutro. Identificativo."
+  },
+  "reportedCurrency": {
+    "description": "Valuta di reporting dei dati.",
+    "valuation": "Neutro. Attenzione al cambio per investitori non USD."
+  },
+  "fiscalYear": {
+    "description": "Anno fiscale di riferimento.",
+    "valuation": "Neutro. Utile per confronti storici."
+  },
+  "period": {
+    "description": "Periodo contabile (Q4 = trimestre finale).",
+    "valuation": "Neutro. Da confrontare con altri trimestri."
+  },
+  "date": {
+    "description": "Data di riferimento dei dati.",
+    "valuation": "Più recente è meglio."
+  },
+
+  "averagePPE": {
+    "description": "Rapporto medio tra Property, Plant & Equipment e ricavi/asset (proxy di intensità di capitale).",
+    "valuation": "Più basso è meglio. Indica modello asset-light e maggiore flessibilità."
+  },
+
+  "maintenanceCapex": {
+    "description": "CAPEX necessario per mantenere l’attuale capacità operativa.",
+    "valuation": "Meglio basso in rapporto a Operating Cash Flow. Deve essere facilmente coperto dal CF."
+  },
+
+  "growthCapex": {
+    "description": "CAPEX destinato alla crescita futura (espansione, innovazione).",
+    "valuation": "Negativo è normale. Positivo se sostenibile e con ritorni elevati."
+  },
+
+  "ownersEarnings": {
+    "description": "Owner Earnings (Cash Flow realmente disponibile agli azionisti dopo il CAPEX di mantenimento).",
+    "valuation": "METRICA CHIAVE. Più alto, stabile e crescente è meglio."
+  },
+
+  "ownersEarningsPerShare": {
+    "description": "Owner Earnings per azione.",
+    "valuation": "Fondamentale. Deve crescere nel tempo ed essere coerente con buyback e EPS."
+  }
+}

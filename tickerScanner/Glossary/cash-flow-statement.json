@@ -1,0 +1,201 @@
+{
+  "date": {
+    "description": "Data di riferimento del rendiconto finanziario.",
+    "valuation": "Più recente è meglio. Fondamentale per valutare la sostenibilità attuale del business."
+  },
+  "symbol": {
+    "description": "Ticker del titolo.",
+    "valuation": "Neutro. Identificativo."
+  },
+  "reportedCurrency": {
+    "description": "Valuta di reporting.",
+    "valuation": "Neutro. Attenzione al rischio cambio."
+  },
+  "cik": {
+    "description": "Identificativo SEC della società.",
+    "valuation": "Neutro."
+  },
+  "filingDate": {
+    "description": "Data di deposito del rendiconto.",
+    "valuation": "Più recente è meglio. Ritardi possono essere un warning."
+  },
+  "acceptedDate": {
+    "description": "Data di accettazione ufficiale.",
+    "valuation": "Neutro."
+  },
+  "fiscalYear": {
+    "description": "Anno fiscale di riferimento.",
+    "valuation": "Neutro. Serve per confronti YoY."
+  },
+  "period": {
+    "description": "Periodo contabile (FY = annuale).",
+    "valuation": "Neutro."
+  },
+
+  "netIncome": {
+    "description": "Utile netto contabile dell’esercizio.",
+    "valuation": "Meglio alto e crescente, ma va sempre confrontato con il cash flow operativo."
+  },
+  "depreciationAndAmortization": {
+    "description": "Ammortamenti e svalutazioni (costi non monetari).",
+    "valuation": "Neutro. Serve per riconciliare utile e cash flow."
+  },
+  "deferredIncomeTax": {
+    "description": "Imposte differite non monetarie.",
+    "valuation": "Neutro. Valori elevati e persistenti vanno monitorati."
+  },
+  "stockBasedCompensation": {
+    "description": "Compensi pagati in azioni.",
+    "valuation": "Accettabili se contenuti. Valori elevati = rischio diluizione."
+  },
+  "changeInWorkingCapital": {
+    "description": "Variazione del capitale circolante.",
+    "valuation": "Negativo moderato è normale in crescita. Negativo strutturale = assorbimento di cassa."
+  },
+  "accountsReceivables": {
+    "description": "Variazione dei crediti verso clienti.",
+    "valuation": "Meglio negativa o stabile. Aumenti indicano peggior incasso."
+  },
+  "inventory": {
+    "description": "Variazione delle rimanenze.",
+    "valuation": "Meglio stabile o in calo. Aumenti forti = rischio obsolescenza."
+  },
+  "accountsPayables": {
+    "description": "Variazione dei debiti verso fornitori.",
+    "valuation": "Positivo se indica migliore gestione del capitale circolante."
+  },
+  "otherWorkingCapital": {
+    "description": "Altre variazioni del capitale circolante.",
+    "valuation": "Meglio contenute. Valori elevati riducono trasparenza."
+  },
+  "otherNonCashItems": {
+    "description": "Altri aggiustamenti non monetari.",
+    "valuation": "Idealmente bassi. Ricorrenza elevata è warning."
+  },
+
+  "netCashProvidedByOperatingActivities": {
+    "description": "Flussi di cassa generati dall’attività operativa.",
+    "valuation": "METRICA CHIAVE. Deve essere alto, stabile e crescente nel tempo."
+  },
+
+  "investmentsInPropertyPlantAndEquipment": {
+    "description": "Spese in investimenti materiali (CAPEX).",
+    "valuation": "Normalmente negative. Devono essere sostenibili rispetto all’operating cash flow."
+  },
+  "acquisitionsNet": {
+    "description": "Flussi di cassa per acquisizioni nette.",
+    "valuation": "Neutro. Positive o negative a seconda della strategia."
+  },
+  "purchasesOfInvestments": {
+    "description": "Acquisto di investimenti finanziari.",
+    "valuation": "Neutro. Dipende dalla gestione della liquidità."
+  },
+  "salesMaturitiesOfInvestments": {
+    "description": "Vendita o scadenza di investimenti.",
+    "valuation": "Positivo. Indica capacità di monetizzare asset."
+  },
+  "otherInvestingActivities": {
+    "description": "Altri flussi di investimento.",
+    "valuation": "Meglio contenuti."
+  },
+  "netCashProvidedByInvestingActivities": {
+    "description": "Flussi netti da attività di investimento.",
+    "valuation": "Spesso negativi nelle aziende in crescita. Positivi se gestione efficiente del capitale."
+  },
+
+  "netDebtIssuance": {
+    "description": "Emissione netta di debito.",
+    "valuation": "Meglio negativa (riduzione debito). Positiva = aumento leverage."
+  },
+  "longTermNetDebtIssuance": {
+    "description": "Variazione netta del debito a lungo termine.",
+    "valuation": "Meglio negativa o stabile."
+  },
+  "shortTermNetDebtIssuance": {
+    "description": "Variazione netta del debito a breve termine.",
+    "valuation": "Meglio bassa. Aumenti = rischio liquidità."
+  },
+
+  "netStockIssuance": {
+    "description": "Emissione netta di azioni.",
+    "valuation": "Meglio negativa (buyback). Positiva = diluizione."
+  },
+  "netCommonStockIssuance": {
+    "description": "Emissione netta di azioni ordinarie.",
+    "valuation": "Meglio negativa. Buyback aggressivi aumentano EPS."
+  },
+  "commonStockIssuance": {
+    "description": "Nuove azioni emesse.",
+    "valuation": "Idealmente zero o molto limitate."
+  },
+  "commonStockRepurchased": {
+    "description": "Azioni riacquistate.",
+    "valuation": "Molto positivo se sostenibile e non finanziato a debito."
+  },
+
+  "netPreferredStockIssuance": {
+    "description": "Emissione netta di azioni privilegiate.",
+    "valuation": "Neutro. Raro per aziende non finanziarie."
+  },
+
+  "netDividendsPaid": {
+    "description": "Dividendi pagati complessivamente.",
+    "valuation": "Positivo se coperti dal free cash flow."
+  },
+  "commonDividendsPaid": {
+    "description": "Dividendi su azioni ordinarie.",
+    "valuation": "Meglio stabili e sostenibili."
+  },
+  "preferredDividendsPaid": {
+    "description": "Dividendi su azioni privilegiate.",
+    "valuation": "Neutro."
+  },
+
+  "otherFinancingActivities": {
+    "description": "Altri flussi finanziari.",
+    "valuation": "Meglio contenuti."
+  },
+  "netCashProvidedByFinancingActivities": {
+    "description": "Flussi netti da attività di finanziamento.",
+    "valuation": "Negativi sono normali se dovuti a buyback e dividendi."
+  },
+
+  "effectOfForexChangesOnCash": {
+    "description": "Effetto delle variazioni valutarie sulla cassa.",
+    "valuation": "Neutro. Dipende dall’esposizione FX."
+  },
+  "netChangeInCash": {
+    "description": "Variazione netta della liquidità.",
+    "valuation": "Meglio positiva o stabile nel tempo."
+  },
+  "cashAtEndOfPeriod": {
+    "description": "Liquidità disponibile a fine periodo.",
+    "valuation": "Deve essere coerente con debito e fabbisogni operativi."
+  },
+  "cashAtBeginningOfPeriod": {
+    "description": "Liquidità all’inizio del periodo.",
+    "valuation": "Neutro. Usato per riconciliazione."
+  },
+
+  "operatingCashFlow": {
+    "description": "Cash flow operativo (alias netCashProvidedByOperatingActivities).",
+    "valuation": "METRICA FONDAMENTALE. Deve crescere nel tempo."
+  },
+  "capitalExpenditure": {
+    "description": "Spese in conto capitale.",
+    "valuation": "Normale se negative. Attenzione se crescono più dei ricavi."
+  },
+  "freeCashFlow": {
+    "description": "Cash flow disponibile dopo gli investimenti.",
+    "valuation": "CHIAVE ASSOLUTA. Deve essere alto, stabile e crescente."
+  },
+
+  "incomeTaxesPaid": {
+    "description": "Imposte effettivamente pagate in cassa.",
+    "valuation": "Neutro. Utile per confronti cash vs accounting."
+  },
+  "interestPaid": {
+    "description": "Interessi pagati in cassa.",
+    "valuation": "Meglio bassi. Elevati indicano pressione finanziaria."
+  }
+}

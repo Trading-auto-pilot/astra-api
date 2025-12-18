@@ -1,0 +1,255 @@
+{
+  "symbol": {
+    "description": "Ticker del titolo.",
+    "valuation": "Neutro. Identificativo."
+  },
+
+  "grossProfitMarginTTM": {
+    "description": "Margine lordo sui ricavi (TTM).",
+    "valuation": "Più alto e stabile è meglio. Indica pricing power e qualità del brand."
+  },
+  "ebitMarginTTM": {
+    "description": "Margine EBIT (TTM).",
+    "valuation": "Più alto è meglio. >20% eccellente per large cap."
+  },
+  "ebitdaMarginTTM": {
+    "description": "Margine EBITDA (TTM).",
+    "valuation": "Più alto è meglio. Misura la redditività operativa pura."
+  },
+  "operatingProfitMarginTTM": {
+    "description": "Margine operativo (TTM).",
+    "valuation": "Deve essere alto e stabile. Compressione è warning."
+  },
+  "pretaxProfitMarginTTM": {
+    "description": "Margine prima delle imposte (TTM).",
+    "valuation": "Più alto è meglio. Coerenza con EBIT indica qualità."
+  },
+  "continuousOperationsProfitMarginTTM": {
+    "description": "Margine netto da operazioni continuative (TTM).",
+    "valuation": "Molto importante. Più alto e stabile è meglio."
+  },
+  "netProfitMarginTTM": {
+    "description": "Margine netto (TTM).",
+    "valuation": "METRICA CHIAVE. >15% molto buono, >20% eccellente."
+  },
+  "bottomLineProfitMarginTTM": {
+    "description": "Margine finale attribuibile agli azionisti (TTM).",
+    "valuation": "Deve essere elevato e sostenibile nel tempo."
+  },
+
+  "receivablesTurnoverTTM": {
+    "description": "Rotazione dei crediti (TTM).",
+    "valuation": "Più alto è meglio. Indica incassi rapidi."
+  },
+  "payablesTurnoverTTM": {
+    "description": "Rotazione dei debiti verso fornitori (TTM).",
+    "valuation": "Più basso è meglio (pagamenti più lenti, entro limiti)."
+  },
+  "inventoryTurnoverTTM": {
+    "description": "Rotazione del magazzino (TTM).",
+    "valuation": "Più alto è meglio. Basso = rischio obsolescenza."
+  },
+  "fixedAssetTurnoverTTM": {
+    "description": "Efficienza degli asset fissi (TTM).",
+    "valuation": "Più alto è meglio. Indica modello asset-light."
+  },
+  "assetTurnoverTTM": {
+    "description": "Ricavi / Totale asset (TTM).",
+    "valuation": "Più alto è meglio. Misura efficienza complessiva."
+  },
+
+  "currentRatioTTM": {
+    "description": "Attività correnti / Passività correnti (TTM).",
+    "valuation": "Ideale >1. <1 accettabile solo con cash flow molto forte."
+  },
+  "quickRatioTTM": {
+    "description": "Liquidità rapida / Passività correnti (TTM).",
+    "valuation": "Meglio >1. <1 indica dipendenza dai flussi futuri."
+  },
+  "solvencyRatioTTM": {
+    "description": "Solidità finanziaria di lungo periodo (TTM).",
+    "valuation": "Più alto è meglio. <0.3 indica rischio."
+  },
+  "cashRatioTTM": {
+    "description": "Liquidità immediata / Passività correnti (TTM).",
+    "valuation": "Più alto è meglio, ma >0.2 è già buono per big tech."
+  },
+
+  "priceToEarningsRatioTTM": {
+    "description": "Prezzo / Utile (TTM).",
+    "valuation": "Più basso è meglio. >30 indica valutazione tirata."
+  },
+  "priceToEarningsGrowthRatioTTM": {
+    "description": "PEG ratio (TTM).",
+    "valuation": "≈1 equo. >2 indica sopravvalutazione rispetto alla crescita."
+  },
+  "forwardPriceToEarningsGrowthRatioTTM": {
+    "description": "PEG forward (TTM).",
+    "valuation": "Più basso è meglio. >2–2.5 caro."
+  },
+  "priceToBookRatioTTM": {
+    "description": "Prezzo / Valore contabile (TTM).",
+    "valuation": "Basso è meglio, ma alto è normale per aziende di qualità."
+  },
+  "priceToSalesRatioTTM": {
+    "description": "Prezzo / Ricavi (TTM).",
+    "valuation": "Più basso è meglio. >8–10 caro salvo growth eccezionale."
+  },
+  "priceToFreeCashFlowRatioTTM": {
+    "description": "Prezzo / Free Cash Flow (TTM).",
+    "valuation": "Molto importante. <25 attraente, >35 caro."
+  },
+  "priceToOperatingCashFlowRatioTTM": {
+    "description": "Prezzo / Cash Flow Operativo (TTM).",
+    "valuation": "Più basso è meglio. >25 caro."
+  },
+
+  "debtToAssetsRatioTTM": {
+    "description": "Debito / Totale asset (TTM).",
+    "valuation": "Più basso è meglio. >50% rischio."
+  },
+  "debtToEquityRatioTTM": {
+    "description": "Debito / Patrimonio netto (TTM).",
+    "valuation": "Più basso è meglio. Alto = leva finanziaria."
+  },
+  "debtToCapitalRatioTTM": {
+    "description": "Debito / Capitale totale (TTM).",
+    "valuation": "Meglio <40–50%."
+  },
+  "longTermDebtToCapitalRatioTTM": {
+    "description": "Debito LT / Capitale totale (TTM).",
+    "valuation": "Più basso è meglio."
+  },
+  "financialLeverageRatioTTM": {
+    "description": "Leva finanziaria complessiva (TTM).",
+    "valuation": "Più bassa è meglio. Alta amplifica rischi."
+  },
+
+  "workingCapitalTurnoverRatioTTM": {
+    "description": "Ricavi / Capitale circolante (TTM).",
+    "valuation": "Negativo indica working capital negativo. Accettabile con CCC negativo."
+  },
+  "operatingCashFlowRatioTTM": {
+    "description": "Cash flow operativo / Passività correnti (TTM).",
+    "valuation": "Più alto è meglio. <1 attenzione."
+  },
+  "operatingCashFlowSalesRatioTTM": {
+    "description": "Cash flow operativo / Ricavi (TTM).",
+    "valuation": "Più alto è meglio. Indica qualità dei ricavi."
+  },
+  "freeCashFlowOperatingCashFlowRatioTTM": {
+    "description": "Free CF / Operating CF (TTM).",
+    "valuation": "Vicino a 1 è eccellente."
+  },
+
+  "debtServiceCoverageRatioTTM": {
+    "description": "Capacità di servire il debito (TTM).",
+    "valuation": "Più alto è meglio. <2 indica rischio."
+  },
+  "interestCoverageRatioTTM": {
+    "description": "Copertura interessi (TTM).",
+    "valuation": "Più alto è meglio. 0 indica interessi trascurabili."
+  },
+  "shortTermOperatingCashFlowCoverageRatioTTM": {
+    "description": "Copertura passività di breve con CF operativo (TTM).",
+    "valuation": "Più alto è meglio."
+  },
+  "operatingCashFlowCoverageRatioTTM": {
+    "description": "Copertura totale passività con CF operativo (TTM).",
+    "valuation": "≈1 buono. <1 warning."
+  },
+  "capitalExpenditureCoverageRatioTTM": {
+    "description": "Copertura CAPEX tramite CF (TTM).",
+    "valuation": "Più alto è meglio. >3 molto solido."
+  },
+  "dividendPaidAndCapexCoverageRatioTTM": {
+    "description": "Copertura dividendi + CAPEX (TTM).",
+    "valuation": "Più alto è meglio. <1 insostenibile."
+  },
+
+  "dividendPayoutRatioTTM": {
+    "description": "Quota di utili distribuita (TTM).",
+    "valuation": "Moderata è ideale. Troppo alta limita crescita."
+  },
+  "dividendYieldTTM": {
+    "description": "Rendimento da dividendo (TTM).",
+    "valuation": "Neutro. Conta la sostenibilità più del valore."
+  },
+
+  "enterpriseValueTTM": {
+    "description": "Enterprise Value corrente (TTM).",
+    "valuation": "Neutro. Base per multipli EV."
+  },
+
+  "revenuePerShareTTM": {
+    "description": "Ricavi per azione (TTM).",
+    "valuation": "Meglio alti e crescenti."
+  },
+  "netIncomePerShareTTM": {
+    "description": "Utile netto per azione (TTM).",
+    "valuation": "Chiave. Deve crescere nel tempo."
+  },
+  "interestDebtPerShareTTM": {
+    "description": "Debito per azione (TTM).",
+    "valuation": "Meglio basso."
+  },
+  "cashPerShareTTM": {
+    "description": "Liquidità per azione (TTM).",
+    "valuation": "Più alto è meglio."
+  },
+  "bookValuePerShareTTM": {
+    "description": "Valore contabile per azione (TTM).",
+    "valuation": "Neutro. Serve per P/B."
+  },
+  "tangibleBookValuePerShareTTM": {
+    "description": "Valore tangibile per azione (TTM).",
+    "valuation": "Più alto è meglio per valutazioni conservative."
+  },
+  "shareholdersEquityPerShareTTM": {
+    "description": "Equity per azione (TTM).",
+    "valuation": "Meglio stabile."
+  },
+  "operatingCashFlowPerShareTTM": {
+    "description": "Cash flow operativo per azione (TTM).",
+    "valuation": "METRICA CHIAVE. Deve crescere."
+  },
+  "capexPerShareTTM": {
+    "description": "CAPEX per azione (TTM).",
+    "valuation": "Neutro. Va confrontato con CF per share."
+  },
+  "freeCashFlowPerShareTTM": {
+    "description": "Free Cash Flow per azione (TTM).",
+    "valuation": "Fondamentale. Più alto e crescente è meglio."
+  },
+
+  "netIncomePerEBTTTM": {
+    "description": "Quota di EBT che diventa utile netto (TTM).",
+    "valuation": "Più alto è meglio. Indica efficienza fiscale."
+  },
+  "ebtPerEbitTTM": {
+    "description": "EBT / EBIT (TTM).",
+    "valuation": "Vicino a 1 indica basso impatto finanziario."
+  },
+
+  "priceToFairValueTTM": {
+    "description": "Prezzo / Fair Value stimato (TTM).",
+    "valuation": "<1 sottovalutato, >1 sopravvalutato."
+  },
+  "debtToMarketCapTTM": {
+    "description": "Debito / Capitalizzazione (TTM).",
+    "valuation": "Più basso è meglio."
+  },
+  "effectiveTaxRateTTM": {
+    "description": "Aliquota fiscale effettiva (TTM).",
+    "valuation": "Stabile e prevedibile è positivo."
+  },
+  "enterpriseValueMultipleTTM": {
+    "description": "Multiplo EV (tipicamente EV/EBITDA TTM).",
+    "valuation": "Più basso è meglio. >25 caro."
+  },
+
+  "dividendPerShareTTM": {
+    "description": "Dividendo per azione (TTM).",
+    "valuation": "Meglio stabile o crescente."
+  }
+}

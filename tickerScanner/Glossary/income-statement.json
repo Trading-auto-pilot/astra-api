@@ -1,0 +1,158 @@
+{
+  "date": {
+    "description": "Data di riferimento del bilancio.",
+    "valuation": "Più recente è meglio. Dati vecchi riducono l’affidabilità dell’analisi."
+  },
+  "symbol": {
+    "description": "Ticker del titolo.",
+    "valuation": "Identificativo. Neutro per la valutazione."
+  },
+  "reportedCurrency": {
+    "description": "Valuta di reporting dei dati finanziari.",
+    "valuation": "Neutro. Serve attenzione al rischio cambio se diversa dalla valuta dell’investitore."
+  },
+  "cik": {
+    "description": "Identificativo SEC della società.",
+    "valuation": "Neutro. Solo identificativo."
+  },
+  "filingDate": {
+    "description": "Data di deposito del bilancio.",
+    "valuation": "Più recente è meglio. Ritardi possono essere un segnale di warning."
+  },
+  "acceptedDate": {
+    "description": "Data/ora di accettazione ufficiale del filing.",
+    "valuation": "Neutro. Utile per analisi post-earnings."
+  },
+  "fiscalYear": {
+    "description": "Anno fiscale di riferimento.",
+    "valuation": "Neutro. Usato per confronti storici."
+  },
+  "period": {
+    "description": "Periodo contabile (FY = annuale).",
+    "valuation": "Neutro. Importante per confrontabilità."
+  },
+  "revenue": {
+    "description": "Ricavi totali.",
+    "valuation": "Meglio alto e in crescita costante nel tempo. Decrescita è segnale negativo."
+  },
+  "costOfRevenue": {
+    "description": "Costi diretti per generare i ricavi.",
+    "valuation": "Meglio basso in percentuale dei ricavi. Se cresce più dei ricavi è negativo."
+  },
+  "grossProfit": {
+    "description": "Ricavi meno costo del venduto.",
+    "valuation": "Meglio alto e crescente. Indica pricing power e qualità del business."
+  },
+  "researchAndDevelopmentExpenses": {
+    "description": "Spese in ricerca e sviluppo.",
+    "valuation": "Positive se accompagnate da crescita futura. Troppo basse = rischio stagnazione."
+  },
+  "generalAndAdministrativeExpenses": {
+    "description": "Costi amministrativi generali.",
+    "valuation": "Meglio stabili o in calo relativo. Crescita eccessiva è inefficienza."
+  },
+  "sellingAndMarketingExpenses": {
+    "description": "Spese di vendita e marketing.",
+    "valuation": "Neutro/positivo se generano crescita. Negative se aumentano senza risultati."
+  },
+  "sellingGeneralAndAdministrativeExpenses": {
+    "description": "Totale spese SG&A.",
+    "valuation": "Meglio stabili o in calo percentuale. Efficienza operativa chiave."
+  },
+  "otherExpenses": {
+    "description": "Costi operativi non ricorrenti.",
+    "valuation": "Idealmente bassi o nulli. Valori elevati e ricorrenti sono negativi."
+  },
+  "operatingExpenses": {
+    "description": "Totale spese operative.",
+    "valuation": "Devono crescere meno dei ricavi. Leverage operativo positivo è un plus."
+  },
+  "costAndExpenses": {
+    "description": "Somma totale di costi e spese.",
+    "valuation": "Meglio sotto controllo rispetto ai ricavi. Margini contano più del valore assoluto."
+  },
+  "netInterestIncome": {
+    "description": "Interessi netti attivi/passivi.",
+    "valuation": "Positivo se >0. Negativo se il debito pesa troppo."
+  },
+  "interestIncome": {
+    "description": "Interessi attivi.",
+    "valuation": "Positivo ma secondario. Non core per aziende non finanziarie."
+  },
+  "interestExpense": {
+    "description": "Interessi passivi sul debito.",
+    "valuation": "Meglio basso o in calo. Alto = rischio finanziario."
+  },
+  "depreciationAndAmortization": {
+    "description": "Ammortamenti e svalutazioni.",
+    "valuation": "Neutro. Da confrontare con EBITDA per stimare cash flow reale."
+  },
+  "ebitda": {
+    "description": "Utile operativo lordo.",
+    "valuation": "Meglio alto e crescente. Ottimo indicatore di qualità operativa."
+  },
+  "ebit": {
+    "description": "Utile operativo.",
+    "valuation": "Meglio alto e stabile. Margini EBIT elevati = business forte."
+  },
+  "nonOperatingIncomeExcludingInterest": {
+    "description": "Proventi non operativi.",
+    "valuation": "Neutro. Da escludere nelle valutazioni strutturali."
+  },
+  "operatingIncome": {
+    "description": "Reddito operativo.",
+    "valuation": "Meglio alto, stabile e crescente. Core della valutazione."
+  },
+  "totalOtherIncomeExpensesNet": {
+    "description": "Altri proventi/oneri netti.",
+    "valuation": "Idealmente bassi. Volatilità elevata è negativa."
+  },
+  "incomeBeforeTax": {
+    "description": "Utile prima delle imposte.",
+    "valuation": "Meglio alto e coerente con EBIT. Base per analisi fiscali."
+  },
+  "incomeTaxExpense": {
+    "description": "Imposte sul reddito.",
+    "valuation": "Neutro. Tax rate stabile è positivo."
+  },
+  "netIncomeFromContinuingOperations": {
+    "description": "Utile netto da attività continuative.",
+    "valuation": "Molto importante. Meglio alto e crescente nel tempo."
+  },
+  "netIncomeFromDiscontinuedOperations": {
+    "description": "Risultati da attività cessate.",
+    "valuation": "Idealmente zero. Valori elevati distorcono la valutazione."
+  },
+  "otherAdjustmentsToNetIncome": {
+    "description": "Aggiustamenti straordinari.",
+    "valuation": "Meglio nulli o rari. Ricorrenza è segnale negativo."
+  },
+  "netIncome": {
+    "description": "Utile netto totale.",
+    "valuation": "Meglio alto e crescente. Fondamentale per valutazioni equity."
+  },
+  "netIncomeDeductions": {
+    "description": "Deduzioni dall’utile netto.",
+    "valuation": "Idealmente nulle. Valori elevati riducono valore per azionisti."
+  },
+  "bottomLineNetIncome": {
+    "description": "Utile finale attribuibile agli azionisti.",
+    "valuation": "Chiave assoluta. Meglio alto, stabile e in crescita."
+  },
+  "eps": {
+    "description": "Utile per azione.",
+    "valuation": "Meglio alto e in crescita YoY. Driver diretto del prezzo."
+  },
+  "epsDiluted": {
+    "description": "EPS considerando la diluizione.",
+    "valuation": "Meglio vicino all’EPS base. Gap ampio = rischio diluizione."
+  },
+  "weightedAverageShsOut": {
+    "description": "Numero medio di azioni in circolazione.",
+    "valuation": "Meglio stabile o in calo (buyback). Aumento = diluizione."
+  },
+  "weightedAverageShsOutDil": {
+    "description": "Numero medio di azioni diluite.",
+    "valuation": "Meglio stabile. Crescita indica diluizione futura."
+  }
+}
