@@ -5,13 +5,19 @@ const cache = require('../../shared/cache');
 const router = express.Router();
 
 module.exports = (dbManager) => {
-// GET /logs?limit=123
+// GET /logs?limit=123&offset=0&page=0
 router.get('/', async (req, res) => {
   // 1) valida/parsa limit
   const n = Number(req.query.limit);
   const limit = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 1000) : 100;
+  const p = Number(req.query.page);
+  const rawOffset = Number(req.query.offset);
+  const microservice = typeof req.query.microservice === "string" ? req.query.microservice.trim() : null;
+  const offsetFromOffset = Number.isFinite(rawOffset) && rawOffset >= 0 ? Math.floor(rawOffset) : null;
+  const offsetFromPage = Number.isFinite(p) && p >= 0 ? Math.floor(p) * limit : null;
+  const offset = offsetFromOffset !== null ? offsetFromOffset : offsetFromPage !== null ? offsetFromPage : 0;
 
-  const cacheKey = `logs:all:limit:${limit}`;
+  const cacheKey = `logs:all:limit:${limit}:offset:${offset}:ms:${microservice || "all"}`;
 
   try {
     // 2) prova cache
@@ -22,12 +28,20 @@ router.get('/', async (req, res) => {
     }
 
     // 3) DB
-    const result = await dbManager.getAllLogs(limit);
+    const result = await dbManager.getAllLogs(limit, offset, microservice);
 
     // 4) metti in cache (puoi aggiungere TTL se supportato)
     try { await cache.set(cacheKey, JSON.stringify(result)); } catch {}
 
-    return res.json(result);
+    return res.json({
+      items: result,
+      limit,
+      offset,
+      page: offsetFromPage !== null ? offsetFromPage / limit : Math.floor(offset / limit),
+      nextOffset: offset + limit,
+      count: Array.isArray(result) ? result.length : 0,
+      microservice: microservice || null,
+    });
   } catch (error) {
     console.error('[GET /logs] Errore: ', error);
     return res

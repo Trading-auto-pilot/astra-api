@@ -3,7 +3,7 @@
 
 const path = require("path");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
-const fs = require("fs/promises");
+const fs = require("fs").promises;
 const createLogger = require("../../shared/logger");
 const { initializeSettings, getSetting, reloadSettings } = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
@@ -12,17 +12,32 @@ const { asBool, asInt } = require("../../shared/helpers");
 // =========================================================
 // PLACEHOLDER da sostituire via script di scaffolding
 // =========================================================
-const MICROSERVICE    = "__MICROSERVICE_NAME__";
+const MICROSERVICE    = "serviceControlPlane";
 const MODULE_NAME     = "main";
-const MODULE_VERSION  = "__MODULE_VERSION__";    // e.g. "0.1.0"
+const MODULE_VERSION  = "0.1.0";    // e.g. "0.1.0"
 
-class __CLASS_NAME__ {
+class ServiceControlPlane {
   constructor() {
     // =====================================================
     // URL DI TUTTI I MICROSERVIZI STANDARD DEL SISTEMA
     // =====================================================
 
-    // __SERVICE_URLS_BLOCK__
+    //     // Auto-generated service URLs from doc/ports.json
+    this.dbmanagerUrl = process.env.DBMANAGER_URL || "http://dbmanager:3002";
+    this.marketsimulatorUrl = process.env.MARKETSIMULATOR_URL || "http://marketsimulator:3003";
+    this.ordersimulatorUrl = process.env.ORDERSIMULATOR_URL || "http://ordersimulator:3004";
+    this.orderlistnerUrl = process.env.ORDERLISTNER_URL || "http://orderlistner:3005";
+    this.cachemanagerUrl = process.env.CACHEMANAGER_URL || "http://cachemanager:3006";
+    this.strategyUtilsUrl = process.env.STRATEGYUTILS_URL || "http://strategyUtils:3007";
+    this.alertingserviceUrl = process.env.ALERTINGSERVICE_URL || "http://alertingservice:3008";
+    this.capitalmanagerUrl = process.env.CAPITALMANAGER_URL || "http://capitalmanager:3009";
+    this.smaUrl = process.env.SMA_URL || "http://sma:3010";
+    this.sltpUrl = process.env.SLTP_URL || "http://sltp:3011";
+    this.livemarketlistnerUrl = process.env.LIVEMARKETLISTNER_URL || "http://livemarketlistner:3012";
+    this.tickerscannerUrl = process.env.TICKERSCANNER_URL || "http://tickerscanner:3013";
+    this.schedulerUrl = process.env.SCHEDULER_URL || "http://scheduler:3014";
+    this.authServiceUrl = process.env.AUTHSERVICE_URL || "http://authService:3015";
+    this.servicecontrolplaneUrl = process.env.SERVICECONTROLPLANE_URL || "http://servicecontrolplane:3016";
 
 
     // =====================================================
@@ -155,7 +170,7 @@ class __CLASS_NAME__ {
         [
           path.resolve(__dirname, "..", "release.json"),
           path.resolve(process.cwd(), "release.json"),
-          path.resolve(process.cwd(), "__TemplateService", "release.json"),
+          path.resolve(process.cwd(), "serviceControlPlane", "release.json"),
           mainDir ? path.resolve(mainDir, "release.json") : null,
         ].filter(Boolean)
       )
@@ -164,8 +179,9 @@ class __CLASS_NAME__ {
       try {
         await fs.access(filePath);
         const raw = await fs.readFile(filePath, "utf8");
+        const parsed = JSON.parse(raw);
         this.logger.info("[getReleaseInfo] lettura release.json", { filePath });
-        return JSON.parse(raw);
+        return parsed;
       } catch {
         // tenta il prossimo percorso
       }
@@ -174,7 +190,7 @@ class __CLASS_NAME__ {
     return {
       lastUpdate: null,
       version: "unknown",
-      microservice: "__TemplateService",
+      microservice: "serviceControlPlane",
       note: ["release.json non trovato"],
     };
   }
@@ -331,4 +347,4 @@ class __CLASS_NAME__ {
   get status() { return this._status; }
 }
 
-module.exports = __CLASS_NAME__;
+module.exports = ServiceControlPlane;

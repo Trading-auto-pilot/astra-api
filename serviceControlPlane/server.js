@@ -6,55 +6,32 @@ const dotenv = require("dotenv");
 const cors = require("cors");
 
 const MainModule = require("./modules/main");
-const createStatsModule = require("./modules/stats");
 const createLogger = require("../shared/logger");
-const createStatusRouter = require("./status"); // router standard /status/*
-
-//const statsModule = createStatsModule(cacheManager);
+const buildStatusRouter = require("./status"); // router standard /status/*
+const buildServiceFlagsRouter = require("./serviceFlags");
 
 dotenv.config();
 
 // =======================================================
 // PLACEHOLDER che verranno sostituiti dallo script
 // =======================================================
-const MICROSERVICE   = "cacheManager";   // es. "marketListener"
+const MICROSERVICE   = "serviceControlPlane";   // es. "marketListener"
 const MODULE_NAME    = "RESTServer";    // es. "RESTServer"
-let MODULE_VERSION = "0.1.0";      // es. "1.0.0"
-const DEFAULT_PORT   = 3006;                  // es. 3012 (numero)
+const MODULE_VERSION = "1.0.0";      // es. "1.0.0"
+const DEFAULT_PORT   = 3016;                  // es. 3012 (numero)
 
 let logLevel = process.env.LOG_LEVEL || "info";
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, logLevel);
 
 const app = express();
 app.use(express.json());
-let statsModule = null;
 
 // -------------------------------------------------------
-// CORS: singola origin o lista separata da virgole
-// -------------------------------------------------------
-/*
-const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
-
-app.use(
-  cors({
-    origin(origin, cb) {
-      if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-      return cb(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-  })
-);
-*/
-
-// -------------------------------------------------------
-// CORS: Gestione con Treafik davanti 
+// CORS: delega a Traefik, accetta l'origin e usa auth-forward per la protezione.
 // -------------------------------------------------------
 app.use(
   cors({
-    origin: true,        // accetta l'origin, deciderà Traefik se restituire gli header
+    origin: true,
     credentials: true,
   })
 );
@@ -69,16 +46,6 @@ let serviceInstance;
   try {
     serviceInstance = new MainModule();
     await serviceInstance.init();
-    statsModule = createStatsModule(serviceInstance);
-    try {
-      const rel = await serviceInstance.getReleaseInfo();
-      if (rel?.version) {
-        MODULE_VERSION = rel.version;
-        logger.info(`[main] Module version set from release.json: ${MODULE_VERSION}`);
-      }
-    } catch (e) {
-      logger.warning("[main] impossibile leggere release.json per MODULE_VERSION", e?.message || String(e));
-    }
     logger.info("[main] Service initialized successfully");
   } catch (err) {
     logger.error(
@@ -121,71 +88,6 @@ app.get("/release", async (req, res) => {
   } catch (err) {
     logger.error("[GET /release] Errore:", err.message);
     return res.status(500).json({ error: "Impossibile leggere release.json" });
-  }
-});
-
-// GET /settings → ritorna i settings caricati
-app.get("/settings", requireReady, (req, res) => {
-  try {
-    const data = serviceInstance.getAllSettings?.() || null;
-    if (!data) return res.status(404).json({ error: "Settings non disponibili" });
-    return res.json({ ok: true, data });
-  } catch (err) {
-    logger.error("[GET /settings] Errore:", err.message);
-    return res.status(500).json({ error: "Impossibile leggere i settings" });
-  }
-});
-
-// PUT /settings → aggiorna un setting in cache (non persistente)
-app.put("/settings", requireReady, (req, res) => {
-  const body = req.body || {};
-  // supporta sia { setting, value } sia { SOME_KEY: "value" }
-  let setting = body.setting;
-  let value = body.value;
-  if (!setting) {
-    const keys = Object.keys(body);
-    if (keys.length === 1) {
-      setting = keys[0];
-      value = body[setting];
-    }
-  }
-
-  if (typeof setting !== "string" || setting.trim() === "") {
-    return res.status(400).json({ ok: false, error: "Parametro 'setting' obbligatorio" });
-  }
-
-  try {
-    const next = serviceInstance.setSetting(setting, value);
-    return res.json({ ok: true, data: next });
-  } catch (err) {
-    logger.error("[PUT /settings] Errore:", err.message);
-    return res.status(500).json({ ok: false, error: "Impossibile aggiornare il setting" });
-  }
-});
-
-// GET /Log → proxy verso DBManager /logs (supporta query, es. ?limit=100)
-app.get("/Log", requireReady, async (req, res) => {
-  try {
-    const base =
-      (serviceInstance && serviceInstance.dbmanagerUrl) ||
-      process.env.DBMANAGER_URL ||
-      "http://dbmanager:3002";
-
-    const search = new URLSearchParams(req.query || {}).toString();
-    const target = `${base.replace(/\/+$/, "")}/logs${search ? `?${search}` : ""}`;
-
-    const response = await fetch(target, { method: "GET" });
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      const message = data?.error || data?.message || "Errore dal DBManager";
-      return res.status(response.status || 500).json({ error: message });
-    }
-
-    return res.json(data);
-  } catch (err) {
-    logger.error(`[GET /Log] Proxy error: ${err?.message || String(err)}`);
-    return res.status(500).json({ error: err?.message || "Errore proxy verso DBManager" });
   }
 });
 
@@ -314,6 +216,11 @@ app.put("/dbLogger/:status", async (req, res) => {
   }
 });
 
+// -------------------------------------------------------
+// ROUTES: SERVICE FLAGS (proxy verso DBManager)
+// -------------------------------------------------------
+app.use("/service-flags", requireReady, buildServiceFlagsRouter(serviceInstance, logger));
+
 /**
  * POST /settings/reload
  * Ricarica i settings da DB senza riavviare il servizio.
@@ -340,42 +247,11 @@ app.post("/settings/reload", requireReady, async (_req, res) => {
   }
 });
 
-// monta le route /status dopo l'init per avere service e stats pronti
-app.use("/status", (req, res, next) => {
-  if (!statsModule && serviceInstance) {
-    statsModule = createStatsModule(serviceInstance);
-  }
-  return createStatusRouter({ service: serviceInstance, logger, moduleName: MODULE_NAME, stats: statsModule })(
-    req,
-    res,
-    next
-  );
-});
-
-// Recupero candele
-app.get("/candles", async (req, res) => {
-  try {
-    const { symbol, startDate, endDate, tf } = req.query;
-    if (!symbol || !startDate || !endDate) {
-      return res.status(400).json({ error: "symbol, startDate, endDate richiesti" });
-    }
-
-    const candles = await serviceInstance.getCandles(symbol, startDate, endDate, tf || "1Day");
-    res.json(candles);
-  } catch (err) {
-    logger.error(`[CACHE] Errore GET /candles: ${err.message}`);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-
-
 /* --------------------------- ROUTES: STATUS ---------------------------- */
 /**
  * Router generico /status/*
  * Il modulo `status.js` deve usare `serviceInstance.getInfo()` se disponibile.
-
+ */
 app.use(
   "/status",
   requireReady,
@@ -385,7 +261,6 @@ app.use(
     moduleName: MODULE_NAME,
   })
 );
- */
 
 /* ----------------------------- STARTUP -------------------------------- */
 app.listen(port, () => {

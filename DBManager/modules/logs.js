@@ -2,25 +2,28 @@
 const { getDbConnection, formatDateForMySQL, safe } = require('./core');
 
 
-// Prende le ultime `limit` righe ordinate per timestamp decrescente.
-// `timestampColumn` default 'ts' (cambia se la tua colonna è diversa: es. 'created_at' o 'timestamp')
-// Prende le ultime `limit` righe ordinate per `timestamp` (DESC).
-async function getAllLogs(limit = 100) {
+// Prende le ultime `limit` righe ordinate per `timestamp` (DESC) con offset opzionale e filtro microservice opzionale.
+async function getAllLogs(limit = 100, offset = 0, microservice = null) {
   const conn = await getDbConnection();
 
   // valida/clampa il limite
   const n = Number(limit);
   const safeLimit = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 1000) : 100;
+  const o = Number(offset);
+  const safeOffset = Number.isFinite(o) && o >= 0 ? Math.floor(o) : 0;
+  const ms = microservice ? String(microservice).trim() : null;
 
   try {
     const sql = `
       SELECT *
       FROM \`logs\`
       WHERE \`timestamp\` IS NOT NULL
-      ORDER BY \`timestamp\` DESC
-      LIMIT ${safeLimit}   -- inietto intero validato
+      ${ms ? "AND microservice = ?" : ""}
+      ORDER BY \`timestamp\` DESC, \`id\` DESC
+      LIMIT ${safeLimit} OFFSET ${safeOffset} -- inietto interi validati
     `;
-    const [rows] = await conn.query(sql);
+    const params = ms ? [ms] : [];
+    const [rows] = await conn.query(sql, params);
     return rows;
   } catch (error) {
     console.error('[getAllLogs] Errore durante la lettura dei log:', error);

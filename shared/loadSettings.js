@@ -96,6 +96,18 @@ function getSetting(key) {
   return settingsCache[key] ?? null;
 }
 
+function getAllSettings() {
+  if (
+    !settingsCache ||
+    typeof settingsCache !== 'object' ||
+    Array.isArray(settingsCache) ||
+    Object.keys(settingsCache).length === 0
+  ) {
+    throw new Error(`[getAllSettings] settingsCache non valido. Tipo: ${typeof settingsCache}, Contenuto: ${JSON.stringify(settingsCache)}`);
+  }
+  return { ...settingsCache };
+}
+
 /**
  * Forza un reload dei settings dal DB azzerando la cache interna.
  */
@@ -105,9 +117,25 @@ async function reloadSettings(dbManagerUrl, options = {}) {
   return initializeSettings(dbManagerUrl, options);
 }
 
+/**
+ * Aggiorna un setting solo in cache (non persistente su DB).
+ * @param {string} key
+ * @param {any} value
+ * @returns {object} Copia aggiornata della cache
+ */
+function setSetting(key, value) {
+  if (!settingsCache || typeof settingsCache !== "object" || Array.isArray(settingsCache)) {
+    settingsCache = {};
+  }
+  settingsCache[String(key)] = value;
+  return { ...settingsCache };
+}
+
 
 module.exports = {
   initializeSettings,
   getSetting,
-  reloadSettings
+  getAllSettings,
+  reloadSettings,
+  setSetting,
 };
