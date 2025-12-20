@@ -2,26 +2,8 @@
 "use strict";
 
 const { Router } = require("express");
-const createStatsModule = require("./modules/stats");
 
 const maxInterval = parseInt(process.env.MAX_RETRY_DELAY, 10) || 60000;
-
-/**
- * Router di status per CacheManager.
- *
- * Viene montato in server.js con:
- *   const buildStatusRouter = require("./status");
- *   app.use("/status", buildStatusRouter({ cacheManager, logger, moduleName: MODULE_NAME }));
- *
- * Quindi le route esposte saranno:
- *   /status/health
- *   /status/info
- *   /status/L2
- *   /status/L1
- *   /status/paramsSetting
- *   /status/cacheHits
- *   ecc.
- */
 
 /**
  * buildStatusRouter
@@ -30,16 +12,9 @@ const maxInterval = parseInt(process.env.MAX_RETRY_DELAY, 10) || 60000;
  * @param {object} opts.service   - istanza del main module (ex: new MainModule())
  * @param {object} opts.logger    - logger condiviso
  * @param {string} opts.moduleName
- * @param {object} [opts.stats]   - modulo stats opzionale
  */
-module.exports = function buildStatusRouter({ service, logger, moduleName, stats }) {
+module.exports = function buildStatusRouter({ service, logger, moduleName }) {
   const router = Router();
-  const statsRef = stats || {
-    getL1Stats: () => ({}),
-    getL2Stats: () => ({}),
-    getParamsSetting: () => ({}),
-    getCacheHits: () => ({}),
-  };
 
   // /status/health
   router.get("/health", (_req, res) => {
@@ -182,77 +157,6 @@ module.exports = function buildStatusRouter({ service, logger, moduleName, stats
       res.status(500).json({ error: e.message });
     }
   });
-
-  // ---------- Log level (solo CacheManager) ----------
-
-  router.get("/logLevel", (req, res) => {
-    const current =
-      service && typeof service.getLogLevel === "function"
-        ? service.getLogLevel()
-        : null;
-    res.status(200).json({ cacheManager: current });
-  });
-
-  router.put("/logLevel", (req, res) => {
-    const { logLevel } = req.body || {};
-    if (!logLevel || !service || typeof service.setLogLevel !== "function") {
-      return res
-        .status(400)
-        .json({ success: false, error: "Missing logLevel or setter not available" });
-    }
-    service.setLogLevel(logLevel);
-    const current =
-      service && typeof service.getLogLevel === "function"
-        ? service.getLogLevel()
-        : logLevel;
-    res.status(200).json({ success: true, cacheManager: current });
-  });
-
-
-
-  router.get("/L1", (_req, res) => {
-    try {
-      const data = statsRef.getL1Stats();
-      res.json({ ok: true, data });
-    } catch (e) {
-      logger.error(`[${moduleName}] [GET] /stats/L1 ${e.message}`);
-      res.status(500).json({ ok: false, error: e.message });
-    }
-  });
-
-  // /stats/L2
-  router.get("/L2", (_req, res) => {
-    try {
-      const data = statsRef.getL2Stats();
-      res.json({ ok: true, data });
-    } catch (e) {
-      logger.error(`[${moduleName}] [GET] /stats/L2 ${e.message}`);
-      res.status(500).json({ ok: false, error: e.message });
-    }
-  });
-
-  // /paramsSetting
-  router.get("/paramsSetting", (_req, res) => {
-    try {
-      const data = statsRef.getParamsSetting();
-      res.json({ ok: true, data });
-    } catch (e) {
-      logger.error(`[${moduleName}] [GET] /paramsSetting ${e.message}`);
-      res.status(500).json({ ok: false, error: e.message });
-    }
-  });
-
-  // /cacheHits
-  router.get("/cacheHits", (_req, res) => {
-    try {
-      const data = statsRef.getCacheHits();
-      res.json({ ok: true, data });
-    } catch (e) {
-      logger.error(`[${moduleName}] [GET] /cacheHits ${e.message}`);
-      res.status(500).json({ ok: false, error: e.message });
-    }
-  });
-
 
   return router;
 };

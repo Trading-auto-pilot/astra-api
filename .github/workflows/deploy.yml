@@ -82,6 +82,7 @@ jobs:
           tickerScanner
           authService
           astraai-frontend
+          serviceControlPlane
         )
 
         for service in "${services[@]}"; do

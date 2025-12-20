@@ -14,5 +14,6 @@
     "redis": 6379,
     "tickerscanner": 3013,
     "scheduler": 3014,
-    "authService": 3015
+    "authService": 3015,
+    "servicecontrolplane": 3016
 }

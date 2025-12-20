@@ -154,6 +154,8 @@ services:
       context: .
       dockerfile: cacheManager/Dockerfile
     restart: unless-stopped
+    ports:
+      - "3006:3006"
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
       - LOG_LEVEL=${LOG_LEVEL}
@@ -378,6 +380,66 @@ services:
       - "traefik.http.routers.tickerscanner-glossary.priority=10010"
       - "traefik.http.routers.tickerscanner-glossary.service=tickerscanner"
       - "traefik.http.routers.tickerscanner-glossary.middlewares=tickerscanner-stripprefix,cors-default@docker"
+
+  servicecontrolplane:
+    image: local/servicecontrolplane:${SERVICECONTROLPLANE_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: serviceControlPlane/Dockerfile
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - REDIS_URL=redis://redis:6379
+      - DBMANAGER_URL=http://dbmanager:3002
+      - MARKETSIMULATOR_URL=http://marketsimulator:3003
+      - ORDERSIMULATOR_URL=http://ordersimulator:3004
+      - ORDERLISTNER_URL=http://orderlistner:3005
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - STRATEGYUTILS_URL=http://strategyUtils:3007
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
+      - CAPITALMANAGER_URL=http://capitalmanager:3009
+      - SMA_URL=http://sma:3010
+      - SLTP_URL=http://sltp:3011
+      - LIVEMARKETLISTNER_URL=http://livemarketlistner:3012
+      - TICKERSCANNER_URL=http://tickerscanner:3013
+      - SCHEDULER_URL=http://scheduler:3014
+      - AUTHSERVICE_URL=http://authService:3015
+      - TZ=Asia/Dubai
+    depends_on:
+      dbmanager:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    profiles: ["servicecontrolplane"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3016/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.servicecontrolplane.rule=Host(`localhost`) && PathPrefix(`/servicecontrolplane`)"
+      - "traefik.http.routers.servicecontrolplane.entrypoints=web"
+      - "traefik.http.services.servicecontrolplane.loadbalancer.server.port=3016"
+      - "traefik.http.middlewares.servicecontrolplane-stripprefix.stripPrefix.prefixes=/servicecontrolplane"
+      - "traefik.http.routers.servicecontrolplane.middlewares=servicecontrolplane-stripprefix,cors-default@docker,auth-forward@docker"
+      # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
+      - "traefik.http.routers.servicecontrolplane-preflight.rule=Host(`localhost`) && PathPrefix(`/servicecontrolplane`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.servicecontrolplane-preflight.entrypoints=web"
+      - "traefik.http.routers.servicecontrolplane-preflight.priority=10000"
+      - "traefik.http.routers.servicecontrolplane-preflight.service=servicecontrolplane"
+      - "traefik.http.routers.servicecontrolplane-preflight.middlewares=servicecontrolplane-stripprefix,cors-default@docker"
       # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
       - "traefik.http.routers.tickerscanner-preflight.rule=Host(`localhost`) && PathPrefix(`/tickerscanner`) && Method(`OPTIONS`)"
       - "traefik.http.routers.tickerscanner-preflight.entrypoints=web"

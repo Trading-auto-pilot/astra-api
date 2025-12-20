@@ -5,12 +5,12 @@ const path = require("path");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const createLogger = require("../../shared/logger");
-const { initializeSettings, getSetting, reloadSettings } = require("../../shared/loadSettings");
+const { initializeSettings, getSetting, reloadSettings, getAllSettings, setSetting } = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
 const { asBool, asInt } = require("../../shared/helpers");
 const { AlpacaProvider } = require("./alpaca");
 const { FmpProvider } = require("./fmp");
-const fs = require('fs');
+const fs = require('fs/promises');
 
 // =========================================================
 // PLACEHOLDER da sostituire via script di scaffolding
@@ -183,16 +183,50 @@ class CacheManager {
   }
 
 
-  async  getReleaseInfo() {
-    const filePath = path.resolve(__dirname, "..", "release.json");
-    console.log(filePath)
-    try {
-      const raw = await fs.readFile(filePath, "utf8");
-      return JSON.parse(raw);
-    } catch (err) {
-      throw new Error(`Errore lettura release.json: ${err.message}`);
+  async getReleaseInfo() {
+    const mainDir =
+      (typeof require !== "undefined" &&
+        require.main &&
+        require.main.filename &&
+        path.dirname(require.main.filename)) ||
+      null;
+    const candidates = Array.from(
+      new Set(
+        [
+          path.resolve(__dirname, "..", "release.json"),
+          path.resolve(process.cwd(), "release.json"),
+          path.resolve(process.cwd(), "cacheManager", "release.json"),
+          mainDir ? path.resolve(mainDir, "release.json") : null,
+        ].filter(Boolean)
+      )
+    );
+
+    for (const filePath of candidates) {
+      try {
+        const raw = await fs.readFile(filePath, "utf8");
+        const parsed = JSON.parse(raw);
+        this._releaseCache = parsed;
+        this.logger.info("[getReleaseInfo] lettura release.json", { filePath });
+        return parsed;
+      } catch (error) {
+        this.logger.trace("[getReleaseInfo] tentativo fallito", {
+          filePath,
+          error: error?.message || String(error),
+        });
+      }
     }
+
+    this.logger.warning("[getReleaseInfo] release.json non trovato", { candidates });
+    return (
+      this._releaseCache || {
+        lastUpdate: null,
+        version: "unknown",
+        microservice: "cacheManager",
+        note: ["release.json non trovato o non leggibile"],
+      }
+    );
   }
+
   
   /**
    * Ricarica i settings da DB senza riavviare il servizio.
@@ -286,10 +320,18 @@ class CacheManager {
   // GET INFO STANDARDIZZATO
   // =========================================================
   getInfo() {
+    let version = MODULE_VERSION;
+    try {
+      const rel = this._releaseCache || null;
+      if (rel?.version) version = rel.version;
+    } catch {
+      // ignore
+    }
+
     return {
       MICROSERVICE,
       MODULE_NAME,
-      MODULE_VERSION,
+      MODULE_VERSION: version,
       STATUS: this._status,
       STATUS_DETAILS: this.statusDetails,
       ENV: this.env,
@@ -337,6 +379,34 @@ class CacheManager {
     }
     this.logger.warn("[setDbLogStatus] Not supported by this logger", { status });
     return { dbLogEnabled: false };
+  }
+
+  // =========================================================
+  // Log level API (usata da /status/logLevel)
+  // =========================================================
+  getLogLevel() {
+    if (typeof this.logger.getLevel === "function") {
+      const lvl = this.logger.getLevel();
+      return lvl || process.env.LOG_LEVEL;
+    }
+    return process.env.LOG_LEVEL;
+  }
+
+  setLogLevel(level) {
+    if (typeof this.logger.setLevel === "function") {
+      this.logger.setLevel(level);
+      return { level };
+    }
+    this.logger.warn("[setLogLevel] Not supported by this logger", { level });
+    return { level: process.env.LOG_LEVEL || null };
+  }
+
+  getAllSettings() {
+    return getAllSettings();
+  }
+
+  setSetting(key, value) {
+    return setSetting(key, value);
   }
 
   // Accesso diretto
