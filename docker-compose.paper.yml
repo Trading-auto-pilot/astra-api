@@ -350,6 +350,7 @@ services:
   servicecontrolplane:
     image: expovin/servicecontrolplane:${SERVICECONTROLPLANE_VERSION}
     restart: unless-stopped
+    profiles: ["servicecontrolplane"]
     environment:
       - LOG_LEVEL=${LOG_LEVEL}
       - MYSQL_HOST=mysql
@@ -383,9 +384,8 @@ services:
       - /etc/timezone:/etc/timezone:ro
     networks:
       - trading_net
-    profiles: ["servicecontrolplane"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3016/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3016/status/health"]
       interval: 10s
       timeout: 5s
       retries: 5
