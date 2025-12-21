@@ -192,6 +192,8 @@ jobs:
         echo "AUTHSERVICE_URL=${{vars.AUTHSERVICE_URL}}" >> .env  
         echo "ASTRAAI_VERSION=${{vars.ASTRAAI_VERSION}}" >> .env
         echo "CORS_ORIGIN=${{vars.CORS_ORIGIN}}" >> .env
+        echo "SERVICECONTROLPLANE_VERSION=${{vars.SERVICECONTROLPLANE_VERSION}}" >> .env
+        
  
     - name: Copy .env to server
       run: |

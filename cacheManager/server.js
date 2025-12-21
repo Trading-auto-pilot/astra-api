@@ -314,6 +314,52 @@ app.put("/dbLogger/:status", async (req, res) => {
   }
 });
 
+// Provider storico (GET/PUT)
+app.get("/provider", (_req, res) => {
+  try {
+    const current = serviceInstance?.providerType || process.env.HISTORICAL_PROVIDER || null;
+    return res.json({ ok: true, provider: current });
+  } catch (e) {
+    logger.error(`[GET /provider] Error: ${e?.message || String(e)}`);
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+app.put("/provider/:provider", (req, res) => {
+  const next = (req.params.provider || "").toUpperCase();
+  if (!next || !["FMP", "ALPACA"].includes(next)) {
+    return res.status(400).json({ ok: false, error: "Provider non valido. Usare FMP o ALPACA." });
+  }
+
+  if (!serviceInstance) {
+    return res.status(503).json({ ok: false, error: "Service not initialized" });
+  }
+
+  try {
+    // re-init provider if needed
+    if (next === "ALPACA" && !serviceInstance.alpaca) {
+      try {
+        const { AlpacaProvider } = require("./modules/alpaca");
+        serviceInstance.alpaca = new AlpacaProvider({
+          apiKey: process.env.APCA_API_KEY_ID,
+          apiSecret: process.env.APCA_API_SECRET_KEY,
+          feed: process.env.ALPACA_MARKET_FEED || "sip",
+          logger,
+        });
+      } catch (err) {
+        logger.error(`[PUT /provider] Error init Alpaca: ${err?.message || String(err)}`);
+        return res.status(500).json({ ok: false, error: "Impossibile inizializzare Alpaca" });
+      }
+    }
+    serviceInstance.providerType = next;
+    logger.info(`[PUT /provider] Provider impostato a ${next}`);
+    return res.json({ ok: true, provider: next });
+  } catch (e) {
+    logger.error(`[PUT /provider] Error: ${e?.message || String(e)}`);
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
 /**
  * POST /settings/reload
  * Ricarica i settings da DB senza riavviare il servizio.

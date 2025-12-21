@@ -39,6 +39,10 @@ module.exports = function buildStatusRouter({ service, logger, moduleName, stats
     getL2Stats: () => ({}),
     getParamsSetting: () => ({}),
     getCacheHits: () => ({}),
+    getL2Size: async () => ({ basePath: null, totalBytes: 0, tree: {} }),
+    deleteL2: async () => ({ ok: false }),
+    getL3Size: async () => ({ ok: false, totalBytes: 0, keys: [] }),
+    deleteL3: async () => ({ ok: false }),
   };
 
   // /status/health
@@ -249,6 +253,109 @@ module.exports = function buildStatusRouter({ service, logger, moduleName, stats
       res.json({ ok: true, data });
     } catch (e) {
       logger.error(`[${moduleName}] [GET] /cacheHits ${e.message}`);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // /stats/L2/size
+  router.get("/L2/size", async (_req, res) => {
+    try {
+      const data = await statsRef.getL2Size();
+      res.json({ ok: true, data });
+    } catch (e) {
+      logger.error(`[${moduleName}] [GET] /L2/size ${e.message}`);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // DELETE /L2/size -> delete all
+  router.delete("/L2/size", async (_req, res) => {
+    try {
+      const result = await statsRef.deleteL2([]);
+      if (!result.ok) {
+        return res.status(404).json({ ok: false, error: "Path not found or not deleted" });
+      }
+      res.json({ ok: true, deleted: result.deleted });
+    } catch (e) {
+      logger.error(`[${moduleName}] [DELETE] /L2/size ${e.message}`);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // DELETE /L2/size/:symbol -> delete symbol folder
+  router.delete("/L2/size/:symbol", async (req, res) => {
+    try {
+      const segments = [req.params.symbol].filter(Boolean);
+      const result = await statsRef.deleteL2(segments);
+      if (!result.ok) {
+        return res.status(404).json({ ok: false, error: "Path not found or not deleted" });
+      }
+      res.json({ ok: true, deleted: result.deleted });
+    } catch (e) {
+      logger.error(`[${moduleName}] [DELETE] /L2/size/:symbol ${e.message}`);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // DELETE /L2/size/:symbol/:date -> delete specific file
+  router.delete("/L2/size/:symbol/:date", async (req, res) => {
+    try {
+      const segments = [req.params.symbol, req.params.date].filter(Boolean);
+      const result = await statsRef.deleteL2(segments);
+      if (!result.ok) {
+        return res.status(404).json({ ok: false, error: "Path not found or not deleted" });
+      }
+      res.json({ ok: true, deleted: result.deleted });
+    } catch (e) {
+      logger.error(`[${moduleName}] [DELETE] /L2/size/:symbol/:date ${e.message}`);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // /L3/size (Redis)
+  router.get("/L3/size", async (_req, res) => {
+    try {
+      const data = await statsRef.getL3Size();
+      if (data.ok === false) {
+        return res.status(503).json(data);
+      }
+      res.json({ ok: true, data });
+    } catch (e) {
+      logger.error(`[${moduleName}] [GET] /L3/size ${e.message}`);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // DELETE L3 cache
+  router.delete("/L3/size", async (_req, res) => {
+    try {
+      const result = await statsRef.deleteL3([]);
+      if (!result.ok) return res.status(500).json(result);
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      logger.error(`[${moduleName}] [DELETE] /L3/size ${e.message}`);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  router.delete("/L3/size/:symbol", async (req, res) => {
+    try {
+      const result = await statsRef.deleteL3([req.params.symbol]);
+      if (!result.ok) return res.status(500).json(result);
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      logger.error(`[${moduleName}] [DELETE] /L3/size/:symbol ${e.message}`);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  router.delete("/L3/size/:symbol/:tf", async (req, res) => {
+    try {
+      const result = await statsRef.deleteL3([req.params.symbol, req.params.tf]);
+      if (!result.ok) return res.status(500).json(result);
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      logger.error(`[${moduleName}] [DELETE] /L3/size/:symbol/:tf ${e.message}`);
       res.status(500).json({ ok: false, error: e.message });
     }
   });

@@ -158,5 +158,29 @@ module.exports = function buildStatusRouter({ service, logger, moduleName }) {
     }
   });
 
+  // ---------- Log level ----------
+  router.get("/logLevel", (_req, res) => {
+    const current =
+      service && typeof service.getLogLevel === "function"
+        ? service.getLogLevel()
+        : null;
+    res.status(200).json({ scheduler: current });
+  });
+
+  router.put("/logLevel", (req, res) => {
+    const { logLevel } = req.body || {};
+    if (!logLevel || !service || typeof service.setLogLevel !== "function") {
+      return res
+        .status(400)
+        .json({ success: false, error: "Missing logLevel or setter not available" });
+    }
+    service.setLogLevel(logLevel);
+    const current =
+      service && typeof service.getLogLevel === "function"
+        ? service.getLogLevel()
+        : logLevel;
+    res.status(200).json({ success: true, scheduler: current });
+  });
+
   return router;
 };

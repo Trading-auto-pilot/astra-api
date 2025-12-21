@@ -26,13 +26,47 @@ class FmpProvider {
     return low.replace("day", "day").replace("hour", "hour");
   }
 
+  isIntraday(tf) {
+    const low = (tf || "").toLowerCase();
+    return low.includes("min") || low.includes("hour");
+  }
+
   /**
-   * Simile a AlpacaProvider.fetchDailyBars
-   * Usa l'endpoint SMA FMP che restituisce OHLCV + sma
+   * Recupera barre da FMP.
+   * Per tf intraday usa historical-chart, per daily/weekly usa SMA endpoint.
    */
   async fetchDailyBars({ symbol, start, end, timeframe = "1Day", periodLength = 10 }) {
     const tf = this.mapTfToFmp(timeframe);
 
+    // Intraday: usa historical-chart/<tf>/<symbol>
+    if (this.isIntraday(tf)) {
+      // Nota: FMP accetta il simbolo come query string (non nel path)
+      const url = `${this.baseUrl}/historical-chart/${tf}`;
+      const params = {
+        symbol,
+        apikey: this.apiKey,
+      };
+
+      this.logger.log(`[FMP] GET historical-chart (${symbol}) ${url}?${new URLSearchParams(params).toString()}`);
+
+      const res = await axios.get(url, { params });
+      const rows = Array.isArray(res.data) ? res.data : [];
+
+      return rows
+        .map((row) => ({
+          t: row.date, // "2025-11-20 10:00:00"
+          o: row.open,
+          h: row.high,
+          l: row.low,
+          c: row.close,
+          v: row.volume,
+          tf: timeframe,
+          symbol,
+        }))
+        .filter((r) => r.t);
+    }
+
+    // Daily/weekly: endpoint SMA (daily)
     const url = `${this.baseUrl}/technical-indicators/sma`;
     const params = {
       symbol,

@@ -10,7 +10,8 @@ const { RedisBus } = require("../../shared/redisBus");
 const { asBool, asInt } = require("../../shared/helpers");
 const { AlpacaProvider } = require("./alpaca");
 const { FmpProvider } = require("./fmp");
-const fs = require('fs/promises');
+const fs = require("fs");
+const fsp = require("fs/promises");
 
 // =========================================================
 // PLACEHOLDER da sostituire via script di scaffolding
@@ -203,14 +204,14 @@ class CacheManager {
 
     for (const filePath of candidates) {
       try {
-        const raw = await fs.readFile(filePath, "utf8");
+        const raw = await fsp.readFile(filePath, "utf8");
         const parsed = JSON.parse(raw);
         this._releaseCache = parsed;
-        this.logger.info("[getReleaseInfo] lettura release.json", { filePath });
+        this.logger.info("[getReleaseInfo] lettura release.json", { filePath: String(filePath) });
         return parsed;
       } catch (error) {
         this.logger.trace("[getReleaseInfo] tentativo fallito", {
-          filePath,
+          filePath: String(filePath),
           error: error?.message || String(error),
         });
       }
@@ -499,12 +500,7 @@ class CacheManager {
           `[getCandles] Intervallo ${pFrom}→${pTo} mancante anche in L2, uso provider remoto`
         );
 
-        const providerCandles = await this._retrieveFromProvider(
-          symbol,
-          pFrom,
-          pTo,
-          tf
-        );
+        const providerCandles = await this._retrieveFromProvider(symbol, pFrom, pTo, tf);
 
         this.logger.info(
           `[getCandles] Provider remoto ha restituito ${providerCandles.length} candele per ${symbol} ${pFrom}→${pTo}`
@@ -539,6 +535,38 @@ class CacheManager {
 
   _buildL3Key(symbol, tf) {
     return `candles:${symbol}:${tf}`;
+  }
+
+  _mapTfAlpaca(tf) {
+    const val = String(tf || "1Day").toLowerCase();
+    if (["1m", "1min"].includes(val)) return "1Min";
+    if (["5m", "5min"].includes(val)) return "5Min";
+    if (["15m", "15min"].includes(val)) return "15Min";
+    if (["30m", "30min"].includes(val)) return "30Min";
+    if (["1h", "1hr", "1hour"].includes(val)) return "1Hour";
+    if (["2h", "2hr", "2hour", "6h", "6hr", "6hour"].includes(val)) return "1Hour";
+    if (["12h", "12hr", "12hour"].includes(val)) return "1Day";
+    if (["1d", "1day"].includes(val)) return "1Day";
+    if (["1w", "1week"].includes(val)) return "1Week";
+    if (["1mo", "1month", "1mth"].includes(val)) return "1Month";
+    return "1Day";
+  }
+
+  _mapTfFmp(tf) {
+    const val = String(tf || "1day").toLowerCase();
+    if (["1m", "1min"].includes(val)) return "1min";
+    if (["5m", "5min"].includes(val)) return "5min";
+    if (["15m", "15min"].includes(val)) return "15min";
+    if (["30m", "30min"].includes(val)) return "30min";
+    if (["1h", "1hr", "1hour"].includes(val)) return "1hour";
+    if (["2h", "2hr", "2hour"].includes(val)) return "2hour";
+    if (["4h", "4hr", "4hour"].includes(val)) return "4hour";
+    if (["6h", "6hr", "6hour"].includes(val)) return "6hour";
+    if (["12h", "12hr", "12hour"].includes(val)) return "12hour";
+    if (["1d", "1day"].includes(val)) return "1day";
+    if (["1w", "1week"].includes(val)) return "1week";
+    if (["1mo", "1month"].includes(val)) return "1month";
+    return val;
   }
 
   _filterCandlesByRange(candles, startDate, endDate) {
@@ -610,14 +638,7 @@ class CacheManager {
 */
 
   _detectMissingRanges(candles, startDate, endDate, tf = "1Day") {
-    if (tf !== "1Day") {
-      // per altri timeframe al momento non gestiamo i gap
-      return [];
-    }
-
-    const sorted = [...candles].sort(
-      (a, b) => new Date(a.t) - new Date(b.t)
-    );
+    const sorted = [...candles].sort((a, b) => new Date(a.t) - new Date(b.t));
 
     // Nessuna candela → range completamente mancante
     if (!sorted.length) {
@@ -626,20 +647,38 @@ class CacheManager {
       );
       const ranges = [{ from: startDate, to: endDate }];
       this.logger.log(
-        `[detectMissingRanges] Timeframe=${tf}, gap rilevati (solo bordi): ${JSON.stringify(
-          ranges
-        )}`
+        `[detectMissingRanges] Timeframe=${tf}, gap rilevati (solo bordi): ${JSON.stringify(ranges)}`
       );
       return ranges;
     }
 
-    // Abbiamo almeno una candela:
-    // per TF=1Day assumiamo che il provider dia già tutti i giorni di trading.
-    // NON inseguamo gap ai bordi (weekend/festivi) per evitare chiamate remote inutili.
-    this.logger.log(
-      `[detectMissingRanges] Candles presenti (${sorted.length}), nessun range mancante calcolato per TF=${tf}`
-    );
-    return [];
+    const ranges = [];
+    const startTs = new Date(startDate).getTime();
+    const endTs = new Date(endDate).getTime();
+    const firstTs = new Date(sorted[0].t).getTime();
+    const lastTs = new Date(sorted[sorted.length - 1].t).getTime();
+
+    // gap iniziale
+    if (firstTs > startTs) {
+      ranges.push({ from: startDate, to: sorted[0].t });
+    }
+
+    // gap finale
+    if (lastTs < endTs) {
+      ranges.push({ from: sorted[sorted.length - 1].t, to: endDate });
+    }
+
+    if (ranges.length) {
+      this.logger.log(
+        `[detectMissingRanges] Timeframe=${tf}, gap rilevati (solo bordi): ${JSON.stringify(ranges)}`
+      );
+    } else {
+      this.logger.log(
+        `[detectMissingRanges] Candles presenti (${sorted.length}), nessun gap ai bordi per TF=${tf}`
+      );
+    }
+
+    return ranges;
   }
 
   // =========================================================
@@ -848,10 +887,89 @@ class CacheManager {
         fs.writeFileSync(file, JSON.stringify(merged, null, 2));
         this.logger.log(`[L2] File scritto correttamente: ${file}`);
       }
+
+      // Enforce L2 max size if configured
+      await this._enforceL2MaxSize();
     } catch (err) {
       this.logger.error(
         `[L2] Errore scrittura file L2: ${err.message}`
       );
+    }
+  }
+
+  /**
+   * Enforce MAX_L2_CACHE_MB limit (older files removed first).
+   */
+  async _enforceL2MaxSize() {
+    const maxMbRaw = getSetting("MAX_L2_CACHE_MB");
+    const maxMb = Number(maxMbRaw);
+    if (!Number.isFinite(maxMb) || maxMb <= 0) {
+      return;
+    }
+    const maxBytes = maxMb * 1024 * 1024;
+    const baseDir = this.cacheBasePath || "cache";
+
+    try {
+      const stat = await fsp.stat(baseDir).catch(() => null);
+      if (!stat || !stat.isDirectory()) return;
+
+      const files = [];
+      const dirs = [];
+      const walk = async (dir) => {
+        dirs.push(dir);
+        const entries = await fsp.readdir(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            await walk(full);
+          } else if (entry.isFile()) {
+            try {
+              const st = await fsp.stat(full);
+              files.push({ path: full, size: st.size, mtimeMs: st.mtimeMs });
+            } catch (err) {
+              this.logger.warn(`[L2] Impossibile leggere size file ${full}: ${err.message}`);
+            }
+          }
+        }
+      };
+
+      await walk(baseDir);
+      let total = files.reduce((s, f) => s + (Number(f.size) || 0), 0);
+      if (total <= maxBytes) return;
+
+      const toMb = (v) => `${(v / 1024 / 1024).toFixed(1)} MB`;
+      this.logger.warning(
+        `[L2] Cache L2 oltre limite (${toMb(total)} > ${toMb(maxBytes)}), rimozione file più vecchi`
+      );
+
+      files.sort((a, b) => (a.mtimeMs || 0) - (b.mtimeMs || 0));
+
+      for (const file of files) {
+        if (total <= maxBytes) break;
+        try {
+          await fsp.unlink(file.path);
+          total -= file.size || 0;
+          this.logger.info(`[L2] Rimosso file ${file.path} (size=${file.size}) per rientrare nel limite`);
+        } catch (err) {
+          this.logger.error(`[L2] Errore cancellando file ${file.path}: ${err.message}`);
+        }
+      }
+
+      // Rimuovi directory vuote (dal fondo)
+      dirs
+        .sort((a, b) => b.length - a.length)
+        .forEach(async (d) => {
+          try {
+            const entries = await fsp.readdir(d);
+            if (entries.length === 0) {
+              await fsp.rmdir(d);
+            }
+          } catch {
+            /* ignore */
+          }
+        });
+    } catch (err) {
+      this.logger.error(`[L2] Errore enforcement limite cache: ${err.message}`);
     }
   }
 
@@ -860,6 +978,8 @@ class CacheManager {
   // =========================================================
   async _retrieveFromProvider(symbol, startDate, endDate, tf) {
     const provider = this.providerType || "ALPACA";
+    const tfAlpaca = this._mapTfAlpaca(tf);
+    const tfFmp = this._mapTfFmp(tf);
 
     this.logger.info(
       `[L1] Recupero da provider ${provider} per ${symbol} ${startDate}→${endDate} tf=${tf}`
@@ -878,7 +998,7 @@ class CacheManager {
             symbol,
             start: startDate,
             end: endDate,
-            timeframe: tf,
+            timeframe: tfAlpaca,
           });
 
           this.L1Hit = (this.L1Hit || 0) + 1;
@@ -900,7 +1020,7 @@ class CacheManager {
             symbol,
             start: startDate,
             end: endDate,
-            timeframe: tf,
+            timeframe: tfFmp,
             periodLength: 10,
           });
 

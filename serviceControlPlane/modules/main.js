@@ -14,7 +14,7 @@ const { asBool, asInt } = require("../../shared/helpers");
 // =========================================================
 const MICROSERVICE    = "serviceControlPlane";
 const MODULE_NAME     = "main";
-const MODULE_VERSION  = "0.1.0";    // e.g. "0.1.0"
+const MODULE_VERSION  = "1.0.0";    // e.g. "0.1.0"
 
 class ServiceControlPlane {
   constructor() {
