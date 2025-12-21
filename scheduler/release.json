@@ -1,12 +1,14 @@
 {
   "lastUpdate": "29/11/2025 20:14", 
-  "version": "1.3",
+  "version": "1.4.1",
   "microservice": "scheduler",
 
   "note": [
     "v.0.1.0 scheduler: Initial scaffolding generated from template.",
     "v.1.1.0 scheduler: Endpoint adapt to Traefik.",
     "v.1.2.0 scheduler: Added Axios fix.",
-    "v.1.3.0 Gestione Ultimo run e stato"
+    "v.1.3.0 Gestione Ultimo run e stato",
+    "v.1.4.0 Implementazione endpoint LogLevel e DB Settings",
+    "v.1.4.0 Fix varie per adattamento esposizione in Frontend"
   ]
 }

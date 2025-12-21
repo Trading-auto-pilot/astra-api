@@ -1,12 +1,14 @@
 {
   "lastUpdate": "22/11/2025 21:28", 
-  "version": "1.3",
+  "version": "1.4.1",
   "microservice": "tickerScanner",
 
   "note": [
     "v.0.1.0 tickerScanner: Initial scaffolding generated from template.",
     "v.1.1.0 tickerScanner: Auto compilation test.",
     "v.1.2.0 tickerScanner: axios fix",
-    "v.1.3.0 Esposizione Glossary"
+    "v.1.3.0 Esposizione Glossary",
+    "v.1.4.0 Creazione endpoint loglevel e db settings",
+    "v.1.4.1 Fix varie per adattamento frontend"
   ]
 }

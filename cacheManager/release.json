@@ -1,10 +1,11 @@
 {
   "lastUpdate": "25/11/2025 17:53", 
-  "version": "2.0",
+  "version": "2.1.0",
   "microservice": "cacheManager",
 
   "note": [
     "0.1.0 cacheManager: Initial scaffolding generated from template.",
-    "2.0.0 cacheManager: Refactoring con multiprovider FMT + ALPACA"
+    "2.0.0 cacheManager: Refactoring con multiprovider FMT + ALPACA",
+    "2.1.0 Supporto a multiple TAB in frontend. Cache L2 e L3"
   ]
 }

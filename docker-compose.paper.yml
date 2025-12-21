@@ -138,6 +138,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+      - cache_data:/app/cache
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
       interval: 10s
@@ -474,6 +475,8 @@ volumes:
   shared_cache_data:
     external: true
   traefik_letsencrypt:
+  cache_data:
+    driver: local
 
 networks:
   trading_net:

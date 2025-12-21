@@ -5,7 +5,7 @@ const path = require("path");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 const fs = require("fs").promises;
 const createLogger = require("../../shared/logger");
-const { initializeSettings, getSetting, reloadSettings } = require("../../shared/loadSettings");
+const { initializeSettings, getSetting, reloadSettings, getAllSettings, setSetting } = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
 const { asBool, asInt } = require("../../shared/helpers");
 const { createSchedulerCore } = require("./schedulerCore");
@@ -211,6 +211,34 @@ class Scheduler {
       ok: true,
       delayBetweenMessages: this.delayBetweenMessages,
     };
+  }
+
+  // =========================================================
+  // Log level API (usata da /status/logLevel)
+  // =========================================================
+  getLogLevel() {
+    if (typeof this.logger.getLevel === "function") {
+      const lvl = this.logger.getLevel();
+      return lvl || process.env.LOG_LEVEL;
+    }
+    return process.env.LOG_LEVEL;
+  }
+
+  setLogLevel(level) {
+    if (typeof this.logger.setLevel === "function") {
+      this.logger.setLevel(level);
+      return { level };
+    }
+    this.logger.warn("[setLogLevel] Not supported by this logger", { level });
+    return { level: process.env.LOG_LEVEL || null };
+  }
+
+  getAllSettings() {
+    return getAllSettings();
+  }
+
+  setSetting(key, value) {
+    return setSetting(key, value);
   }
 
   // =========================================================

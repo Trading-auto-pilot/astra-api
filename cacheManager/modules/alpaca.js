@@ -52,7 +52,7 @@ class AlpacaProvider {
         `${baseUrl}?symbols=${encodeURIComponent(symbol)}` +
         `&timeframe=${encodeURIComponent(timeframe)}` +
         `&start=${start}&end=${end}` +
-        `&limit=5000&adjustment=raw&feed=sip&currency=USD&sort=asc` +
+        `&limit=1000&adjustment=raw&feed=sip&sort=asc` +
         (pageToken ? `&page_token=${pageToken}` : "");
 
       this.logger.info?.(
