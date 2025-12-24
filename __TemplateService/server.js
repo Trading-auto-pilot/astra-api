@@ -21,6 +21,7 @@ const DEFAULT_PORT   = __PORT__;                  // es. 3012 (numero)
 
 let logLevel = process.env.LOG_LEVEL || "info";
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, logLevel);
+process.env.MICROSERVICE_NAME = process.env.MICROSERVICE_NAME || MICROSERVICE;
 
 const app = express();
 app.use(express.json());

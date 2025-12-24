@@ -1,9 +1,10 @@
 {
-  "lastUpdate": "19/12/2025 19:25", 
-  "version": "1.0.0",
+  "lastUpdate": "24/12/2025 19:25", 
+  "version": "1.0.1",
   "microservice": "serviceControlPlane",
 
   "note": [
-    "v.1.0.0 serviceControlPlane: Initial scaffolding generated from template."
+    "v.1.0.0 serviceControlPlane: Initial scaffolding generated from template.",
+    "v.1.0.1 aggiunto info microservice su user agent"
   ]
 }

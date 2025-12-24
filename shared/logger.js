@@ -6,6 +6,14 @@ const axios = require('axios');
 const levels = ['trace', 'log', 'info', 'warning', 'error'];
 
 const dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
+const serviceRelease = (() => {
+  try {
+    const rel = require(path.resolve(process.cwd(), "release.json"));
+    return rel?.version || rel?.Version || rel?.VERSION || null;
+  } catch {
+    return null;
+  }
+})();
 let enableDbLog = process.env.ENABLE_DB_LOG === 'true';
 
 // ANSI color codes
@@ -35,7 +43,11 @@ setInterval(async () => {
   logQueue = [];
 
   try {
-    await axios.post(`${dbManagerUrl}/logs`, batch);
+    await axios.post(`${dbManagerUrl}/logs`, batch, {
+      headers: {
+        "User-Agent": `${process.env.MICROSERVICE_NAME || "service"}/${serviceRelease || "unknown"}`,
+      },
+    });
   } catch (err) {
     // Se fallisce, re-inserisci i log in testa alla coda
     logQueue = [...batch, ...logQueue];

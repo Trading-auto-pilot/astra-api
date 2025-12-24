@@ -20,11 +20,13 @@ class SchedulerEngine {
    * @param {object} opts.logger    - logger del microservizio
    * @param {string} opts.defaultTimezone
    * @param {string} opts.dbmanagerUrl
+   * @param {function} [opts.getSetting]
    */
-  constructor({ logger, defaultTimezone = "UTC", dbmanagerUrl } = {}) {
+  constructor({ logger, defaultTimezone = "UTC", dbmanagerUrl, getSetting } = {}) {
     this.logger = logger || console;
     this.defaultTimezone = defaultTimezone;
     this.dbmanagerUrl = dbmanagerUrl;
+    this.getSetting = getSetting;
     this.tasks = [];
   }
 
@@ -124,6 +126,50 @@ class SchedulerEngine {
     const { method, url, headers, body, timeoutMs, retry } = job;
     const maxAttempts = retry?.maxAttempts || 1;
     const backoffMs = retry?.backoffMs || 5000;
+
+    // opzionale: controllo apertura mercato per exchange specifici
+    if (job.openMarket) {
+      const exchanges = Array.isArray(job.exchanges) ? job.exchanges : [];
+      if (exchanges.length) {
+        const apiKey =
+          (this.getSetting && this.getSetting("FMP_API_KEY")) ||
+          process.env.FMP_API_KEY ||
+          null;
+        if (!apiKey) {
+          this._logInfo("_runJob", `job=${job.jobKey} openMarket attivo ma manca FMP_API_KEY, procedo senza check`);
+        } else {
+          const base = process.env.FMP_BASE_URL || "https://financialmodelingprep.com";
+          let anyOpen = false;
+          for (const exc of exchanges) {
+            const excId = String(exc || "").trim();
+            if (!excId) continue;
+            const mUrl = `${base}/stable/exchange-market-hours?exchange=${encodeURIComponent(excId)}&apikey=${apiKey}`;
+            try {
+              const resp = await axios.get(mUrl, { timeout: 6000 });
+              const data = resp.data || {};
+              const open =
+                data.isTheStockMarketOpen ??
+                data.isMarketOpen ??
+                data.marketOpen ??
+                data.stockMarketHours?.isTheStockMarketOpen ??
+                data.stockMarketHours?.isMarketOpen ??
+                false;
+              if (open) {
+                anyOpen = true;
+                break;
+              }
+            } catch (err) {
+              this._logError("_runJob", `check exchange ${excId} failed: ${err?.message || err}`);
+            }
+          }
+          if (!anyOpen) {
+            this._logInfo("_runJob", `job=${job.jobKey} skip perché tutti gli exchange (${exchanges.join(",")}) sono closed`);
+            await this._updateLastRun(job, "skipped");
+            return;
+          }
+        }
+      }
+    }
 
     try {
         this.logger.info(

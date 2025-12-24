@@ -98,6 +98,8 @@ async function getSchedulerJobsForScheduler(onlyEnabled = true) {
       jobKey: j.job_key,
       description: j.description,
       enabled: !!j.enabled,
+      openMarket: !!j.market_aware,
+      exchanges: parseJsonField(j.market_exchanges) || [],
       method: j.method || "GET",
       url: j.url,
       headers: parseJsonField(j.headers) || {},
@@ -146,13 +148,15 @@ async function createSchedulerJobWithRules(payload) {
     const retry = payload.retry || {};
     const [resJob] = await conn.query(
       `INSERT INTO scheduler_jobs
-         (job_key, description, enabled, method, url, headers, body,
+         (job_key, description, enabled, market_aware, market_exchanges, method, url, headers, body,
           timeout_ms, retry_max_attempts, retry_backoff_ms, timezone)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         payload.jobKey,
         payload.description || null,
         payload.enabled ? 1 : 0,
+        payload.openMarket ? 1 : 0,
+        toJsonField(payload.exchanges || null),
         payload.method || "GET",
         payload.url,
         toJsonField(payload.headers || null),
@@ -213,7 +217,8 @@ async function updateSchedulerJobWithRules(jobId, payload) {
       `UPDATE scheduler_jobs
          SET job_key = ?, description = ?, enabled = ?, method = ?, url = ?,
              headers = ?, body = ?, timeout_ms = ?,
-             retry_max_attempts = ?, retry_backoff_ms = ?, timezone = ?
+             retry_max_attempts = ?, retry_backoff_ms = ?, timezone = ?,
+             market_aware = ?, market_exchanges = ?
          WHERE id = ?`,
       [
         payload.jobKey,
@@ -227,11 +232,12 @@ async function updateSchedulerJobWithRules(jobId, payload) {
         retry.maxAttempts || 1,
         retry.backoffMs || 5000,
         payload.timezone || "UTC",
+        payload.openMarket ? 1 : 0,
+        toJsonField(payload.exchanges || null),
         jobId,
       ]
     );
 
-    // se nessuna riga aggiornata → 404 logico
     if (!resUpd.affectedRows) {
       await conn.rollback();
       logger.warning(
@@ -240,7 +246,6 @@ async function updateSchedulerJobWithRules(jobId, payload) {
       return { ok: false, notFound: true };
     }
 
-    // cancella vecchie regole
     await conn.query("DELETE FROM scheduler_rules WHERE job_id = ?", [jobId]);
 
     const rules = Array.isArray(payload.rules) ? payload.rules : [];
@@ -351,6 +356,8 @@ async function getSchedulerJobById(jobId) {
       enabled: !!job.enabled,
       method: job.method || "GET",
       url: job.url,
+      openMarket: !!job.market_aware,
+      exchanges: parseJsonField(job.market_exchanges) || [],
       headers: parseJsonField(job.headers) || {},
       body: parseJsonField(job.body) || null,
       timeoutMs: job.timeout_ms || 15000,
