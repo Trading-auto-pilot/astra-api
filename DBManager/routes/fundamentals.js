@@ -5,6 +5,53 @@ const cache = require("../../shared/cache");
 const router = express.Router();
 
 module.exports = (dbManager) => {
+
+  /**
+   * GET /fundamentals/history?symbol=XYZ&days=70
+   * Restituisce gli snapshot storici (default ultimi 70 giorni).
+   */
+  router.get("/history", async (req, res) => {
+    const { symbol } = req.query;
+    const days = req.query.days ? Number(req.query.days) : 70;
+    try {
+      const rows = await dbManager.getFundamentalsHistory({
+        symbol: symbol ? String(symbol).toUpperCase() : null,
+        limitDays: Number.isFinite(days) ? days : 70,
+      });
+      return res.json(rows);
+    } catch (err) {
+      console.error("[GET /fundamentals/history] Errore:", err.message);
+      return res.status(500).json({
+        error: "Errore durante la lettura della cronologia fundamentals",
+        module: "[GET /fundamentals/history]",
+      });
+    }
+  });
+
+  /**
+   * POST /fundamentals/history
+   * Body: { records: [ { symbol, as_of_date, ... } ] }
+   */
+  router.post("/history", async (req, res) => {
+    const records = req.body?.records || req.body?.results || req.body;
+    if (!Array.isArray(records) || !records.length) {
+      return res.status(400).json({
+        ok: false,
+        error: "Formato input non valido: serve { records: [...] }",
+      });
+    }
+    try {
+      const result = await dbManager.insertOrUpdateFundamentalsHistoryBulk(records);
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[POST /fundamentals/history] Errore:", err.message);
+      return res.status(500).json({
+        ok: false,
+        error: "Errore durante la scrittura della cronologia fundamentals",
+        module: "[POST /fundamentals/history]",
+      });
+    }
+  });
   
   /**
    * GET /fundamentals

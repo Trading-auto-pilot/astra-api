@@ -48,6 +48,16 @@ class FundamentalsService {
     const s = symbol.toUpperCase();
     return this._get(`/fundamentals/${s}`);
   }
+
+  // 🔹 Legge lo storico fundamentals (proxy verso DBManager)
+  async getHistory({ symbol = null, days = 70 } = {}) {
+    const params = new URLSearchParams();
+    if (symbol) params.set("symbol", String(symbol).toUpperCase());
+    if (Number.isFinite(days)) params.set("days", String(days));
+    const qs = params.toString();
+    const path = `/fundamentals/history${qs ? `?${qs}` : ""}`;
+    return this._get(path);
+  }
 }
 
 module.exports = FundamentalsService;

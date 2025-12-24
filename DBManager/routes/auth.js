@@ -113,6 +113,37 @@ module.exports = (dbManager) => {
     }
   });
 
+  // GET /auth/users/:id/score-weights
+  router.get("/users/:id/score-weights", async (req, res) => {
+    const userId = Number(req.params.id);
+    if (!userId) return res.status(400).json({ error: "ID non valido" });
+
+    try {
+      const data = await dbManager.getUserScoreWeights(userId);
+      if (!data) return res.status(404).json({ error: "Non trovato" });
+      return res.json(data);
+    } catch (err) {
+      console.error("[GET /auth/users/:id/score-weights] Errore:", err.message);
+      res.status(500).json({ error: "Errore durante la lettura dei pesi" });
+    }
+  });
+
+  // PUT /auth/users/:id/score-weights
+  router.put("/users/:id/score-weights", async (req, res) => {
+    const userId = Number(req.params.id);
+    if (!userId) return res.status(400).json({ error: "ID non valido" });
+
+    const payload = req.body || {};
+
+    try {
+      const result = await dbManager.updateUserScoreWeights(userId, payload);
+      return res.json(result);
+    } catch (err) {
+      console.error("[PUT /auth/users/:id/score-weights] Errore:", err.message);
+      res.status(500).json({ error: "Errore durante l'aggiornamento dei pesi" });
+    }
+  });
+
   // ============================
   // PERMISSIONS
   // ============================

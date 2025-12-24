@@ -29,7 +29,30 @@ module.exports = async function createApp({ bus, logger }) {
       credentials: true // se usi cookie o auth
     }));
 
-    app.use(express.json());
+    const bodyLimit = process.env.BODY_LIMIT || "50mb";
+    // log richieste (minimo dettaglio) per capire chi invia payload grandi
+    app.use((req, _res, next) => {
+      const ua = req.headers["user-agent"] || "-";
+      const fwd = req.headers["x-forwarded-for"] || req.ip || "-";
+      log.trace(
+        `[request] ${req.method} ${req.originalUrl} cl=${req.headers["content-length"] || "-"} ip=${fwd} ua=${ua}`
+      );
+      next();
+    });
+    app.use(express.json({ limit: bodyLimit }));
+    app.use(express.urlencoded({ limit: bodyLimit, extended: true }));
+    // Handler per payload troppo grandi (body-parser)
+    app.use((err, req, res, next) => {
+      if (err?.type === "entity.too.large" || err?.status === 413) {
+        const ua = req.headers["user-agent"] || "-";
+        const fwd = req.headers["x-forwarded-for"] || req.ip || "-";
+        log.error(
+          `[bodyParser] Payload too large ${req.method} ${req.originalUrl} cl=${req.headers["content-length"] || "-"} limit=${bodyLimit} ip=${fwd} ua=${ua}`
+        );
+        return res.status(413).json({ error: "Payload too large" });
+      }
+      return next(err);
+    });
 
     // 🔁 Healthcheck
     app.get('/health', (req, res) => {

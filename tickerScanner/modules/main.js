@@ -104,6 +104,8 @@ function mapDbRowToScoredRecord(row) {
         },
       },
       momentum,
+      marketRiskScore: row.market_risk_score ?? null,
+      shortRiskScore: row.short_risk_score ?? null,
       totalScore: row.total_score,
     },
   };
@@ -434,9 +436,10 @@ class TickerScanner {
    *    - calcolo score
    *    - salvo su DB via /fundamentals/bulk (batch da 50)
    * 4) ritorno tutti i risultati (DB + nuovi)
-   */
+  */
   async scanAndScoreUniverse(filterOverrides = {}, options = {}) {
     const forceRefresh = !!options.forceRefresh;
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
     // 1) screener
     const screener = await this.runScreener(filterOverrides);
     const data = screener?.data || [];
@@ -542,6 +545,34 @@ class TickerScanner {
         fundamentalsRecords.push(
           buildFundamentalsRecord(scored, momentum)   // 👈 qui usi la funzione che hai in scanJob
         );
+
+        // salvataggio storico immediato per evitare payload enormi
+        try {
+          const historyUrl = `${this.dbmanagerUrl}/fundamentals/history`;
+          const historyPayload = {
+            records: [
+              {
+                ...fundamentalsRecords[fundamentalsRecords.length - 1],
+                as_of_date: today,
+              },
+            ],
+          };
+          const resHist = await fetch(historyUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(historyPayload),
+          });
+          if (!resHist.ok) {
+            const text = await resHist.text().catch(() => "");
+            this.logger.error(
+              `[scanAndScoreUniverse] Errore POST /fundamentals/history (symbol=${symbol}): ${resHist.status} - ${text}`
+            );
+          }
+        } catch (err) {
+          this.logger.error(
+            `[scanAndScoreUniverse] Errore chiamando POST /fundamentals/history (symbol=${symbol}): ${err?.message || String(err)}`
+          );
+        }
       }
 
       newScoredRecords.push(...scoredBatch);
@@ -655,6 +686,40 @@ async refreshMomentumAll() {
 
   return { totalSymbols: symbols.length, totalUpdated };
 }
+
+
+  /**
+   * Ricalcola il momentum (incluso momentumShort) per una lista di simboli,
+   * accettando opzionalmente i dati dell'ultima candela (solo per logging).
+   * Riutilizza il momentumCalculator esistente.
+   */
+  async recalcMomentumForLastCandles(items = []) {
+    if (!Array.isArray(items)) return [];
+
+    const output = [];
+    for (const item of items) {
+      const symbol = item?.symbol ? String(item.symbol).toUpperCase() : null;
+      if (!symbol) {
+        output.push({ symbol: item?.symbol ?? null, error: "symbol missing" });
+        continue;
+      }
+      try {
+        const momentum = await this.momentumCalculator.calculateForSymbol(symbol);
+        output.push({
+          symbol,
+          lastCandle: item.lastCandle ?? null,
+          momentum,
+        });
+      } catch (err) {
+        this.logger.error(
+          `[recalcMomentumForLastCandles] ${symbol} errore: ${err?.message || String(err)}`
+        );
+        output.push({ symbol, error: err?.message || "recalc error" });
+      }
+    }
+
+    return output;
+  }
 
 
   // =========================================================

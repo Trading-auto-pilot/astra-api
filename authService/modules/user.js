@@ -96,6 +96,10 @@ function createUserClient({ logger, dbManagerUrl }) {
     return get(`/auth/users/${encodeURIComponent(id)}`);
   }
 
+  async function getUserScoreWeights(id) {
+    return get(`/auth/users/${encodeURIComponent(id)}/score-weights`);
+  }
+
   async function createUser(payload) {
     // routing puro: passa tutto a DBManager
     return post("/auth/users", payload);
@@ -103,6 +107,10 @@ function createUserClient({ logger, dbManagerUrl }) {
 
   async function updateUser(id, payload) {
     return put(`/auth/users/${encodeURIComponent(id)}`, payload);
+  }
+
+  async function updateUserScoreWeights(id, payload) {
+    return put(`/auth/users/${encodeURIComponent(id)}/score-weights`, payload);
   }
 
   async function deleteUser(id) {
@@ -243,6 +251,8 @@ function createUserClient({ logger, dbManagerUrl }) {
     getUserById,
     createUser,
     updateUser,
+    getUserScoreWeights,
+    updateUserScoreWeights,
     deleteUser,
     touchLastLoginAt,
 

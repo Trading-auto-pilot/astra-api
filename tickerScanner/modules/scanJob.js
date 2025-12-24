@@ -21,6 +21,9 @@ function buildFundamentalsRecord(scored, momentumJson = null) {
   const v = valuation.components || {};
   const q = quality.components   || {};
   const r = risk.components      || {};
+  const m = momentum.components  || {};
+  const momentumShort = m.momentumShort || {};
+  const momentumVolume = m.volume || {};
 
 
   return {
@@ -34,6 +37,8 @@ function buildFundamentalsRecord(scored, momentumJson = null) {
     quality_score:   quality.score ?? null,
     risk_score:      risk.score ?? null,
     momentum_score:  momentum.score ?? null,
+    momentum_short_score: momentumShort.score ?? null,
+    momentum_volume_score: momentumVolume.score ?? null,
     total_score:     scores.totalScore ?? null,
 
     // ---- Valuation ----
@@ -68,6 +73,8 @@ function buildFundamentalsRecord(scored, momentumJson = null) {
 
     // ---- Momentum JSON (dettaglio completo) ----
     momentum_json: momentumJson ? JSON.stringify(momentumJson) : null,
+    momentum_short_json: momentumShort ? JSON.stringify(momentumShort) : null,
+    momentum_volume_json: momentumVolume ? JSON.stringify(momentumVolume) : null,
   };
 }
 

@@ -255,11 +255,171 @@ async function updateFundamentalsMomentumBulk(records) {
   }
 }
 
+async function insertOrUpdateFundamentalsHistoryBulk(records) {
+  if (!Array.isArray(records) || !records.length) {
+    logger.log("[insertOrUpdateFundamentalsHistoryBulk] Nessun record da processare");
+    return { affectedRows: 0, records: 0 };
+  }
+
+  const connection = await getDbConnection();
+  try {
+    const columns = [
+      "symbol",
+      "as_of_date",
+      "price",
+      "beta",
+      "pe",
+      "pb",
+      "roe",
+      "roa",
+      "op_margin",
+      "debt_equity",
+      "altman_z",
+      "piotroski",
+      "dcf_upside",
+      "valuation_score",
+      "quality_score",
+      "risk_score",
+      "momentum_score",
+      "momentum_short_score",
+      "momentum_volume_score",
+      "market_score",
+      "market_risk_score",
+      "short_risk_score",
+      "total_score",
+      "growth_probability",
+      "volume_score",
+      "momentum_json",
+      "profile_json",
+      "ratios_json",
+      "scores_json",
+      "dcf_json",
+    ];
+
+    const values = [];
+    const placeholders = [];
+
+    for (const r of records) {
+      const row = [
+        r.symbol || null,
+        r.as_of_date || r.asOfDate || null,
+        r.price ?? null,
+        r.beta ?? null,
+        r.pe ?? null,
+        r.pb ?? null,
+        r.roe ?? null,
+        r.roa ?? null,
+        r.op_margin ?? null,
+        r.debt_equity ?? null,
+        r.altman_z ?? null,
+        r.piotroski ?? null,
+        r.dcf_upside ?? null,
+        r.valuation_score ?? null,
+        r.quality_score ?? null,
+        r.risk_score ?? null,
+        r.momentum_score ?? null,
+        r.momentum_short_score ?? null,
+        r.momentum_volume_score ?? null,
+        r.market_score ?? null,
+        r.market_risk_score ?? null,
+        r.short_risk_score ?? null,
+        r.total_score ?? null,
+        r.growth_probability ?? null,
+        r.volume_score ?? null,
+        r.momentum_json ? JSON.stringify(r.momentum_json) : null,
+        r.profile_json ? JSON.stringify(r.profile_json) : null,
+        r.ratios_json ? JSON.stringify(r.ratios_json) : null,
+        r.scores_json ? JSON.stringify(r.scores_json) : null,
+        r.dcf_json ? JSON.stringify(r.dcf_json) : null,
+      ];
+      values.push(...row);
+      placeholders.push(`(${columns.map(() => "?").join(",")})`);
+    }
+
+    const sql = `
+      INSERT INTO ticker_fundamentals_history (
+        ${columns.join(",")}
+      ) VALUES
+        ${placeholders.join(",")}
+      ON DUPLICATE KEY UPDATE
+        price                = VALUES(price),
+        beta                 = VALUES(beta),
+        pe                   = VALUES(pe),
+        pb                   = VALUES(pb),
+        roe                  = VALUES(roe),
+        roa                  = VALUES(roa),
+        op_margin            = VALUES(op_margin),
+        debt_equity          = VALUES(debt_equity),
+        altman_z             = VALUES(altman_z),
+        piotroski            = VALUES(piotroski),
+        dcf_upside           = VALUES(dcf_upside),
+        valuation_score      = VALUES(valuation_score),
+        quality_score        = VALUES(quality_score),
+        risk_score           = VALUES(risk_score),
+        momentum_score       = VALUES(momentum_score),
+        momentum_short_score = VALUES(momentum_short_score),
+        momentum_volume_score= VALUES(momentum_volume_score),
+        market_score         = VALUES(market_score),
+        market_risk_score    = VALUES(market_risk_score),
+        short_risk_score     = VALUES(short_risk_score),
+        total_score          = VALUES(total_score),
+        growth_probability   = VALUES(growth_probability),
+        volume_score         = VALUES(volume_score),
+        momentum_json        = VALUES(momentum_json),
+        profile_json         = VALUES(profile_json),
+        ratios_json          = VALUES(ratios_json),
+        scores_json          = VALUES(scores_json),
+        dcf_json             = VALUES(dcf_json)
+    `;
+
+    const [result] = await connection.query(sql, values);
+
+    logger.log(
+      `[insertOrUpdateFundamentalsHistoryBulk] Processati ${records.length} record, affectedRows=${result.affectedRows}`
+    );
+
+    return { records: records.length, affectedRows: result.affectedRows };
+  } catch (err) {
+    logger.error("[insertOrUpdateFundamentalsHistoryBulk] Errore:", err.message);
+    throw err;
+  } finally {
+    connection.release();
+  }
+}
+
+async function getFundamentalsHistory({ symbol = null, limitDays = 70 } = {}) {
+  const connection = await getDbConnection();
+  try {
+    const args = [];
+    let where = "";
+    if (symbol) {
+      where = "WHERE symbol = ?";
+      args.push(symbol);
+    }
+    const limitClause = Number.isFinite(limitDays) ? "AND as_of_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)" : "";
+    if (limitClause) args.push(limitDays);
+
+    const sql = `
+      SELECT *
+      FROM ticker_fundamentals_history
+      ${where ? where : ""}
+      ${where ? limitClause : limitClause.replace("AND", "WHERE")}
+      ORDER BY as_of_date DESC, symbol ASC
+    `;
+    const [rows] = await connection.query(sql, args);
+    return rows;
+  } finally {
+    connection.release();
+  }
+}
+
 
 module.exports = {
   insertOrUpdateFundamentalsBulk,
   getAllFundamentals,
   getFundamentalsBySymbol,
   deleteFundamentalsBySymbol,
-  updateFundamentalsMomentumBulk
+  updateFundamentalsMomentumBulk,
+  insertOrUpdateFundamentalsHistoryBulk,
+  getFundamentalsHistory
 };

@@ -63,6 +63,7 @@ class __CLASS_NAME__ {
     // =====================================================
     // LOGGER
     // =====================================================
+    process.env.MICROSERVICE_NAME = process.env.MICROSERVICE_NAME || MICROSERVICE;
     this.logger = createLogger(
       MICROSERVICE,
       MODULE_NAME,

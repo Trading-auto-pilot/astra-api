@@ -374,13 +374,33 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
       );
     }
 
+    // 3️⃣ pesi personalizzati
+    let scoreWeights = null;
+    try {
+      scoreWeights = await userClient.getUserScoreWeights(userId);
+    } catch (err) {
+      logger.warning(
+        `[${moduleName}] [/admin/me] getUserScoreWeights error userId=${userId}: ${err.message}`
+      );
+      scoreWeights = null;
+    }
+
     // 3️⃣ payload token con iat/exp leggibili
     const tokenPayload = auth.formatTokenPayload(rawPayload);
 
+    // 4️⃣ arricchisco l'oggetto utente con i pesi (se presenti)
+    const userWithWeights = user
+      ? {
+          ...user,
+          score_weights: scoreWeights ?? null,
+        }
+      : user;
+
     return res.json({
       tokenPayload,
-      user,
+      user: userWithWeights,
       clientNavigation,
+      scoreWeights: scoreWeights ?? null,
     });
   } catch (err) {
     logger.error(
@@ -422,6 +442,7 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
         .json({ error: "Errore durante la lettura utente" });
     }
   });
+
 
   // POST /auth/admin/user
   // ⛔ Nessun hashing qui: payload viene passato “as is” a DBManager.
@@ -500,6 +521,25 @@ router.post("/admin/user", async (req, res) => {
       return res
         .status(status)
         .json({ error: "Errore durante l'aggiornamento utente" });
+    }
+  });
+
+  // PUT /auth/admin/user/:id/score-weights
+  router.put("/admin/user/:id/score-weights", async (req, res) => {
+    const userId = req.params.id;
+    const payload = req.body || {};
+
+    try {
+      const result = await userClient.updateUserScoreWeights(userId, payload);
+      return res.json(result);
+    } catch (err) {
+      logger.error(
+        `[${moduleName}] [PUT /auth/admin/user/:id/score-weights] ${err.message}`
+      );
+      const status = err.response?.status || 500;
+      return res
+        .status(status)
+        .json({ error: "Errore durante l'aggiornamento dei pesi" });
     }
   });
 
