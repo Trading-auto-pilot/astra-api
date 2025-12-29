@@ -52,7 +52,256 @@ module.exports = (dbManager) => {
       });
     }
   });
-  
+
+  /**
+   * GET /fundamentals/user-filters/:userId
+   */
+  router.get("/user-filters/:userId", async (req, res) => {
+    const userId = Number(req.params.userId);
+    if (!Number.isFinite(userId)) {
+      return res.status(400).json({ ok: false, error: "userId non valido" });
+    }
+    try {
+      const rows = await dbManager.getUserFilters(userId);
+      return res.json({ ok: true, data: rows });
+    } catch (err) {
+      console.error("[GET /fundamentals/user-filters/:userId] Errore:", err.message);
+      return res.status(500).json({ ok: false, error: "Errore lettura user_filters" });
+    }
+  });
+
+  /**
+   * POST /fundamentals/user-filters
+   * Body: { user_id, filter_name, value, comparator, enabled }
+   */
+  router.post("/user-filters", async (req, res) => {
+    const { user_id, filter_name, value, comparator, enabled } = req.body || {};
+    const userId = Number(user_id);
+    const valNum = Number(value);
+    if (!Number.isFinite(userId) || !filter_name || !Number.isFinite(valNum)) {
+      return res.status(400).json({ ok: false, error: "Parametri mancanti o non validi" });
+    }
+    try {
+      const result = await dbManager.upsertUserFilter({
+        userId,
+        filterName: String(filter_name),
+        value: valNum,
+        comparator: comparator === "LT" ? "LT" : "GT",
+        enabled: enabled !== undefined ? Boolean(enabled) : true,
+      });
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[POST /fundamentals/user-filters] Errore:", err.message);
+      return res.status(500).json({ ok: false, error: "Errore salvataggio user_filters" });
+    }
+  });
+
+  /**
+   * PUT /fundamentals/user-filters/:userId/:filterName
+   * Body: { value?, comparator?, enabled? }
+   */
+  router.put("/user-filters/:userId/:filterName", async (req, res) => {
+    const userId = Number(req.params.userId);
+    const filterName = req.params.filterName;
+    const { value, comparator, enabled } = req.body || {};
+    const valNum = value !== undefined ? Number(value) : null;
+    if (!Number.isFinite(userId) || !filterName) {
+      return res.status(400).json({ ok: false, error: "Parametri mancanti" });
+    }
+    if (valNum !== null && !Number.isFinite(valNum)) {
+      return res.status(400).json({ ok: false, error: "Value non valido" });
+    }
+    try {
+      const result = await dbManager.upsertUserFilter({
+        userId,
+        filterName,
+        value: valNum !== null ? valNum : 0,
+        comparator: comparator === "LT" ? "LT" : "GT",
+        enabled: enabled !== undefined ? Boolean(enabled) : true,
+      });
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[PUT /fundamentals/user-filters/:userId/:filterName] Errore:", err.message);
+      return res.status(500).json({ ok: false, error: "Errore aggiornamento user_filters" });
+    }
+  });
+
+  /**
+   * DELETE /fundamentals/user-filters/:userId/:filterName
+   */
+  router.delete("/user-filters/:userId/:filterName", async (req, res) => {
+    const userId = Number(req.params.userId);
+    const filterName = req.params.filterName;
+    if (!Number.isFinite(userId) || !filterName) {
+      return res.status(400).json({ ok: false, error: "Parametri mancanti" });
+    }
+    try {
+      const result = await dbManager.deleteUserFilter({ userId, filterName });
+      if (!result.affectedRows) {
+        return res.status(404).json({ ok: false, error: "Filtro non trovato" });
+      }
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[DELETE /fundamentals/user-filters/:userId/:filterName] Errore:", err.message);
+      return res.status(500).json({ ok: false, error: "Errore cancellazione user_filters" });
+    }
+  });
+
+  /**
+   * CRUD user_fundamentals
+   */
+  router.get("/user-fundamentals/:userId", async (req, res) => {
+    const userId = Number(req.params.userId);
+    const symbol = req.query.symbol ? String(req.query.symbol).toUpperCase() : null;
+    if (!Number.isFinite(userId)) return res.status(400).json({ ok: false, error: "userId non valido" });
+    try {
+      const rows = await dbManager.getUserFundamentals({ userId, symbol });
+      return res.json({ ok: true, data: rows });
+    } catch (err) {
+      console.error("[GET /fundamentals/user-fundamentals/:userId] Errore:", err.message);
+      return res.status(500).json({ ok: false, error: "Errore lettura user_fundamentals" });
+    }
+  });
+
+  router.post("/user-fundamentals", async (req, res) => {
+    const body = req.body || {};
+    const userId = Number(body.user_id);
+    const symbol = body.symbol ? String(body.symbol).toUpperCase() : null;
+    if (!Number.isFinite(userId) || !symbol) {
+      return res.status(400).json({ ok: false, error: "user_id e symbol sono obbligatori" });
+    }
+    try {
+      const result = await dbManager.upsertUserFundamental({ userId, symbol, ...body });
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[POST /fundamentals/user-fundamentals] Errore:", err.message);
+      return res.status(500).json({ ok: false, error: "Errore salvataggio user_fundamentals" });
+    }
+  });
+
+  router.put("/user-fundamentals/:userId/:symbol", async (req, res) => {
+    const userId = Number(req.params.userId);
+    const symbol = req.params.symbol ? String(req.params.symbol).toUpperCase() : null;
+    if (!Number.isFinite(userId) || !symbol) {
+      return res.status(400).json({ ok: false, error: "user_id e symbol sono obbligatori" });
+    }
+    try {
+      const result = await dbManager.upsertUserFundamental({ userId, symbol, ...req.body });
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[PUT /fundamentals/user-fundamentals/:userId/:symbol] Errore:", err.message);
+      return res.status(500).json({ ok: false, error: "Errore aggiornamento user_fundamentals" });
+    }
+  });
+
+  router.delete("/user-fundamentals/:userId/:symbol", async (req, res) => {
+    const userId = Number(req.params.userId);
+    const symbol = req.params.symbol ? String(req.params.symbol).toUpperCase() : null;
+    if (!Number.isFinite(userId) || !symbol) {
+      return res.status(400).json({ ok: false, error: "user_id e symbol sono obbligatori" });
+    }
+    try {
+      const result = await dbManager.deleteUserFundamental({ userId, symbol });
+      if (!result.affectedRows) {
+        return res.status(404).json({ ok: false, error: "Record non trovato" });
+      }
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[DELETE /fundamentals/user-fundamentals/:userId/:symbol] Errore:", err.message);
+      return res.status(500).json({ ok: false, error: "Errore cancellazione user_fundamentals" });
+    }
+  });
+
+  // GET vista v_user_fundamentals per utente
+  router.get("/user-fundamentals-view/:userId", async (req, res) => {
+    const userId = Number(req.params.userId);
+    if (!Number.isFinite(userId)) return res.status(400).json({ ok: false, error: "userId non valido" });
+    try {
+      const rows = await dbManager.getUserFundamentalsView({ userId });
+      return res.json({ ok: true, data: rows });
+    } catch (err) {
+      console.error("[GET /fundamentals/user-fundamentals-view/:userId] Errore:", err);
+      return res.status(500).json({
+        ok: false,
+        error: err?.message || "Errore lettura v_user_fundamentals",
+        detail: err?.stack,
+      });
+    }
+  });
+
+  // CRUD user_order_by
+  router.get("/user-order/:userId", async (req, res) => {
+    const userId = Number(req.params.userId);
+    if (!Number.isFinite(userId)) return res.status(400).json({ ok: false, error: "userId non valido" });
+    try {
+      const rows = await dbManager.getUserOrderBy(userId);
+      return res.json({ ok: true, data: rows });
+    } catch (err) {
+      console.error("[GET /fundamentals/user-order/:userId] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore lettura user_order_by" });
+    }
+  });
+
+  router.post("/user-order", async (req, res) => {
+    const { user_id, order_field, direction, order_id } = req.body || {};
+    if (!Number.isFinite(Number(user_id)) || !order_field) {
+      return res.status(400).json({ ok: false, error: "user_id e order_field obbligatori" });
+    }
+    const dir = String(direction || "DESC").toUpperCase() === "ASC" ? "ASC" : "DESC";
+    try {
+      const result = await dbManager.insertUserOrderBy({
+        userId: Number(user_id),
+        order_field,
+        direction: dir,
+        order_id: Number.isFinite(Number(order_id)) ? Number(order_id) : 1,
+      });
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[POST /fundamentals/user-order] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore inserimento user_order_by" });
+    }
+  });
+
+  router.put("/user-order/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    const { user_id, order_field, direction, order_id } = req.body || {};
+    if (!Number.isFinite(id) || !Number.isFinite(Number(user_id)) || !order_field) {
+      return res.status(400).json({ ok: false, error: "id, user_id e order_field obbligatori" });
+    }
+    const dir = String(direction || "DESC").toUpperCase() === "ASC" ? "ASC" : "DESC";
+    try {
+      const result = await dbManager.updateUserOrderBy({
+        id,
+        userId: Number(user_id),
+        order_field,
+        direction: dir,
+        order_id: Number.isFinite(Number(order_id)) ? Number(order_id) : 1,
+      });
+      if (!result.affectedRows) return res.status(404).json({ ok: false, error: "Record non trovato" });
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[PUT /fundamentals/user-order/:id] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore aggiornamento user_order_by" });
+    }
+  });
+
+  router.delete("/user-order/:id/:userId", async (req, res) => {
+    const id = Number(req.params.id);
+    const userId = Number(req.params.userId);
+    if (!Number.isFinite(id) || !Number.isFinite(userId)) {
+      return res.status(400).json({ ok: false, error: "id e userId obbligatori" });
+    }
+    try {
+      const result = await dbManager.deleteUserOrderBy({ id, userId });
+      if (!result.affectedRows) return res.status(404).json({ ok: false, error: "Record non trovato" });
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[DELETE /fundamentals/user-order/:id/:userId] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore cancellazione user_order_by" });
+    }
+  });
+
+ 
   /**
    * GET /fundamentals
    * Restituisce tutta la tabella fundamentals (o una lista filtrata in futuro).
