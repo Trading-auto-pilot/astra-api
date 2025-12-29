@@ -414,6 +414,223 @@ async function getFundamentalsHistory({ symbol = null, limitDays = 70 } = {}) {
 }
 
 
+async function getUserFilters(userId) {
+  const connection = await getDbConnection();
+  try {
+    const [rows] = await connection.query(
+      "SELECT id, user_id, filter_name, value, comparator, enabled, created_at, updated_at FROM user_filters WHERE user_id = ?",
+      [userId]
+    );
+    return rows;
+  } finally {
+    connection.release();
+  }
+}
+
+async function upsertUserFilter({ userId, filterName, value, comparator = "GT", enabled = true }) {
+  const connection = await getDbConnection();
+  try {
+    const comp = comparator === "LT" ? "LT" : "GT";
+    const en = enabled ? 1 : 0;
+    const sql = `
+      INSERT INTO user_filters (user_id, filter_name, value, comparator, enabled)
+      VALUES (?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE value = VALUES(value), comparator = VALUES(comparator), enabled = VALUES(enabled)
+    `;
+    const [result] = await connection.query(sql, [userId, filterName, value, comp, en]);
+    return { affectedRows: result.affectedRows, insertId: result.insertId };
+  } finally {
+    connection.release();
+  }
+}
+
+async function deleteUserFilter({ userId, filterName }) {
+  const connection = await getDbConnection();
+  try {
+    const [result] = await connection.query(
+      "DELETE FROM user_filters WHERE user_id = ? AND filter_name = ?",
+      [userId, filterName]
+    );
+    return { affectedRows: result.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+async function deleteUserFiltersByUser(userId) {
+  const connection = await getDbConnection();
+  try {
+    const [result] = await connection.query("DELETE FROM user_filters WHERE user_id = ?", [userId]);
+    return { affectedRows: result.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+async function getUserFundamentals({ userId, symbol = null }) {
+  const connection = await getDbConnection();
+  try {
+    const args = [userId];
+    let where = "WHERE uf.user_id = ?";
+    if (symbol) {
+      where += " AND uf.symbol = ?";
+      args.push(symbol);
+    }
+    const sql = `
+      SELECT uf.id, uf.user_id, uf.symbol,
+             uf.valuation_score, uf.quality_score, uf.risk_score, uf.momentum_score, uf.momentum_short_score,
+             uf.grow_score, uf.double_top_score,
+             uf.created_at, uf.updated_at
+      FROM user_fundamentals uf
+      ${where}
+      ORDER BY uf.symbol ASC
+    `;
+    const [rows] = await connection.query(sql, args);
+    return rows;
+  } finally {
+    connection.release();
+  }
+}
+
+async function upsertUserFundamental({
+  userId,
+  symbol,
+  valuation_score = null,
+  quality_score = null,
+  risk_score = null,
+  momentum_score = null,
+  grow_score = null,
+  double_top_score = null,
+  momentum_short_score = null,
+}) {
+  const connection = await getDbConnection();
+  try {
+    const sql = `
+      INSERT INTO user_fundamentals
+        (user_id, symbol, valuation_score, quality_score, risk_score, momentum_score, momentum_short_score, grow_score, double_top_score)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        valuation_score = VALUES(valuation_score),
+        quality_score   = VALUES(quality_score),
+        risk_score      = VALUES(risk_score),
+        momentum_score  = VALUES(momentum_score),
+        momentum_short_score = VALUES(momentum_short_score),
+        grow_score      = VALUES(grow_score),
+        double_top_score= VALUES(double_top_score)
+    `;
+    const params = [
+      userId,
+      symbol,
+      valuation_score,
+      quality_score,
+      risk_score,
+      momentum_score,
+      momentum_short_score,
+      grow_score,
+      double_top_score,
+    ];
+    const [result] = await connection.query(sql, params);
+    return { affectedRows: result.affectedRows, insertId: result.insertId };
+  } finally {
+    connection.release();
+  }
+}
+
+async function deleteUserFundamental({ userId, symbol }) {
+  const connection = await getDbConnection();
+  try {
+    const [result] = await connection.query("DELETE FROM user_fundamentals WHERE user_id = ? AND symbol = ?", [
+      userId,
+      symbol,
+    ]);
+    return { affectedRows: result.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+async function deleteUserFundamentalsByUser(userId) {
+  const connection = await getDbConnection();
+  try {
+    const [result] = await connection.query("DELETE FROM user_fundamentals WHERE user_id = ?", [userId]);
+    return { affectedRows: result.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+async function getUserFundamentalsView({ userId }) {
+  const connection = await getDbConnection();
+  try {
+    const [rows] = await connection.query(
+      `
+        SELECT v.*
+        FROM v_user_fundamentals v
+        WHERE v.user_user_id = ?
+      `,
+      [userId]
+    );
+    return rows;
+  } finally {
+    connection.release();
+  }
+}
+
+// -------------------------
+// user_order_by CRUD
+// -------------------------
+async function getUserOrderBy(userId) {
+  const connection = await getDbConnection();
+  try {
+    const [rows] = await connection.query(
+      'SELECT * FROM user_order_by WHERE user_id = ? ORDER BY order_id ASC, id ASC',
+      [userId]
+    );
+    return rows;
+  } finally {
+    connection.release();
+  }
+}
+
+async function insertUserOrderBy({ userId, order_field, direction, order_id = 1 }) {
+  const connection = await getDbConnection();
+  try {
+    const [result] = await connection.query(
+      'INSERT INTO user_order_by (user_id, order_field, direction, order_id) VALUES (?, ?, ?, ?)',
+      [userId, order_field, direction, order_id]
+    );
+    return { insertId: result.insertId, affectedRows: result.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+async function updateUserOrderBy({ id, userId, order_field, direction, order_id = 1 }) {
+  const connection = await getDbConnection();
+  try {
+    const [result] = await connection.query(
+      'UPDATE user_order_by SET order_field = ?, direction = ?, order_id = ? WHERE id = ? AND user_id = ?',
+      [order_field, direction, order_id, id, userId]
+    );
+    return { affectedRows: result.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+async function deleteUserOrderBy({ id, userId }) {
+  const connection = await getDbConnection();
+  try {
+    const [result] = await connection.query(
+      'DELETE FROM user_order_by WHERE id = ? AND user_id = ?',
+      [id, userId]
+    );
+    return { affectedRows: result.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
 module.exports = {
   insertOrUpdateFundamentalsBulk,
   getAllFundamentals,
@@ -421,5 +638,18 @@ module.exports = {
   deleteFundamentalsBySymbol,
   updateFundamentalsMomentumBulk,
   insertOrUpdateFundamentalsHistoryBulk,
-  getFundamentalsHistory
+  getFundamentalsHistory,
+  getUserFilters,
+  upsertUserFilter,
+  deleteUserFilter,
+  deleteUserFiltersByUser,
+  getUserFundamentals,
+  upsertUserFundamental,
+  deleteUserFundamental,
+  deleteUserFundamentalsByUser,
+  getUserFundamentalsView,
+  getUserOrderBy,
+  insertUserOrderBy,
+  updateUserOrderBy,
+  deleteUserOrderBy,
 };
