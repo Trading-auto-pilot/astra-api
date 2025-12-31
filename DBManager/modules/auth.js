@@ -869,15 +869,15 @@ async function deletePermissionForApiKey(apiKeyId, permId) {
 /**
  * Restituisce i pesi personalizzati per uno user_id dalla tabella user_score_weights.
  */
-async function getUserScoreWeights(userId) {
+async function getUserScoreWeights(userId, pipeId = null) {
   const conn = await getDbConnection();
   try {
     const [rows] = await conn.query(
-      "SELECT * FROM user_score_weights WHERE user_id = ? LIMIT 1",
-      [userId]
+      "SELECT * FROM user_score_weights WHERE user_id = ? AND pipe_id <=> ? LIMIT 1",
+      [userId, pipeId]
     );
     if (!rows.length) {
-      logger.info(`[getUserScoreWeights] userId=${userId} non trovato`);
+      logger.info(`[getUserScoreWeights] userId=${userId} pipeId=${pipeId ?? "NULL"} non trovato`);
       return null;
     }
     return rows[0];
@@ -893,7 +893,7 @@ async function getUserScoreWeights(userId) {
  * Aggiorna i pesi personalizzati per un utente nella tabella user_score_weights.
  * payload: oggetto con le colonne da aggiornare (es. { wt_growth_momentum: 0.5 })
  */
-async function updateUserScoreWeights(userId, payload = {}) {
+async function updateUserScoreWeights(userId, payload = {}, pipeId = null) {
   const conn = await getDbConnection();
   try {
     const fields = [];
@@ -901,6 +901,7 @@ async function updateUserScoreWeights(userId, payload = {}) {
 
     Object.entries(payload || {}).forEach(([key, value]) => {
       if (value !== undefined) {
+        if (key === "pipeId") return; // ignora alias camelCase
         fields.push(`${key} = ?`);
         params.push(value);
       }
@@ -910,19 +911,64 @@ async function updateUserScoreWeights(userId, payload = {}) {
       return { ok: false, updated: 0, error: "Nessun campo da aggiornare" };
     }
 
-    params.push(userId);
+    params.push(userId, pipeId);
 
     const sql = `
       UPDATE user_score_weights
          SET ${fields.join(", ")}
        WHERE user_id = ?
+         AND pipe_id <=> ?
     `;
 
     const [res] = await conn.query(sql, params);
-    logger.info(`[updateUserScoreWeights] userId=${userId} updated=${res.affectedRows}`);
+    logger.info(
+      `[updateUserScoreWeights] userId=${userId} pipeId=${pipeId ?? "NULL"} updated=${res.affectedRows}`
+    );
     return { ok: true, updated: res.affectedRows };
   } catch (err) {
     logger.error("[updateUserScoreWeights] Error", err.message || err);
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+/**
+ * Inserisce una riga in user_score_weights per userId/pipeId (se non esiste).
+ */
+async function insertUserScoreWeights(userId, pipeId = null) {
+  const conn = await getDbConnection();
+  try {
+    const sql = `
+      INSERT INTO user_score_weights (user_id, pipe_id)
+      VALUES (?, ?)
+    `;
+    const [res] = await conn.query(sql, [userId, pipeId]);
+    logger.info(`[insertUserScoreWeights] userId=${userId} pipeId=${pipeId ?? "NULL"} inserted=${res.affectedRows}`);
+    return { ok: true, inserted: res.affectedRows, insertId: res.insertId };
+  } catch (err) {
+    logger.error("[insertUserScoreWeights] Error", err.message || err);
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function deleteUserScoreWeights(userId, pipeId = null) {
+  const conn = await getDbConnection();
+  try {
+    const sql = `
+      DELETE FROM user_score_weights
+       WHERE user_id = ?
+         AND pipe_id <=> ?
+    `;
+    const [res] = await conn.query(sql, [userId, pipeId]);
+    logger.info(
+      `[deleteUserScoreWeights] userId=${userId} pipeId=${pipeId ?? "NULL"} deleted=${res.affectedRows}`
+    );
+    return { ok: true, deleted: res.affectedRows };
+  } catch (err) {
+    logger.error("[deleteUserScoreWeights] Error", err.message || err);
     throw err;
   } finally {
     conn.release();
@@ -966,5 +1012,7 @@ module.exports = {
   deleteUserPermission,
   // pesi personalizzati
   getUserScoreWeights,
+  insertUserScoreWeights,
+  deleteUserScoreWeights,
   updateUserScoreWeights,
 };

@@ -18,4 +18,5 @@ module.exports = {
   ...require('./scheduler'),
   ...require('./auth'),
   ...require('./serviceFlags'),
+  ...require('./users'),
 };

@@ -414,42 +414,46 @@ async function getFundamentalsHistory({ symbol = null, limitDays = 70 } = {}) {
 }
 
 
-async function getUserFilters(userId) {
+async function getUserFilters(userId, pipeId = null) {
   const connection = await getDbConnection();
   try {
-    const [rows] = await connection.query(
-      "SELECT id, user_id, filter_name, value, comparator, enabled, created_at, updated_at FROM user_filters WHERE user_id = ?",
-      [userId]
-    );
+    let sql =
+      "SELECT id, user_id, pipe_id, filter_name, value, comparator, enabled, created_at, updated_at FROM user_filters WHERE user_id = ?";
+    const params = [userId];
+    if (pipeId !== null && pipeId !== undefined) {
+      sql += " AND pipe_id <=> ?";
+      params.push(pipeId);
+    }
+    const [rows] = await connection.query(sql, params);
     return rows;
   } finally {
     connection.release();
   }
 }
 
-async function upsertUserFilter({ userId, filterName, value, comparator = "GT", enabled = true }) {
+async function upsertUserFilter({ userId, filterName, value, comparator = "GT", enabled = true, pipeId = null }) {
   const connection = await getDbConnection();
   try {
     const comp = comparator === "LT" ? "LT" : "GT";
     const en = enabled ? 1 : 0;
     const sql = `
-      INSERT INTO user_filters (user_id, filter_name, value, comparator, enabled)
-      VALUES (?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE value = VALUES(value), comparator = VALUES(comparator), enabled = VALUES(enabled)
+      INSERT INTO user_filters (user_id, pipe_id, filter_name, value, comparator, enabled)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE value = VALUES(value), comparator = VALUES(comparator), enabled = VALUES(enabled), pipe_id = VALUES(pipe_id)
     `;
-    const [result] = await connection.query(sql, [userId, filterName, value, comp, en]);
+    const [result] = await connection.query(sql, [userId, pipeId, filterName, value, comp, en]);
     return { affectedRows: result.affectedRows, insertId: result.insertId };
   } finally {
     connection.release();
   }
 }
 
-async function deleteUserFilter({ userId, filterName }) {
+async function deleteUserFilter({ userId, filterName, pipeId = null }) {
   const connection = await getDbConnection();
   try {
     const [result] = await connection.query(
-      "DELETE FROM user_filters WHERE user_id = ? AND filter_name = ?",
-      [userId, filterName]
+      "DELETE FROM user_filters WHERE user_id = ? AND filter_name = ? AND (pipe_id <=> ?)",
+      [userId, filterName, pipeId]
     );
     return { affectedRows: result.affectedRows };
   } finally {
@@ -462,6 +466,39 @@ async function deleteUserFiltersByUser(userId) {
   try {
     const [result] = await connection.query("DELETE FROM user_filters WHERE user_id = ?", [userId]);
     return { affectedRows: result.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+async function deleteUserFiltersByPipe(userId, pipeId) {
+  const connection = await getDbConnection();
+  try {
+    const [result] = await connection.query(
+      "DELETE FROM user_filters WHERE user_id = ? AND pipe_id <=> ?",
+      [userId, pipeId]
+    );
+    return { affectedRows: result.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+/**
+ * Duplica i filtri di default (user_id=0, pipe_id=0) per uno user/pipe specifico.
+ */
+async function copyDefaultUserFilters(userId, pipeId) {
+  const connection = await getDbConnection();
+  try {
+    const sql = `
+      INSERT INTO user_filters (user_id, pipe_id, filter_name, value, comparator, enabled)
+      SELECT ?, ?, filter_name, value, comparator, enabled
+        FROM user_filters
+       WHERE user_id = 0
+         AND pipe_id = 0
+    `;
+    const [result] = await connection.query(sql, [userId, pipeId]);
+    return { affectedRows: result.affectedRows, insertId: result.insertId };
   } finally {
     connection.release();
   }
@@ -579,25 +616,29 @@ async function getUserFundamentalsView({ userId }) {
 // -------------------------
 // user_order_by CRUD
 // -------------------------
-async function getUserOrderBy(userId) {
+async function getUserOrderBy(userId, pipeId = null) {
   const connection = await getDbConnection();
   try {
-    const [rows] = await connection.query(
-      'SELECT * FROM user_order_by WHERE user_id = ? ORDER BY order_id ASC, id ASC',
-      [userId]
-    );
+    let sql = 'SELECT * FROM user_order_by WHERE user_id = ?';
+    const params = [userId];
+    if (pipeId !== null && pipeId !== undefined) {
+      sql += ' AND pipe_id <=> ?';
+      params.push(pipeId);
+    }
+    sql += ' ORDER BY order_id ASC, id ASC';
+    const [rows] = await connection.query(sql, params);
     return rows;
   } finally {
     connection.release();
   }
 }
 
-async function insertUserOrderBy({ userId, order_field, direction, order_id = 1 }) {
+async function insertUserOrderBy({ userId, order_field, direction, order_id = 1, pipe_id = null }) {
   const connection = await getDbConnection();
   try {
     const [result] = await connection.query(
-      'INSERT INTO user_order_by (user_id, order_field, direction, order_id) VALUES (?, ?, ?, ?)',
-      [userId, order_field, direction, order_id]
+      'INSERT INTO user_order_by (user_id, pipe_id, order_field, direction, order_id) VALUES (?, ?, ?, ?, ?)',
+      [userId, pipe_id, order_field, direction, order_id]
     );
     return { insertId: result.insertId, affectedRows: result.affectedRows };
   } finally {
@@ -605,12 +646,12 @@ async function insertUserOrderBy({ userId, order_field, direction, order_id = 1 
   }
 }
 
-async function updateUserOrderBy({ id, userId, order_field, direction, order_id = 1 }) {
+async function updateUserOrderBy({ id, userId, order_field, direction, order_id = 1, pipe_id = null }) {
   const connection = await getDbConnection();
   try {
     const [result] = await connection.query(
-      'UPDATE user_order_by SET order_field = ?, direction = ?, order_id = ? WHERE id = ? AND user_id = ?',
-      [order_field, direction, order_id, id, userId]
+      'UPDATE user_order_by SET order_field = ?, direction = ?, order_id = ?, pipe_id = ? WHERE id = ? AND user_id = ?',
+      [order_field, direction, order_id, pipe_id, id, userId]
     );
     return { affectedRows: result.affectedRows };
   } finally {
@@ -618,13 +659,16 @@ async function updateUserOrderBy({ id, userId, order_field, direction, order_id 
   }
 }
 
-async function deleteUserOrderBy({ id, userId }) {
+async function deleteUserOrderBy({ id, userId, pipeId = null }) {
   const connection = await getDbConnection();
   try {
-    const [result] = await connection.query(
-      'DELETE FROM user_order_by WHERE id = ? AND user_id = ?',
-      [id, userId]
-    );
+    let sql = 'DELETE FROM user_order_by WHERE id = ? AND user_id = ?';
+    const params = [id, userId];
+    if (pipeId !== null && pipeId !== undefined) {
+      sql += ' AND pipe_id <=> ?';
+      params.push(pipeId);
+    }
+    const [result] = await connection.query(sql, params);
     return { affectedRows: result.affectedRows };
   } finally {
     connection.release();
@@ -652,4 +696,6 @@ module.exports = {
   insertUserOrderBy,
   updateUserOrderBy,
   deleteUserOrderBy,
+  copyDefaultUserFilters,
+  deleteUserFiltersByPipe,
 };

@@ -58,11 +58,17 @@ module.exports = (dbManager) => {
    */
   router.get("/user-filters/:userId", async (req, res) => {
     const userId = Number(req.params.userId);
+    const pipeId =
+      req.query.pipe_id !== undefined
+        ? Number(req.query.pipe_id)
+        : req.query.pipeId !== undefined
+        ? Number(req.query.pipeId)
+        : null;
     if (!Number.isFinite(userId)) {
       return res.status(400).json({ ok: false, error: "userId non valido" });
     }
     try {
-      const rows = await dbManager.getUserFilters(userId);
+      const rows = await dbManager.getUserFilters(userId, Number.isFinite(pipeId) ? pipeId : null);
       return res.json({ ok: true, data: rows });
     } catch (err) {
       console.error("[GET /fundamentals/user-filters/:userId] Errore:", err.message);
@@ -75,7 +81,7 @@ module.exports = (dbManager) => {
    * Body: { user_id, filter_name, value, comparator, enabled }
    */
   router.post("/user-filters", async (req, res) => {
-    const { user_id, filter_name, value, comparator, enabled } = req.body || {};
+    const { user_id, filter_name, value, comparator, enabled, pipe_id = null, pipeId = null } = req.body || {};
     const userId = Number(user_id);
     const valNum = Number(value);
     if (!Number.isFinite(userId) || !filter_name || !Number.isFinite(valNum)) {
@@ -88,6 +94,7 @@ module.exports = (dbManager) => {
         value: valNum,
         comparator: comparator === "LT" ? "LT" : "GT",
         enabled: enabled !== undefined ? Boolean(enabled) : true,
+        pipeId: Number.isFinite(Number(pipe_id ?? pipeId)) ? Number(pipe_id ?? pipeId) : null,
       });
       return res.json({ ok: true, ...result });
     } catch (err) {
@@ -103,7 +110,7 @@ module.exports = (dbManager) => {
   router.put("/user-filters/:userId/:filterName", async (req, res) => {
     const userId = Number(req.params.userId);
     const filterName = req.params.filterName;
-    const { value, comparator, enabled } = req.body || {};
+    const { value, comparator, enabled, pipe_id = null, pipeId = null } = req.body || {};
     const valNum = value !== undefined ? Number(value) : null;
     if (!Number.isFinite(userId) || !filterName) {
       return res.status(400).json({ ok: false, error: "Parametri mancanti" });
@@ -118,6 +125,7 @@ module.exports = (dbManager) => {
         value: valNum !== null ? valNum : 0,
         comparator: comparator === "LT" ? "LT" : "GT",
         enabled: enabled !== undefined ? Boolean(enabled) : true,
+        pipeId: Number.isFinite(Number(pipe_id ?? pipeId)) ? Number(pipe_id ?? pipeId) : null,
       });
       return res.json({ ok: true, ...result });
     } catch (err) {
@@ -132,11 +140,21 @@ module.exports = (dbManager) => {
   router.delete("/user-filters/:userId/:filterName", async (req, res) => {
     const userId = Number(req.params.userId);
     const filterName = req.params.filterName;
+    const pipeId =
+      req.query.pipe_id !== undefined
+        ? Number(req.query.pipe_id)
+        : req.query.pipeId !== undefined
+        ? Number(req.query.pipeId)
+        : null;
     if (!Number.isFinite(userId) || !filterName) {
       return res.status(400).json({ ok: false, error: "Parametri mancanti" });
     }
     try {
-      const result = await dbManager.deleteUserFilter({ userId, filterName });
+      const result = await dbManager.deleteUserFilter({
+        userId,
+        filterName,
+        pipeId: Number.isFinite(Number(pipeId)) ? Number(pipeId) : null,
+      });
       if (!result.affectedRows) {
         return res.status(404).json({ ok: false, error: "Filtro non trovato" });
       }
@@ -232,9 +250,15 @@ module.exports = (dbManager) => {
   // CRUD user_order_by
   router.get("/user-order/:userId", async (req, res) => {
     const userId = Number(req.params.userId);
+    const pipeId =
+      req.query.pipe_id !== undefined
+        ? Number(req.query.pipe_id)
+        : req.query.pipeId !== undefined
+        ? Number(req.query.pipeId)
+        : null;
     if (!Number.isFinite(userId)) return res.status(400).json({ ok: false, error: "userId non valido" });
     try {
-      const rows = await dbManager.getUserOrderBy(userId);
+      const rows = await dbManager.getUserOrderBy(userId, Number.isFinite(pipeId) ? pipeId : null);
       return res.json({ ok: true, data: rows });
     } catch (err) {
       console.error("[GET /fundamentals/user-order/:userId] Errore:", err?.message || err);
@@ -243,10 +267,11 @@ module.exports = (dbManager) => {
   });
 
   router.post("/user-order", async (req, res) => {
-    const { user_id, order_field, direction, order_id } = req.body || {};
+    const { user_id, order_field, direction, order_id, pipe_id = null, pipeId = null } = req.body || {};
     if (!Number.isFinite(Number(user_id)) || !order_field) {
       return res.status(400).json({ ok: false, error: "user_id e order_field obbligatori" });
     }
+    const pipeVal = Number.isFinite(Number(pipe_id ?? pipeId)) ? Number(pipe_id ?? pipeId) : null;
     const dir = String(direction || "DESC").toUpperCase() === "ASC" ? "ASC" : "DESC";
     try {
       const result = await dbManager.insertUserOrderBy({
@@ -254,6 +279,7 @@ module.exports = (dbManager) => {
         order_field,
         direction: dir,
         order_id: Number.isFinite(Number(order_id)) ? Number(order_id) : 1,
+        pipe_id: pipeVal,
       });
       return res.json({ ok: true, ...result });
     } catch (err) {
@@ -264,10 +290,11 @@ module.exports = (dbManager) => {
 
   router.put("/user-order/:id", async (req, res) => {
     const id = Number(req.params.id);
-    const { user_id, order_field, direction, order_id } = req.body || {};
+    const { user_id, order_field, direction, order_id, pipe_id = null, pipeId = null } = req.body || {};
     if (!Number.isFinite(id) || !Number.isFinite(Number(user_id)) || !order_field) {
       return res.status(400).json({ ok: false, error: "id, user_id e order_field obbligatori" });
     }
+    const pipeVal = Number.isFinite(Number(pipe_id ?? pipeId)) ? Number(pipe_id ?? pipeId) : null;
     const dir = String(direction || "DESC").toUpperCase() === "ASC" ? "ASC" : "DESC";
     try {
       const result = await dbManager.updateUserOrderBy({
@@ -276,6 +303,7 @@ module.exports = (dbManager) => {
         order_field,
         direction: dir,
         order_id: Number.isFinite(Number(order_id)) ? Number(order_id) : 1,
+        pipe_id: pipeVal,
       });
       if (!result.affectedRows) return res.status(404).json({ ok: false, error: "Record non trovato" });
       return res.json({ ok: true });
@@ -288,11 +316,21 @@ module.exports = (dbManager) => {
   router.delete("/user-order/:id/:userId", async (req, res) => {
     const id = Number(req.params.id);
     const userId = Number(req.params.userId);
+    const pipeId =
+      req.query.pipe_id !== undefined
+        ? Number(req.query.pipe_id)
+        : req.query.pipeId !== undefined
+        ? Number(req.query.pipeId)
+        : null;
     if (!Number.isFinite(id) || !Number.isFinite(userId)) {
       return res.status(400).json({ ok: false, error: "id e userId obbligatori" });
     }
     try {
-      const result = await dbManager.deleteUserOrderBy({ id, userId });
+      const result = await dbManager.deleteUserOrderBy({
+        id,
+        userId,
+        pipeId: Number.isFinite(pipeId) ? pipeId : null,
+      });
       if (!result.affectedRows) return res.status(404).json({ ok: false, error: "Record non trovato" });
       return res.json({ ok: true });
     } catch (err) {

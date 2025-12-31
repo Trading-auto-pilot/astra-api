@@ -50,7 +50,7 @@ services:
       # 🔐 middleware di autenticazione → chiama authService /auth/validate
       - "traefik.http.middlewares.auth-forward.forwardauth.address=http://authservice:3015/auth/validate"
       - "traefik.http.middlewares.auth-forward.forwardauth.trustForwardHeader=true"
-      - "traefik.http.middlewares.auth-forward.forwardauth.authResponseHeaders=X-User-Id,X-Auth-Subject-Type"
+      - "traefik.http.middlewares.auth-forward.forwardauth.authResponseHeaders=X-User-Id,X-Auth-Subject-Type,X-Api-Key-Id"
 
       # CORS Configuration
       - "traefik.http.middlewares.cors-default.headers.accessControlAllowOriginList=https://trading.expovin.it,http://localhost:5173,http://localhost:8080"

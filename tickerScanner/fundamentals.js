@@ -104,30 +104,78 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
         me?.weights;
       return normalizeWeights(w);
     } catch (err) {
-      logger.warn(`${fnPrefix} fetchUserWeights fallback default`, {
-        error: err?.response?.data || err?.message || String(err),
-      });
+      logger.warning(`${fnPrefix} fetchUserWeights fallback default ${safeStringify(err?.response?.data || err?.message || err)}`);
       return DEFAULT_WEIGHTS;
     }
   };
 
-  const fetchUserId = async (authHeader) => {
-    if (!authHeader || !authHeader.toLowerCase().startsWith("bearer")) return null;
-    const url = `${authServiceUrl}/auth/admin/me`;
+  const fetchApiKeyId = async (apiKey) => {
+    if (!apiKey) return null;
+    const url = `${dbmanagerUrl}/auth/api-keys/lookup?api_key=${encodeURIComponent(apiKey)}`;
     try {
-      const resp = await axios.get(url, {
-        headers: { Authorization: authHeader },
-        timeout: 6000,
-      });
-      const me = resp.data || {};
-      const id = me?.user?.id ?? me?.id ?? me?.tokenPayload?.sub;
+      const resp = await axios.get(url, { timeout: 6000 });
+      const row = resp.data;
+      const id = row?.id ?? row?.api_key_id ?? row?.apiKeyId;
       return Number.isFinite(Number(id)) ? Number(id) : null;
     } catch (err) {
-      logger.warn(`${fnPrefix} fetchUserId fallback null`, {
-        error: err?.response?.data || err?.message || String(err),
-      });
+      logger.warning(`${fnPrefix} fetchApiKeyId failed ${safeStringify(err?.response?.data || err?.message || err)}`);
       return null;
     }
+  };
+
+  const fetchUserId = async (req) => {
+    // 1) header già forwardato da auth-service
+    const headerUser = req?.headers?.["x-user-id"] ?? req?.headers?.["x-userid"];
+    if (headerUser && Number.isFinite(Number(headerUser))) return Number(headerUser);
+
+    // 2) Bearer token
+    const authHeader = req?.headers?.authorization;
+    if (authHeader && authHeader.toLowerCase().startsWith("bearer")) {
+      const url = `${authServiceUrl}/auth/admin/me`;
+      try {
+        const resp = await axios.get(url, {
+          headers: { Authorization: authHeader },
+          timeout: 6000,
+        });
+        const me = resp.data || {};
+        const id = me?.user?.id ?? me?.id ?? me?.tokenPayload?.sub;
+        if (Number.isFinite(Number(id))) return Number(id);
+      } catch (err) {
+        logger.warning(`${fnPrefix} fetchUserId bearer failed ${safeStringify(err?.response?.data || err?.message || err)}`);
+      }
+    }
+
+    // 3) API key: usa eventualmente l'header forwardato con id chiave
+    const apiKeyId = req?.headers?.["x-api-key"] ?? req?.headers?.["x-api-keyid"];
+    if (apiKeyId && Number.isFinite(Number(apiKeyId))) return Number(apiKeyId);
+
+    // 4) Se manca l'id ma il soggetto è api_key, prova a risolverlo leggendo l'header X-API-Key
+    const subjectType = (req?.headers?.["x-auth-subject-type"] || "").toLowerCase();
+    const apiKeyValue =
+      req?.headers?.["x-api-key"] ||
+      req?.headers?.["x-api-keyid"] ||
+      req?.headers?.["x-api-key-id"];
+    if ((subjectType === "api_key" || apiKeyValue) && apiKeyValue) {
+      const resolved = await fetchApiKeyId(apiKeyValue);
+      if (resolved) return resolved;
+    }
+
+    // Log diagnostico prima di restituire null
+    logger.error(
+      `${fnPrefix} fetchUserId missing ${safeStringify({
+        headers: {
+          "x-user-id": req?.headers?.["x-user-id"],
+          "x-api-key-id": req?.headers?.["x-api-key-id"],
+          "x-auth-subject-type": req?.headers?.["x-auth-subject-type"],
+          "x-api-key": req?.headers?.["x-api-key"] ? "present" : "absent",
+          auth: req?.headers?.authorization ? "present" : "absent",
+        },
+        path: req?.path,
+        method: req?.method,
+      })}`
+    );
+
+    return null;
   };
 
   const safeNum = (v) => {
@@ -294,86 +342,184 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       });
       return res.json(data);
     } catch (err) {
-      logger.error(`${fn} error`, { error: err?.message || String(err) });
+      logger.error(`${fn} error`, { error: safeStringify(err?.message || err) });
       return res.status(500).json({ error: "Internal server error" });
     }
   });
 
   // CRUD user-order (proxy verso DBManager)
-  router.get("/user-order", async (req, res) => {
+  const getUserOrder = async (req, res) => {
     const fn = `${fnPrefix}.GET:/user-order`;
     try {
-      const userId = await fetchUserId(req.headers.authorization);
-      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
-      const url = `${dbmanagerUrl}/fundamentals/user-order/${userId}`;
+      const userId = await fetchUserId(req);
+      if (!userId) {
+        logger.error(
+          `${fn} userId missing ${safeStringify({
+            headers: {
+              "x-user-id": req.headers["x-user-id"],
+              "x-api-key-id": req.headers["x-api-key-id"],
+              "x-auth-subject-type": req.headers["x-auth-subject-type"],
+              auth: req.headers.authorization ? "present" : "absent",
+            },
+          })}`
+        );
+        return res.status(401).json({ ok: false, error: "User non identificato" });
+      }
+      const pipeId = req.params.pipeId ?? req.query.pipe_id ?? req.query.pipeId;
+      const url = `${dbmanagerUrl}/fundamentals/user-order/${userId}${
+        pipeId ? `?pipeId=${encodeURIComponent(pipeId)}` : ""
+      }`;
       const resp = await axios.get(url, { timeout: 6000 });
       return res.json(resp.data);
     } catch (err) {
-      logger.error(`${fn} error`, { error: err?.response?.data || err?.message || String(err) });
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
       return res.status(err?.response?.status || 500).json({
         ok: false,
         error: err?.response?.data || "Errore lettura user_order_by",
       });
     }
-  });
+  };
 
-  router.post("/user-order", async (req, res) => {
+  router.get("/user-order", getUserOrder);
+  router.get("/user-order/:pipeId", getUserOrder);
+
+  const postUserOrder = async (req, res) => {
     const fn = `${fnPrefix}.POST:/user-order`;
     try {
-      const userId = await fetchUserId(req.headers.authorization);
-      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
-      const body = { ...req.body, user_id: userId };
+      const userId = await fetchUserId(req);
+      if (!userId) {
+        logger.error(
+          `${fn} userId missing ${safeStringify({
+            headers: {
+              "x-user-id": req.headers["x-user-id"],
+              "x-api-key-id": req.headers["x-api-key-id"],
+              "x-auth-subject-type": req.headers["x-auth-subject-type"],
+              auth: req.headers.authorization ? "present" : "absent",
+            },
+          })}`
+        );
+        return res.status(401).json({ ok: false, error: "User non identificato" });
+      }
+      const pipeId =
+        req.params.pipeId ??
+        req.body?.pipe_id ??
+        req.body?.pipeId ??
+        req.query?.pipe_id ??
+        req.query?.pipeId;
+      const body = { ...req.body, user_id: userId, ...(pipeId !== undefined ? { pipe_id: pipeId } : {}) };
       const url = `${dbmanagerUrl}/fundamentals/user-order`;
       const resp = await axios.post(url, body, { timeout: 8000 });
       return res.json(resp.data);
     } catch (err) {
-      logger.error(`${fn} error`, { error: err?.response?.data || err?.message || String(err) });
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
       return res.status(500).json({ ok: false, error: "Errore salvataggio user_order_by" });
     }
-  });
+  };
 
-  router.put("/user-order/:id", async (req, res) => {
+  router.post("/user-order", postUserOrder);
+  router.post("/user-order/:pipeId", postUserOrder);
+
+  const putUserOrder = async (req, res) => {
     const fn = `${fnPrefix}.PUT:/user-order/:id`;
     try {
-      const userId = await fetchUserId(req.headers.authorization);
-      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const userId = await fetchUserId(req);
+      if (!userId) {
+        logger.error(
+          `${fn} userId missing ${safeStringify({
+            headers: {
+              "x-user-id": req.headers["x-user-id"],
+              "x-api-key-id": req.headers["x-api-key-id"],
+              "x-auth-subject-type": req.headers["x-auth-subject-type"],
+              auth: req.headers.authorization ? "present" : "absent",
+            },
+          })}`
+        );
+        return res.status(401).json({ ok: false, error: "User non identificato" });
+      }
       const id = req.params.id;
-      const body = { ...req.body, user_id: userId };
-      const url = `${dbmanagerUrl}/fundamentals/user-order/${id}`;
+      const pipeIdVal =
+        req.params.pipeId ??
+        req.body?.pipe_id ??
+        req.body?.pipeId ??
+        req.query?.pipe_id ??
+        req.query?.pipeId;
+      const body = { ...req.body, user_id: userId, ...(pipeIdVal !== undefined ? { pipe_id: pipeIdVal } : {}) };
+      const pipeQuery = pipeIdVal ? `?pipeId=${encodeURIComponent(pipeIdVal)}` : "";
+      const url = `${dbmanagerUrl}/fundamentals/user-order/${id}${pipeQuery}`;
       const resp = await axios.put(url, body, { timeout: 8000 });
       return res.json(resp.data);
     } catch (err) {
-      logger.error(`${fn} error`, { error: err?.response?.data || err?.message || String(err) });
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
       return res.status(500).json({ ok: false, error: "Errore aggiornamento user_order_by" });
     }
-  });
+  };
 
-  router.delete("/user-order/:id", async (req, res) => {
+  router.put("/user-order/:id", putUserOrder);
+  router.put("/user-order/:id/:pipeId", putUserOrder);
+
+  const deleteUserOrder = async (req, res) => {
     const fn = `${fnPrefix}.DELETE:/user-order/:id`;
     try {
-      const userId = await fetchUserId(req.headers.authorization);
-      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const userId = await fetchUserId(req);
+      if (!userId) {
+        logger.error(
+          `${fn} userId missing ${safeStringify({
+            headers: {
+              "x-user-id": req.headers["x-user-id"],
+              "x-api-key-id": req.headers["x-api-key-id"],
+              "x-auth-subject-type": req.headers["x-auth-subject-type"],
+              auth: req.headers.authorization ? "present" : "absent",
+            },
+          })}`
+        );
+        return res.status(401).json({ ok: false, error: "User non identificato" });
+      }
       const id = req.params.id;
-      const url = `${dbmanagerUrl}/fundamentals/user-order/${id}/${userId}`;
+      const rawPipe =
+        req.params.pipeId ??
+        req.query.pipe_id ??
+        req.query.pipeId ??
+        req.body?.pipe_id ??
+        req.body?.pipeId;
+      const pipeId = rawPipe ? `?pipeId=${encodeURIComponent(rawPipe)}` : "";
+      const url = `${dbmanagerUrl}/fundamentals/user-order/${id}/${userId}${pipeId}`;
       const resp = await axios.delete(url, { timeout: 8000 });
       return res.json(resp.data);
     } catch (err) {
-      logger.error(`${fn} error`, { error: err?.response?.data || err?.message || String(err) });
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
       return res.status(500).json({ ok: false, error: "Errore cancellazione user_order_by" });
     }
-  });
+  };
+
+  router.delete("/user-order/:id", deleteUserOrder);
+  router.delete("/user-order/:id/:pipeId", deleteUserOrder);
 
   // CRUD user_filters (proxy verso DBManager)
-  router.get("/user-filters", async (req, res) => {
-    const fn = `${fnPrefix}.GET:/user-filters`;
+  router.get("/user-filters/:pipeId", async (req, res) => {
+    const fn = `${fnPrefix}.GET:/user-filters/:pipeId`;
     try {
-      const userId = await fetchUserId(req.headers.authorization);
-      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
-      const url = `${dbmanagerUrl}/fundamentals/user-filters/${userId}`;
+      const userId = await fetchUserId(req);
+      if (!userId) {
+        logger.error(
+          `${fn} userId missing ${safeStringify({
+            headers: {
+              "x-user-id": req.headers["x-user-id"],
+              "x-api-key-id": req.headers["x-api-key-id"],
+              "x-auth-subject-type": req.headers["x-auth-subject-type"],
+              auth: req.headers.authorization ? "present" : "absent",
+            },
+          })}`
+        );
+        return res.status(401).json({ ok: false, error: "User non identificato" });
+      }
+      const pipeId = req.params.pipeId ?? req.query.pipe_id ?? req.query.pipeId;
+      const url = `${dbmanagerUrl}/fundamentals/user-filters/${userId}${
+        pipeId ? `?pipeId=${encodeURIComponent(pipeId)}` : ""
+      }`;
       const resp = await axios.get(url, { timeout: 6000 });
       return res.json(resp.data);
     } catch (err) {
-      logger.error(`${fn} error`, { error: err?.response?.data || err?.message || String(err) });
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
       return res.status(500).json({ ok: false, error: "Errore lettura user_filters" });
     }
   });
@@ -381,53 +527,276 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
   router.post("/user-filters", async (req, res) => {
     const fn = `${fnPrefix}.POST:/user-filters`;
     try {
-      const userId = await fetchUserId(req.headers.authorization);
-      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
-      const body = { ...req.body, user_id: userId };
+      const userId = await fetchUserId(req);
+      if (!userId) {
+        logger.error(
+          `${fn} userId missing ${safeStringify({
+            headers: {
+              "x-user-id": req.headers["x-user-id"],
+              "x-api-key-id": req.headers["x-api-key-id"],
+              "x-auth-subject-type": req.headers["x-auth-subject-type"],
+              auth: req.headers.authorization ? "present" : "absent",
+            },
+          })}`
+        );
+        return res.status(401).json({ ok: false, error: "User non identificato" });
+      }
+      const pipeId =
+        req.body?.pipe_id ?? req.body?.pipeId ?? req.query?.pipe_id ?? req.query?.pipeId;
+      const body = { ...req.body, user_id: userId, ...(pipeId !== undefined ? { pipe_id: pipeId } : {}) };
       const url = `${dbmanagerUrl}/fundamentals/user-filters`;
       const resp = await axios.post(url, body, { timeout: 8000 });
       return res.json(resp.data);
     } catch (err) {
-      logger.error(`${fn} error`, { error: err?.response?.data || err?.message || String(err) });
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
       return res.status(500).json({ ok: false, error: "Errore salvataggio user_filters" });
     }
   });
 
-  router.put("/user-filters/:filterName", async (req, res) => {
-    const fn = `${fnPrefix}.PUT:/user-filters/:filterName`;
+  router.put("/user-filters/:filterName/:pipeId", async (req, res) => {
+    const fn = `${fnPrefix}.PUT:/user-filters/:filterName/:pipeId`;
     try {
-      const userId = await fetchUserId(req.headers.authorization);
-      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const userId = await fetchUserId(req);
+      if (!userId) {
+        logger.error(
+          `${fn} userId missing ${safeStringify({
+            headers: {
+              "x-user-id": req.headers["x-user-id"],
+              "x-api-key-id": req.headers["x-api-key-id"],
+              "x-auth-subject-type": req.headers["x-auth-subject-type"],
+              auth: req.headers.authorization ? "present" : "absent",
+            },
+          })}`
+        );
+        return res.status(401).json({ ok: false, error: "User non identificato" });
+      }
       const filterName = req.params.filterName;
-      const url = `${dbmanagerUrl}/fundamentals/user-filters/${userId}/${encodeURIComponent(filterName)}`;
-      const resp = await axios.put(url, req.body || {}, { timeout: 8000 });
+      const pipeIdVal =
+        req.params.pipeId ??
+        req.body?.pipe_id ??
+        req.body?.pipeId ??
+        req.query?.pipe_id ??
+        req.query?.pipeId;
+      const pipeId = pipeIdVal ? `?pipeId=${encodeURIComponent(pipeIdVal)}` : "";
+      const url = `${dbmanagerUrl}/fundamentals/user-filters/${userId}/${encodeURIComponent(filterName)}${pipeId}`;
+      const body = { ...req.body, user_id: userId, ...(pipeIdVal !== undefined ? { pipe_id: pipeIdVal } : {}) };
+      const resp = await axios.put(url, body || {}, { timeout: 8000 });
       return res.json(resp.data);
     } catch (err) {
-      logger.error(`${fn} error`, { error: err?.response?.data || err?.message || String(err) });
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
       return res.status(500).json({ ok: false, error: "Errore aggiornamento user_filters" });
     }
   });
 
-  router.delete("/user-filters/:filterName", async (req, res) => {
-    const fn = `${fnPrefix}.DELETE:/user-filters/:filterName`;
+  router.delete("/user-filters/:filterName/:pipeId", async (req, res) => {
+    const fn = `${fnPrefix}.DELETE:/user-filters/:filterName/:pipeId`;
     try {
-      const userId = await fetchUserId(req.headers.authorization);
+      const userId = await fetchUserId(req);
       if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
       const filterName = req.params.filterName;
-      const url = `${dbmanagerUrl}/fundamentals/user-filters/${userId}/${encodeURIComponent(filterName)}`;
+      const rawPipe =
+        req.params.pipeId ??
+        req.query.pipe_id ??
+        req.query.pipeId ??
+        req.body?.pipe_id ??
+        req.body?.pipeId;
+      const pipeId = rawPipe ? `?pipeId=${encodeURIComponent(rawPipe)}` : "";
+      const url = `${dbmanagerUrl}/fundamentals/user-filters/${userId}/${encodeURIComponent(filterName)}${pipeId}`;
       const resp = await axios.delete(url, { timeout: 8000 });
       return res.json(resp.data);
     } catch (err) {
-      logger.error(`${fn} error`, { error: err?.response?.data || err?.message || String(err) });
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
       return res.status(500).json({ ok: false, error: "Errore cancellazione user_filters" });
     }
   });
+
+  // CRUD user_pipes (proxy verso DBManager, userId dal token). Espone endpoint senza userId nel path
+  async function handleGetPipes(req, res) {
+    const fn = `${fnPrefix}.GET:/users/pipes`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const url = `${dbmanagerUrl}/users/${userId}/pipes`;
+      const resp = await axios.get(url, { timeout: 6000 });
+      return res.json(resp.data);
+    } catch (err) {
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
+      return res.status(err?.response?.status || 500).json({ ok: false, error: "Errore lettura pipes" });
+    }
+  }
+
+  async function handleGetPipeById(req, res) {
+    const fn = `${fnPrefix}.GET:/users/pipes/:id`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const url = `${dbmanagerUrl}/users/${userId}/pipes/${req.params.id}`;
+      const resp = await axios.get(url, { timeout: 6000 });
+      return res.json(resp.data);
+    } catch (err) {
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
+      return res.status(err?.response?.status || 500).json({ ok: false, error: "Errore lettura pipe" });
+    }
+  }
+
+  async function handleCreatePipe(req, res) {
+    const fn = `${fnPrefix}.POST:/users/pipes`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const body = { ...req.body, user_id: userId };
+      const url = `${dbmanagerUrl}/users/${userId}/pipes`;
+      const resp = await axios.post(url, body, { timeout: 8000 });
+      const payload = resp.data || {};
+
+      // Prova a ricavare il pipeId appena creato
+      const pipeId = Number(
+        payload?.insertId ??
+          payload?.data?.insertId ??
+          payload?.id ??
+          payload?.data?.id
+      );
+
+      logger.info(`${fn} pipe creata ${safeStringify({ userId, pipeId, payload })}`);
+
+      // Step 1: crea riga user_score_weights per la nuova pipe (best-effort)
+      if (pipeId !== undefined && pipeId !== null) {
+        try {
+          await axios.post(
+            `${dbmanagerUrl}/auth/users/${userId}/score-weights/${encodeURIComponent(pipeId)}`,
+            {},
+            { timeout: 5000 }
+          );
+          logger.info(`${fn} score_weights creato ${safeStringify({ userId, pipeId })}`);
+        } catch (err) {
+          logger.warning(`${fn} add score_weights fallback ${safeStringify(err?.response?.data || err?.message || err)}`);
+        }
+
+        // Step 2: duplica i filtri di default (user_id=0, pipe_id=0) per il nuovo utente/pipe
+        try {
+          await axios.post(
+            `${dbmanagerUrl}/auth/users/${userId}/filters/${encodeURIComponent(pipeId)}`,
+            {},
+            { timeout: 8000 }
+          );
+          logger.info(`${fn} filtri default copiati ${safeStringify({ userId, pipeId })}`);
+        } catch (err) {
+          logger.warning(`${fn} default filters copy failed ${safeStringify(err?.response?.data || err?.message || err)}`);
+        }
+      } else {
+        logger.warning(`${fn} pipeId non determinato, salto setup pesi/filtri ${safeStringify({ response: payload })}`);
+      }
+
+      return res.json(payload);
+    } catch (err) {
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
+      return res.status(err?.response?.status || 500).json({ ok: false, error: "Errore creazione pipe" });
+    }
+  }
+
+  async function handleUpdatePipe(req, res) {
+    const fn = `${fnPrefix}.PUT:/users/pipes/:id`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const body = { ...req.body, user_id: userId };
+      const url = `${dbmanagerUrl}/users/${userId}/pipes/${req.params.id}`;
+      const resp = await axios.put(url, body, { timeout: 8000 });
+      return res.json(resp.data);
+    } catch (err) {
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
+      return res.status(err?.response?.status || 500).json({ ok: false, error: "Errore aggiornamento pipe" });
+    }
+  }
+
+  async function handleDeletePipe(req, res) {
+    const fn = `${fnPrefix}.DELETE:/users/pipes/:id`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const url = `${dbmanagerUrl}/users/${userId}/pipes/${req.params.id}`;
+      const resp = await axios.delete(url, { timeout: 8000 });
+      const payload = resp.data || {};
+      const pipeIdNum = Number(req.params.id);
+
+      // Best-effort: pulizia risorse collegate (pesi, filtri, order_by)
+      if (Number.isFinite(pipeIdNum)) {
+        // 1) score_weights
+        try {
+          await axios.delete(`${dbmanagerUrl}/auth/users/${userId}/score-weights/${pipeIdNum}`, { timeout: 5000 });
+        } catch (err) {
+          logger.warning(`${fn} cleanup score_weights failed`, {
+            error: safeStringify(err?.response?.data || err?.message || err),
+          });
+        }
+
+        // 2) user_filters per quella pipe
+        try {
+          await axios.delete(
+            `${dbmanagerUrl}/auth/users/${userId}/filters/${encodeURIComponent(pipeIdNum)}`,
+            { timeout: 6000 }
+          );
+        } catch (err) {
+          logger.warning(`${fn} cleanup filters failed`, { error: safeStringify(err?.response?.data || err?.message || err) });
+        }
+
+        // 3) user_order_by per quella pipe
+        try {
+          const orderResp = await axios.get(
+            `${dbmanagerUrl}/fundamentals/user-order/${encodeURIComponent(pipeIdNum)}`,
+            { timeout: 6000 }
+          );
+          const orders = Array.isArray(orderResp?.data?.data)
+            ? orderResp.data.data
+            : Array.isArray(orderResp?.data)
+              ? orderResp.data
+              : [];
+          for (const o of orders) {
+            const id = o?.id;
+            if (!id) continue;
+            try {
+              await axios.delete(
+                `${dbmanagerUrl}/fundamentals/user-order/${id}?pipeId=${encodeURIComponent(pipeIdNum)}`,
+                { timeout: 5000 }
+              );
+            } catch (e) {
+              logger.warning(`${fn} cleanup order failed`, {
+                id,
+                error: safeStringify(e?.response?.data || e?.message || e),
+              });
+            }
+          }
+        } catch (err) {
+          logger.warning(`${fn} cleanup order fetch failed`, {
+            error: safeStringify(err?.response?.data || err?.message || err),
+          });
+        }
+      }
+
+      return res.json(payload);
+    } catch (err) {
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
+      return res.status(err?.response?.status || 500).json({ ok: false, error: "Errore cancellazione pipe" });
+    }
+  }
+
+  router.get("/users/pipes", handleGetPipes);
+  router.get("/users/pipes/:id", handleGetPipeById);
+  router.post("/users/pipes", handleCreatePipe);
+  router.put("/users/pipes/:id", handleUpdatePipe);
+  router.delete("/users/pipes/:id", handleDeletePipe);
+  // Compat: vecchio path con userId nel path, ma ignoriamo il parametro
+  router.get("/users/:userId/pipes", handleGetPipes);
+  router.get("/users/:userId/pipes/:id", handleGetPipeById);
+  router.post("/users/:userId/pipes", handleCreatePipe);
+  router.put("/users/:userId/pipes/:id", handleUpdatePipe);
+  router.delete("/users/:userId/pipes/:id", handleDeletePipe);
 
   // GET /fundamentals/user-fundamentals-view -> proxy verso DBManager usando l'utente autenticato
   router.get("/user-fundamentals-view", async (req, res) => {
     const fn = `${fnPrefix}.GET:/user-fundamentals-view`;
     try {
-      const userId = await fetchUserId(req.headers.authorization);
+      const userId = await fetchUserId(req);
       if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
       const url = `${dbmanagerUrl}/fundamentals/user-fundamentals-view/${userId}`;
       const resp = await axios.get(url, { timeout: 8000, transformResponse: (r) => r });
@@ -442,9 +811,72 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       return res.status(resp.status || 200).json(parsed);
     } catch (err) {
       const payload = err?.response?.data;
-      const errorStr = payload ? safeStringify(payload) : err?.message || String(err);
+      const errorStr = payload ? safeStringify(payload) : safeStringify(err?.message || String(err));
       logger.error(`${fn} error ${errorStr}`);
       return res.status(500).json({ ok: false, error: errorStr || "Errore lettura user_fundamentals" });
+    }
+  });
+
+  // user_score_weights (proxy verso DBManager, pipe opzionale)
+  router.get("/user/score-weights/:pipeId", async (req, res) => {
+    const fn = `${fnPrefix}.GET:/user/score-weights/:pipeId`;
+    try {
+      const userId = await fetchUserId(req);
+      const pipeId = Number(req.params.pipeId);
+      if (!userId || !Number.isFinite(pipeId)) {
+        logger.error(
+          `${fn} userId or pipeId missing/invalid ${safeStringify({
+            headers: {
+              "x-user-id": req.headers["x-user-id"],
+              "x-api-key-id": req.headers["x-api-key-id"],
+              "x-auth-subject-type": req.headers["x-auth-subject-type"],
+              auth: req.headers.authorization ? "present" : "absent",
+            },
+            pipeId,
+          })}`
+        );
+        return res.status(401).json({ ok: false, error: "User o pipe non identificato" });
+      }
+      const url = `${dbmanagerUrl}/auth/users/${userId}/score-weights/${encodeURIComponent(pipeId)}`;
+      const resp = await axios.get(url, { timeout: 6000 });
+      return res.json(resp.data);
+    } catch (err) {
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
+      return res
+        .status(err?.response?.status || 500)
+        .json({ ok: false, error: err?.response?.data || "Errore lettura score_weights" });
+    }
+  });
+
+  router.put("/user/score-weights/:pipeId", async (req, res) => {
+    const fn = `${fnPrefix}.PUT:/user/score-weights/:pipeId`;
+    console.log(fn);
+    try {
+      const userId = await fetchUserId(req);
+      const pipeId = Number(req.params.pipeId);
+      if (!userId || !Number.isFinite(pipeId)) {
+        logger.error(
+          `${fn} userId or pipeId missing/invalid ${safeStringify({
+            headers: {
+              "x-user-id": req.headers["x-user-id"],
+              "x-api-key-id": req.headers["x-api-key-id"],
+              "x-auth-subject-type": req.headers["x-auth-subject-type"],
+              auth: req.headers.authorization ? "present" : "absent",
+            },
+            pipeId,
+          })}`
+        );
+        return res.status(401).json({ ok: false, error: "User o pipe non identificato" });
+      }
+      const body = { ...req.body, pipe_id: pipeId, pipeId: pipeId };
+      const url = `${dbmanagerUrl}/auth/users/${userId}/score-weights/${encodeURIComponent(pipeId)}`;
+      const resp = await axios.put(url, body, { timeout: 8000 });
+      return res.json(resp.data);
+    } catch (err) {
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
+      return res
+        .status(err?.response?.status || 500)
+        .json({ ok: false, error: err?.response?.data || "Errore aggiornamento score_weights" });
     }
   });
 
@@ -499,7 +931,7 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
 
       return res.json({ ok: true, saved });
     } catch (err) {
-      logger.error(`${fn} error`, { error: err?.response?.data || err?.message || String(err) });
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
       return res.status(500).json({ ok: false, error: "Errore ricalcolo user fundamentals" });
     }
   });
@@ -518,7 +950,7 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       logger.trace(`${fn} success`, { count: Array.isArray(decorated) ? decorated.length : undefined });
       res.json(decorated);
     } catch (err) {
-      logger.error(`${fn} error`, { error: err?.message || String(err) });
+      logger.error(`${fn} error`, { error: safeStringify(err?.message || err) });
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -533,7 +965,7 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       const weights = await fetchUserWeights(req.headers.authorization);
 
       if (!symbol) {
-        logger.warn(`${fn} missing symbol`);
+        logger.warning(`${fn} missing symbol`);
         return res.status(400).json({ error: "symbol is required" });
       }
 
@@ -549,7 +981,7 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       logger.trace(`${fn} success`, { symbol });
       res.json(decorated);
     } catch (err) {
-      logger.error(`${fn} error`, { symbol, error: err?.message || String(err) });
+      logger.error(`${fn} error`, { symbol, error: safeStringify(err?.message || err) });
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -596,7 +1028,7 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
         : results;
       return res.json({ ok: true, count: Array.isArray(decorated) ? decorated.length : 0, results: decorated });
     } catch (err) {
-      logger.error(`${fn} error`, { error: err?.message || String(err) });
+      logger.error(`${fn} error`, { error: safeStringify(err?.message || err) });
       return res.status(500).json({ ok: false, error: err?.message || "Internal server error" });
     }
   });
