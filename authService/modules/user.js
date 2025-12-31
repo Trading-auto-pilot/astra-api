@@ -96,7 +96,10 @@ function createUserClient({ logger, dbManagerUrl }) {
     return get(`/auth/users/${encodeURIComponent(id)}`);
   }
 
-  async function getUserScoreWeights(id) {
+  async function getUserScoreWeights(id, pipeId = null) {
+    if (pipeId !== null && pipeId !== undefined) {
+      return get(`/auth/users/${encodeURIComponent(id)}/score-weights/${encodeURIComponent(pipeId)}`);
+    }
     return get(`/auth/users/${encodeURIComponent(id)}/score-weights`);
   }
 

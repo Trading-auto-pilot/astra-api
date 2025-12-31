@@ -114,12 +114,20 @@ module.exports = (dbManager) => {
   });
 
   // GET /auth/users/:id/score-weights
-  router.get("/users/:id/score-weights", async (req, res) => {
+  router.get("/users/:id/score-weights/:pipeId?", async (req, res) => {
     const userId = Number(req.params.id);
+    const pipeIdParam = req.params.pipeId;
+    const pipeIdQuery =
+      req.query.pipe_id !== undefined
+        ? Number(req.query.pipe_id)
+        : req.query.pipeId !== undefined
+        ? Number(req.query.pipeId)
+        : null;
+    const pipeId = pipeIdParam !== undefined ? Number(pipeIdParam) : pipeIdQuery;
     if (!userId) return res.status(400).json({ error: "ID non valido" });
 
     try {
-      const data = await dbManager.getUserScoreWeights(userId);
+      const data = await dbManager.getUserScoreWeights(userId, Number.isFinite(pipeId) ? pipeId : null);
       if (!data) return res.status(404).json({ error: "Non trovato" });
       return res.json(data);
     } catch (err) {
@@ -128,19 +136,123 @@ module.exports = (dbManager) => {
     }
   });
 
-  // PUT /auth/users/:id/score-weights
-  router.put("/users/:id/score-weights", async (req, res) => {
+  // PUT /auth/users/:id/score-weights/:pipeId?
+  router.put("/users/:id/score-weights/:pipeId?", async (req, res) => {
     const userId = Number(req.params.id);
+    const pipeIdParam = req.params.pipeId;
+    const pipeIdQuery =
+      req.query.pipe_id !== undefined
+        ? Number(req.query.pipe_id)
+        : req.query.pipeId !== undefined
+        ? Number(req.query.pipeId)
+        : req.body?.pipe_id !== undefined
+        ? Number(req.body.pipe_id)
+        : req.body?.pipeId !== undefined
+        ? Number(req.body.pipeId)
+        : null;
+    const pipeId = pipeIdParam !== undefined ? Number(pipeIdParam) : pipeIdQuery;
     if (!userId) return res.status(400).json({ error: "ID non valido" });
 
     const payload = req.body || {};
 
     try {
-      const result = await dbManager.updateUserScoreWeights(userId, payload);
+      const result = await dbManager.updateUserScoreWeights(
+        userId,
+        payload,
+        Number.isFinite(pipeId) ? pipeId : null
+      );
       return res.json(result);
     } catch (err) {
       console.error("[PUT /auth/users/:id/score-weights] Errore:", err.message);
       res.status(500).json({ error: "Errore durante l'aggiornamento dei pesi" });
+    }
+  });
+
+  // POST /auth/users/:id/score-weights/:pipeId? -> inserisce una riga per user/pipe
+  router.post("/users/:id/score-weights/:pipeId?", async (req, res) => {
+    const userId = Number(req.params.id);
+    const pipeIdParam = req.params.pipeId;
+    const pipeIdQuery =
+      req.query.pipe_id !== undefined
+        ? Number(req.query.pipe_id)
+        : req.query.pipeId !== undefined
+        ? Number(req.query.pipeId)
+        : req.body?.pipe_id !== undefined
+        ? Number(req.body.pipe_id)
+        : req.body?.pipeId !== undefined
+        ? Number(req.body.pipeId)
+        : null;
+    const pipeId = pipeIdParam !== undefined ? Number(pipeIdParam) : pipeIdQuery;
+    if (!userId) return res.status(400).json({ error: "ID non valido" });
+
+    try {
+      const result = await dbManager.insertUserScoreWeights(userId, Number.isFinite(pipeId) ? pipeId : null);
+      return res.json(result);
+    } catch (err) {
+      console.error("[POST /auth/users/:id/score-weights] Errore:", err.message || err);
+      res.status(500).json({ error: "Errore durante l'inserimento dei pesi" });
+    }
+  });
+
+  // DELETE /auth/users/:id/score-weights/:pipeId -> elimina la riga user/pipe
+  router.delete("/users/:id/score-weights/:pipeId?", async (req, res) => {
+    const userId = Number(req.params.id);
+    const pipeIdParam = req.params.pipeId;
+    const pipeIdQuery =
+      req.query.pipe_id !== undefined
+        ? Number(req.query.pipe_id)
+        : req.query.pipeId !== undefined
+        ? Number(req.query.pipeId)
+        : req.body?.pipe_id !== undefined
+        ? Number(req.body.pipe_id)
+        : req.body?.pipeId !== undefined
+        ? Number(req.body.pipeId)
+        : null;
+    const pipeId = pipeIdParam !== undefined ? Number(pipeIdParam) : pipeIdQuery;
+    if (!userId) return res.status(400).json({ error: "ID non valido" });
+
+    try {
+      const result = await dbManager.deleteUserScoreWeights(userId, Number.isFinite(pipeId) ? pipeId : null);
+      return res.json(result);
+    } catch (err) {
+      console.error("[DELETE /auth/users/:id/score-weights] Errore:", err.message);
+      res.status(500).json({ error: "Errore durante la cancellazione dei pesi" });
+    }
+  });
+
+  // POST /auth/users/:id/filters/:pipeId -> duplica i filtri di default (user_id=0, pipe_id=0) per l'utente/pipe
+  router.post("/users/:id/filters/:pipeId", async (req, res) => {
+    const userId = Number(req.params.id);
+    const pipeId = Number(req.params.pipeId);
+    if (!Number.isFinite(userId) || !Number.isFinite(pipeId)) {
+      return res.status(400).json({ ok: false, error: "userId e pipeId obbligatori" });
+    }
+    try {
+      const result = await dbManager.copyDefaultUserFilters(userId, pipeId);
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[POST /auth/users/:id/filters/:pipeId] Errore:", {
+        userId,
+        pipeId,
+        message: err?.message || err,
+      });
+      return res.status(500).json({ ok: false, error: "Errore durante la duplicazione filtri" });
+    }
+  });
+
+  // DELETE /auth/users/:id/filters/:pipeId -> cancella tutti i filtri per utente/pipe
+  router.delete("/users/:id/filters/:pipeId", async (req, res) => {
+    const userId = Number(req.params.id);
+    const pipeId = Number(req.params.pipeId);
+    if (!Number.isFinite(userId) || !Number.isFinite(pipeId)) {
+      return res.status(400).json({ ok: false, error: "userId e pipeId obbligatori" });
+    }
+    try {
+      const result = await dbManager.deleteUserFiltersByPipe(userId, pipeId);
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[DELETE /auth/users/:id/filters/:pipeId] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore durante la cancellazione filtri" });
     }
   });
 
