@@ -1,0 +1,9 @@
+http:
+  serversTransports:
+    ibkr-insecure:
+      insecureSkipVerify: true
+
+tls:
+  certificates:
+    - certFile: /etc/traefik/certs/expopaper.localhost.pem
+      keyFile: /etc/traefik/certs/expopaper.localhost-key.pem

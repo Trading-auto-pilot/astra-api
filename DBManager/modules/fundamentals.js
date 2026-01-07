@@ -484,6 +484,484 @@ async function deleteUserFiltersByPipe(userId, pipeId) {
   }
 }
 
+async function getFundamentalsHistoryRecords({ symbol = null } = {}) {
+  const connection = await getDbConnection();
+  try {
+    let sql = "SELECT * FROM fundamentals_history";
+    const params = [];
+    if (symbol) {
+      sql += " WHERE symbol = ?";
+      params.push(symbol);
+    }
+    sql += " ORDER BY valid_from DESC, id DESC";
+    const [rows] = await connection.query(sql, params);
+    return rows.map((r) => {
+      if (r.version_hash && Buffer.isBuffer(r.version_hash)) {
+        r.version_hash = r.version_hash.toString("hex");
+      }
+      return r;
+    });
+  } finally {
+    connection.release();
+  }
+}
+
+function toVersionHash(value) {
+  if (!value) return null;
+  if (Buffer.isBuffer(value)) return value;
+  const str = String(value).trim();
+  if (str.length === 64) {
+    try {
+      return Buffer.from(str, "hex");
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+async function insertFundamentalsHistoryRecord(payload = {}) {
+  const connection = await getDbConnection();
+  try {
+    const {
+      symbol,
+      valid_from,
+      valid_to = null,
+      period_end = null,
+      as_of_date = null,
+      last_seen_at = null,
+      version_hash,
+      sector = null,
+      industry = null,
+      country = null,
+      roe = null,
+      roa = null,
+      op_margin = null,
+      piotroski = null,
+      debt_equity = null,
+      altman_z = null,
+    } = payload;
+
+    if (!symbol || !valid_from || !version_hash) {
+      return { ok: false, error: "symbol, valid_from e version_hash sono obbligatori" };
+    }
+
+    const sql = `
+      INSERT INTO fundamentals_history
+        (symbol, valid_from, valid_to, period_end, as_of_date, last_seen_at, version_hash, sector, industry, country,
+         roe, roa, op_margin, piotroski, debt_equity, altman_z)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    const params = [
+      symbol,
+      valid_from,
+      valid_to,
+      period_end,
+      as_of_date,
+      last_seen_at,
+      toVersionHash(version_hash),
+      sector,
+      industry,
+      country,
+      roe,
+      roa,
+      op_margin,
+      piotroski,
+      debt_equity,
+      altman_z,
+    ];
+    const [res] = await connection.query(sql, params);
+    return { ok: true, insertId: res.insertId, affectedRows: res.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+async function updateFundamentalsHistoryRecord(id, payload = {}) {
+  const connection = await getDbConnection();
+  try {
+    if (!Number.isFinite(Number(id))) {
+      return { ok: false, error: "id non valido" };
+    }
+
+    const allowed = [
+      "symbol",
+      "valid_from",
+      "valid_to",
+      "period_end",
+      "as_of_date",
+      "last_seen_at",
+      "version_hash",
+      "sector",
+      "industry",
+      "country",
+      "roe",
+      "roa",
+      "op_margin",
+      "piotroski",
+      "debt_equity",
+      "altman_z",
+    ];
+    const sets = [];
+    const params = [];
+    for (const key of allowed) {
+      if (payload[key] !== undefined) {
+        sets.push(`${key} = ?`);
+        params.push(key === "version_hash" ? toVersionHash(payload[key]) : payload[key]);
+      }
+    }
+    if (!sets.length) return { ok: false, error: "Nessun campo da aggiornare" };
+    params.push(id);
+    const sql = `UPDATE fundamentals_history SET ${sets.join(", ")} WHERE id = ?`;
+    const [res] = await connection.query(sql, params);
+    return { ok: true, affectedRows: res.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+async function deleteFundamentalsHistoryRecord(id) {
+  const connection = await getDbConnection();
+  try {
+    const [res] = await connection.query("DELETE FROM fundamentals_history WHERE id = ?", [id]);
+    return { affectedRows: res.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+/**
+ * CRUD market_daily
+ */
+async function getMarketDaily({ symbol = null, trade_date = null } = {}) {
+  const connection = await getDbConnection();
+  try {
+    let sql = "SELECT * FROM market_daily";
+    const params = [];
+    const conds = [];
+    if (symbol) {
+      conds.push("symbol = ?");
+      params.push(symbol);
+    }
+    if (trade_date) {
+      conds.push("trade_date = ?");
+      params.push(trade_date);
+    }
+    if (conds.length) {
+      sql += " WHERE " + conds.join(" AND ");
+    }
+    sql += " ORDER BY trade_date DESC, symbol ASC";
+    const [rows] = await connection.query(sql, params);
+    return rows;
+  } finally {
+    connection.release();
+  }
+}
+
+async function insertMarketDailyRecord(payload = {}) {
+  const connection = await getDbConnection();
+  try {
+    const {
+      symbol,
+      trade_date,
+      open = null,
+      high = null,
+      low = null,
+      close = null,
+      adj_close = null,
+      vwap = null,
+      change = null,
+      change_percent = null,
+      source = null,
+      volume = null
+    } = payload;
+    if (!symbol || !trade_date) {
+      return { ok: false, error: "symbol e trade_date sono obbligatori" };
+    }
+    const sql = `
+      INSERT INTO market_daily (symbol, trade_date, open, high, low, close, adj_close, vwap, \`change\`, change_percent, source, volume)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    const [res] = await connection.query(sql, [
+      symbol,
+      trade_date,
+      open,
+      high,
+      low,
+      close,
+      adj_close,
+      vwap,
+      change,
+      change_percent,
+      source,
+      volume
+    ]);
+    return { ok: true, insertId: res.insertId, affectedRows: res.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+async function updateMarketDailyRecord(symbol, trade_date, payload = {}) {
+  const connection = await getDbConnection();
+  try {
+    if (!symbol || !trade_date) return { ok: false, error: "symbol e trade_date sono obbligatori" };
+    const allowed = [
+      "open",
+      "high",
+      "low",
+      "close",
+      "adj_close",
+      "vwap",
+      "change",
+      "change_percent",
+      "source",
+      "volume",
+      "symbol",
+      "trade_date"
+    ];
+    const sets = [];
+    const params = [];
+    for (const key of allowed) {
+      if (payload[key] !== undefined) {
+        const col = key === "change" ? "`change`" : key;
+        sets.push(`${col} = ?`);
+        params.push(payload[key]);
+      }
+    }
+    if (!sets.length) return { ok: false, error: "Nessun campo da aggiornare" };
+    params.push(symbol, trade_date);
+    const sql = `UPDATE market_daily SET ${sets.join(", ")} WHERE symbol = ? AND trade_date = ?`;
+    const [res] = await connection.query(sql, params);
+    return { ok: true, affectedRows: res.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+async function deleteMarketDailyRecord(symbol, trade_date) {
+  const connection = await getDbConnection();
+  try {
+    const [res] = await connection.query("DELETE FROM market_daily WHERE symbol = ? AND trade_date = ?", [
+      symbol,
+      trade_date,
+    ]);
+    return { affectedRows: res.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+/**
+ * CRUD scores_daily
+ */
+async function getScoresDaily({ symbol = null, score_date = null, user_id = null, pipe_id = null } = {}) {
+  const connection = await getDbConnection();
+  try {
+    let sql = "SELECT * FROM scores_daily";
+    const params = [];
+    const conds = [];
+    if (symbol) {
+      conds.push("symbol = ?");
+      params.push(symbol);
+    }
+    if (score_date) {
+      conds.push("score_date = ?");
+      params.push(score_date);
+    }
+    if (user_id !== null && user_id !== undefined) {
+      conds.push("user_id = ?");
+      params.push(user_id);
+    }
+    if (pipe_id !== null && pipe_id !== undefined) {
+      conds.push("pipe_id = ?");
+      params.push(pipe_id);
+    }
+    if (conds.length) sql += " WHERE " + conds.join(" AND ");
+    sql += " ORDER BY score_date DESC, symbol ASC";
+    const [rows] = await connection.query(sql, params);
+    return rows;
+  } finally {
+    connection.release();
+  }
+}
+
+async function insertScoresDailyRecord(payload = {}) {
+  const connection = await getDbConnection();
+  try {
+    const {
+      symbol,
+      score_date,
+      user_id,
+      pipe_id,
+      valuation_score = null,
+      risk_score = null,
+      momentum_score = null,
+      momentum_score_short = null,
+      quality_score = null,
+      total_score = null,
+      model_id = null,
+      model_version = null,
+      fundamentals_history_id = null,
+    } = payload;
+
+    if (!symbol || !score_date || user_id === undefined || pipe_id === undefined) {
+      return { ok: false, error: "symbol, score_date, user_id e pipe_id sono obbligatori" };
+    }
+
+    const sql = `
+      INSERT INTO scores_daily
+        (symbol, score_date, user_id, pipe_id, valuation_score, risk_score, momentum_score, momentum_score_short,
+         quality_score, total_score, model_id, model_version, fundamentals_history_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    const params = [
+      symbol,
+      score_date,
+      user_id,
+      pipe_id,
+      valuation_score,
+      risk_score,
+      momentum_score,
+      momentum_score_short,
+      quality_score,
+      total_score,
+      model_id,
+      model_version,
+      fundamentals_history_id,
+    ];
+    const [res] = await connection.query(sql, params);
+    return { ok: true, insertId: res.insertId, affectedRows: res.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+async function updateScoresDailyRecord(symbol, score_date, payload = {}) {
+  const connection = await getDbConnection();
+  try {
+    const user_id = payload.user_id;
+    const pipe_id = payload.pipe_id;
+    if (!symbol || !score_date || user_id === undefined || pipe_id === undefined) {
+      return { ok: false, error: "symbol, score_date, user_id e pipe_id sono obbligatori" };
+    }
+    const allowed = [
+      "user_id",
+      "pipe_id",
+      "valuation_score",
+      "risk_score",
+      "momentum_score",
+      "momentum_score_short",
+      "quality_score",
+      "total_score",
+      "model_id",
+      "model_version",
+      "fundamentals_history_id",
+      "symbol",
+      "score_date",
+    ];
+    const sets = [];
+    const params = [];
+    for (const key of allowed) {
+      if (payload[key] !== undefined) {
+        sets.push(`${key} = ?`);
+        params.push(payload[key]);
+      }
+    }
+    if (!sets.length) return { ok: false, error: "Nessun campo da aggiornare" };
+    params.push(symbol, score_date, user_id, pipe_id);
+    const sql = `UPDATE scores_daily SET ${sets.join(", ")} WHERE symbol = ? AND score_date = ? AND user_id = ? AND pipe_id = ?`;
+    const [res] = await connection.query(sql, params);
+    return { ok: true, affectedRows: res.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+async function deleteScoresDailyRecord(symbol, score_date, user_id, pipe_id) {
+  const connection = await getDbConnection();
+  try {
+    const [res] = await connection.query(
+      "DELETE FROM scores_daily WHERE symbol = ? AND score_date = ? AND user_id = ? AND pipe_id = ?",
+      [symbol, score_date, user_id, pipe_id]
+    );
+    return { affectedRows: res.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+/**
+ * CRUD scoring_models
+ */
+async function getScoringModels({ name = null } = {}) {
+  const connection = await getDbConnection();
+  try {
+    let sql = "SELECT * FROM scoring_models";
+    const params = [];
+    if (name) {
+      sql += " WHERE name = ?";
+      params.push(name);
+    }
+    sql += " ORDER BY name ASC, version DESC, valid_from DESC";
+    const [rows] = await connection.query(sql, params);
+    return rows;
+  } finally {
+    connection.release();
+  }
+}
+
+async function insertScoringModel(payload = {}) {
+  const connection = await getDbConnection();
+  try {
+    const { name, version, valid_from, valid_to = null, params_json } = payload;
+    if (!name || !version || !valid_from || params_json === undefined) {
+      return { ok: false, error: "name, version, valid_from e params_json sono obbligatori" };
+    }
+    const sql = `
+      INSERT INTO scoring_models (name, version, valid_from, valid_to, params_json)
+      VALUES (?, ?, ?, ?, ?)
+    `;
+    const [res] = await connection.query(sql, [name, version, valid_from, valid_to, JSON.stringify(params_json)]);
+    return { ok: true, insertId: res.insertId, affectedRows: res.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+async function updateScoringModel(id, payload = {}) {
+  const connection = await getDbConnection();
+  try {
+    if (!Number.isFinite(Number(id))) return { ok: false, error: "id non valido" };
+    const allowed = ["name", "version", "valid_from", "valid_to", "params_json"];
+    const sets = [];
+    const params = [];
+    for (const key of allowed) {
+      if (payload[key] !== undefined) {
+        sets.push(`${key} = ?`);
+        params.push(key === "params_json" ? JSON.stringify(payload[key]) : payload[key]);
+      }
+    }
+    if (!sets.length) return { ok: false, error: "Nessun campo da aggiornare" };
+    params.push(id);
+    const sql = `UPDATE scoring_models SET ${sets.join(", ")} WHERE id = ?`;
+    const [res] = await connection.query(sql, params);
+    return { ok: true, affectedRows: res.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+async function deleteScoringModel(id) {
+  const connection = await getDbConnection();
+  try {
+    const [res] = await connection.query("DELETE FROM scoring_models WHERE id = ?", [id]);
+    return { affectedRows: res.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
 /**
  * Duplica i filtri di default (user_id=0, pipe_id=0) per uno user/pipe specifico.
  */
@@ -698,4 +1176,20 @@ module.exports = {
   deleteUserOrderBy,
   copyDefaultUserFilters,
   deleteUserFiltersByPipe,
+  getFundamentalsHistoryRecords,
+  insertFundamentalsHistoryRecord,
+  updateFundamentalsHistoryRecord,
+  deleteFundamentalsHistoryRecord,
+  getMarketDaily,
+  insertMarketDailyRecord,
+  updateMarketDailyRecord,
+  deleteMarketDailyRecord,
+  getScoresDaily,
+  insertScoresDailyRecord,
+  updateScoresDailyRecord,
+  deleteScoresDailyRecord,
+  getScoringModels,
+  insertScoringModel,
+  updateScoringModel,
+  deleteScoringModel,
 };

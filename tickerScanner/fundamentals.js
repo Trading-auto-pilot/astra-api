@@ -183,6 +183,770 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
     return Number.isFinite(n) ? n : null;
   };
 
+  const clamp = (v, min = 0, max = 1) => Math.min(max, Math.max(min, v));
+
+  // ====== Market Daily async jobs ======
+  const marketDailyJobs = new Map();
+  const newMarketJobId = () => `market_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const createMarketJob = () => {
+    const now = new Date().toISOString();
+    const job = {
+      id: newMarketJobId(),
+      status: "queued", // queued|running|completed|error|cancelled
+      createdAt: now,
+      updatedAt: now,
+      totalSymbols: 0,
+      processed: 0,
+      inserted: 0,
+      updated: 0,
+      errors: [],
+      cancel: false,
+    };
+    marketDailyJobs.set(job.id, job);
+    return job;
+  };
+  const updateMarketJob = (id, patch) => {
+    const job = marketDailyJobs.get(id);
+    if (!job) return null;
+    Object.assign(job, patch, { updatedAt: new Date().toISOString() });
+    return job;
+  };
+  const getActiveMarketJobs = () =>
+    Array.from(marketDailyJobs.values()).filter((j) => j.status === "queued" || j.status === "running");
+
+  const getFmpApiKey = () => process.env.FMP_API_KEY || process.env.FMP_KEY || null;
+  const fmtErr = (err) => {
+    if (!err) return "unknown error";
+    const status = err?.response?.status;
+    const data = err?.response?.data;
+    if (data !== undefined) {
+      try {
+        const str = typeof data === "string" ? data : JSON.stringify(data);
+        return status ? `${status} ${str}` : str;
+      } catch {
+        return status ? `${status} ${err.message || String(err)}` : err.message || String(err);
+      }
+    }
+    return status ? `${status} ${err.message || String(err)}` : err.message || String(err);
+  };
+
+  // ====== User daily scores async jobs ======
+  const userDailyJobs = new Map();
+  const newUserDailyJobId = () => `udaily_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const createUserDailyJob = () => {
+    const now = new Date().toISOString();
+    const job = {
+      id: newUserDailyJobId(),
+      status: "queued",
+      createdAt: now,
+      updatedAt: now,
+      processed: 0,
+      saved: 0,
+      total: 0,
+      cancel: false,
+      errors: [],
+      date: null,
+      pipeId: null,
+    };
+    userDailyJobs.set(job.id, job);
+    return job;
+  };
+  const updateUserDailyJob = (id, patch) => {
+    const job = userDailyJobs.get(id);
+    if (!job) return null;
+    Object.assign(job, patch, { updatedAt: new Date().toISOString() });
+    return job;
+  };
+  const getActiveUserDailyJobs = () =>
+    Array.from(userDailyJobs.values()).filter((j) => j.status === "queued" || j.status === "running");
+
+  const runMarketDailyJob = async (jobId) => {
+    logger.info(`${fnPrefix} update-market-daily start job=${jobId}`);
+    const job = updateMarketJob(jobId, { status: "running" });
+    if (!job) return;
+    const apiKey = getFmpApiKey();
+    if (!apiKey) {
+      updateMarketJob(jobId, { status: "error", error: "FMP_API_KEY non configurata" });
+      return;
+    }
+
+    try {
+      const histUrl = `${dbmanagerUrl}/fundamentals/history/records`;
+      const histResp = await axios.get(histUrl);
+      const rows = Array.isArray(histResp.data?.data) ? histResp.data.data : Array.isArray(histResp.data) ? histResp.data : [];
+      const symbols = [...new Set(rows.map((r) => String(r.symbol || "").toUpperCase()).filter(Boolean))];
+      updateMarketJob(jobId, { totalSymbols: symbols.length });
+      logger.info(`${fnPrefix} update-market-daily job=${jobId} symbols=${symbols.length}`);
+
+      const upsertMarketDaily = async (payload) => {
+        const current = marketDailyJobs.get(jobId);
+        if (!current || current.cancel) return;
+        try {
+          const postResp = await axios.post(`${dbmanagerUrl}/fundamentals/market-daily`, payload);
+          if (postResp.data?.ok === false) throw new Error(postResp.data.error || "POST market-daily failed");
+          const cur = marketDailyJobs.get(jobId);
+          if (cur) updateMarketJob(jobId, { inserted: (cur.inserted || 0) + 1 });
+        } catch (err) {
+          const cur = marketDailyJobs.get(jobId);
+          const list = cur?.errors || [];
+          const errMsg = fmtErr(err);
+          updateMarketJob(jobId, {
+            errors: [...list, { symbol: payload.symbol, trade_date: payload.trade_date, error: errMsg }],
+          });
+          logger.error(
+            `${fnPrefix} update-market-daily job=${jobId} insert error ${safeStringify({
+              symbol: payload.symbol,
+              trade_date: payload.trade_date,
+              error: errMsg,
+            })}`
+          );
+        }
+      };
+
+      let sampleLogged = 0;
+
+      for (const sym of symbols) {
+        const cur = marketDailyJobs.get(jobId);
+        if (!cur || cur.cancel) break;
+        // leggi date già presenti per il simbolo, così inseriamo solo i missing
+        let existingDates = new Set();
+        try {
+          const existingResp = await axios.get(
+            `${dbmanagerUrl}/fundamentals/market-daily?symbol=${encodeURIComponent(sym)}`
+          );
+          const existingRows = Array.isArray(existingResp.data?.data)
+            ? existingResp.data.data
+            : Array.isArray(existingResp.data)
+              ? existingResp.data
+              : [];
+          existingDates = new Set(
+            existingRows
+              .map((r) => (r.trade_date || r.tradeDate || r.trade_date)?.toString()?.slice(0, 10))
+              .filter(Boolean)
+          );
+        } catch (err) {
+          logger.warning(
+            `${fnPrefix} update-market-daily job=${jobId} unable to fetch existing dates for ${sym}: ${fmtErr(err)}`
+          );
+        }
+
+        const fmpUrl = `https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(sym)}&apikey=${encodeURIComponent(apiKey)}`;
+        let data = [];
+        try {
+          const resp = await axios.get(fmpUrl, { timeout: 15000 });
+          data = Array.isArray(resp.data?.historical) ? resp.data.historical : Array.isArray(resp.data) ? resp.data : [];
+        } catch (err) {
+          const cur2 = marketDailyJobs.get(jobId);
+          const list = cur2?.errors || [];
+          const errMsg = fmtErr(err);
+          const errDetail = { symbol: sym, error: errMsg, url: fmpUrl };
+          updateMarketJob(jobId, { errors: [...list, errDetail] });
+          logger.error(
+            `${fnPrefix} update-market-daily job=${jobId} fetch error ${safeStringify({
+              symbol: sym,
+              error: errMsg,
+              url: fmpUrl,
+            })}`
+          );
+          continue;
+        }
+
+        const pickNum = (obj, keys = []) => {
+          for (const k of keys) {
+            if (obj && obj[k] !== undefined && obj[k] !== null) {
+              const n = safeNum(obj[k]);
+              if (n !== null) return n;
+            }
+          }
+          return null;
+        };
+
+        for (const row of data) {
+          const cur3 = marketDailyJobs.get(jobId);
+          if (!cur3 || cur3.cancel) break;
+          const tradeDate = (row.date || row.tradeDate || row.dateTime || row.datetime || "").toString().slice(0, 10);
+          if (!tradeDate) continue;
+          if (existingDates.has(tradeDate)) continue; // già presente, skip
+
+          const payload = {
+            symbol: sym,
+            trade_date: tradeDate,
+            open: pickNum(row, ["open", "o", "Open"]),
+            high: pickNum(row, ["high", "h", "High"]),
+            low: pickNum(row, ["low", "l", "Low"]),
+            close: pickNum(row, ["close", "c", "Close"]),
+            adj_close: pickNum(row, ["adjClose", "adj_close", "adjustedClose", "adj_close_price", "adjClosePrice"]),
+            vwap: pickNum(row, ["vwap", "VWAP"]),
+            change: pickNum(row, ["change"]),
+            change_percent: pickNum(row, ["changePercent", "change_percent", "changePercent1D"]),
+            source: "fmp_eod",
+            volume: pickNum(row, ["volume", "vol"]),
+          };
+          if (sampleLogged < 5) {
+            logger.info(
+              `${fnPrefix} update-market-daily job=${jobId} sample payload ${safeStringify(payload)}`
+            );
+            sampleLogged += 1;
+          }
+          const allNull =
+            payload.open == null &&
+            payload.high == null &&
+            payload.low == null &&
+            payload.close == null &&
+            payload.adj_close == null &&
+            payload.vwap == null &&
+            payload.change == null &&
+            payload.change_percent == null;
+          if (allNull) {
+            logger.warning(
+              `${fnPrefix} update-market-daily job=${jobId} payload senza prezzi ${safeStringify({
+                symbol: payload.symbol,
+                trade_date: payload.trade_date,
+                volume: payload.volume,
+              })}`
+            );
+          }
+          await upsertMarketDaily(payload);
+          existingDates.add(tradeDate);
+        }
+        const cur4 = marketDailyJobs.get(jobId);
+        if (cur4 && !cur4.cancel) updateMarketJob(jobId, { processed: (cur4.processed || 0) + 1 });
+      }
+
+      const end = marketDailyJobs.get(jobId);
+      if (end?.cancel) {
+        updateMarketJob(jobId, { status: "cancelled" });
+        logger.info(`${fnPrefix} update-market-daily job=${jobId} cancelled`);
+      } else {
+        updateMarketJob(jobId, { status: "completed" });
+        logger.info(
+          `${fnPrefix} update-market-daily job=${jobId} completed ${safeStringify({
+            totalSymbols: end?.totalSymbols,
+            processed: end?.processed,
+            inserted: end?.inserted,
+            updated: end?.updated,
+            errors: end?.errors?.length || 0,
+          })}`
+        );
+        if (end?.errors?.length) {
+          logger.error(
+            `${fnPrefix} update-market-daily job=${jobId} completed with errors ${safeStringify(
+              end.errors.slice(-5) // log ultimi errori
+            )}`
+          );
+        }
+      }
+    } catch (err) {
+      updateMarketJob(jobId, { status: "error", error: err?.response?.data || err?.message || err });
+      logger.error(`${fnPrefix} update-market-daily job=${jobId} error ${safeStringify(err?.response?.data || err?.message || err)}`);
+    }
+  };
+
+  // Avvia job asincrono
+  router.post("/update-market-daily", async (_req, res) => {
+    const job = createMarketJob();
+    setImmediate(() => runMarketDailyJob(job.id));
+    return res.json({ ok: true, jobId: job.id });
+  });
+
+  // -------------------------------------------------------
+  // Calcolo user_daily_scores per una data
+  // -------------------------------------------------------
+  const fetchUserScoreWeights = async (userId, pipeId) => {
+    const baseUrl = `${dbmanagerUrl}/auth/users/${userId}/score-weights`;
+    const url =
+      pipeId !== null && pipeId !== undefined
+        ? `${baseUrl}/${encodeURIComponent(pipeId)}`
+        : baseUrl;
+    try {
+      logger.debug?.(`${fnPrefix} fetch weights url=${url}`);
+      const resp = await axios.get(url, { timeout: 8000 });
+      logger.debug?.(`${fnPrefix} fetch weights resp=${safeStringify(resp.data)}`);
+      return resp.data || {};
+    } catch (err) {
+      if (err?.response?.status === 404) {
+        logger.warning(
+          `${fnPrefix} user-daily weights not found, uso defaults ${safeStringify({
+            userId,
+            pipeId,
+            url,
+            resp: err?.response?.data,
+          })}`
+        );
+        return {};
+      }
+      logger.error(
+        `${fnPrefix} fetch weights error ${safeStringify({
+          url,
+          error: err?.response?.data || err?.message || err,
+        })}`
+      );
+      throw err;
+    }
+  };
+
+  const fetchMarketDailyBySymbol = async (symbol) => {
+    const url = `${dbmanagerUrl}/fundamentals/market-daily?symbol=${encodeURIComponent(symbol)}`;
+    const resp = await axios.get(url, { timeout: 12000 });
+    const rows = Array.isArray(resp.data?.data) ? resp.data.data : Array.isArray(resp.data) ? resp.data : [];
+    // normalizza e ordina per data crescente
+    return rows
+      .map((r) => ({
+        date: (r.trade_date || r.tradeDate || r.date || "").toString().slice(0, 10),
+        close: safeNum(r.close),
+        open: safeNum(r.open),
+        high: safeNum(r.high),
+        low: safeNum(r.low),
+        adj_close: safeNum(r.adj_close ?? r.adjClose),
+        volume: safeNum(r.volume),
+      }))
+      .filter((r) => r.date)
+      .sort((a, b) => (a.date > b.date ? 1 : a.date < b.date ? -1 : 0));
+  };
+
+  const fetchCloseForDate = async (symbol, targetDate) => {
+    const url = `${dbmanagerUrl}/fundamentals/market-daily?symbol=${encodeURIComponent(
+      symbol
+    )}&trade_date=${encodeURIComponent(targetDate)}`;
+    try {
+      logger.debug?.(`${fnPrefix} market-daily fetch close url=${url}`);
+      const resp = await axios.get(url, { timeout: 8000 });
+      const rows = Array.isArray(resp.data?.data) ? resp.data.data : Array.isArray(resp.data) ? resp.data : [];
+      if (!rows.length) return null;
+      const r = rows[0];
+      return {
+        date: (r.trade_date || r.tradeDate || r.date || "").toString().slice(0, 10),
+        close: safeNum(r.close),
+        adj_close: safeNum(r.adj_close ?? r.adjClose),
+      };
+    } catch (err) {
+      logger.warning(
+        `${fnPrefix} market-daily fetch close failed ${safeStringify({
+          symbol,
+          date: targetDate,
+          url,
+          error: fmtErr(err),
+        })}`
+      );
+      return null;
+    }
+  };
+
+  const findClose = (rows, targetDate) => {
+    const row = rows.find((r) => r.date === targetDate);
+    return row?.close ?? row?.adj_close ?? null;
+  };
+
+  const percentileRank = (values, v) => {
+    if (!values.length) return null;
+    const sorted = [...values].sort((a, b) => a - b);
+    const idx = sorted.findIndex((x) => x > v);
+    const rank = idx === -1 ? sorted.length : idx;
+    return rank / sorted.length;
+  };
+
+  const weightedSum = (pairs = []) => {
+    let num = 0;
+    let den = 0;
+    for (const [val, w] of pairs) {
+      if (val == null || w == null) continue;
+      num += Number(val) * Number(w);
+      den += Number(w);
+    }
+    return den ? num / den : null;
+  };
+
+  const stepDebtEquityScore = (de) => {
+    if (de == null) return null;
+    const v = Number(de);
+    if (!Number.isFinite(v)) return null;
+    if (v <= 0.5) return 1;
+    if (v <= 1) return 0.8;
+    if (v <= 2) return 0.5;
+    if (v <= 4) return 0.3;
+    return 0.1;
+  };
+
+  // ---- async job per user_daily_scores ----
+  const runUserDailyJob = async (jobId, { userId, targetDate, pipeId, modelName, modelVersion }) => {
+    const fn = `${fnPrefix}.user-daily job=${jobId}`;
+    updateUserDailyJob(jobId, { status: "running", date: targetDate, pipeId });
+    const userIdSafe = Number.isFinite(Number(userId)) ? Number(userId) : null;
+    const pipeIdSafe = pipeId !== null && pipeId !== undefined && pipeId !== "" ? Number(pipeId) : 0;
+    if (userIdSafe === null) {
+      updateUserDailyJob(jobId, { status: "error", error: "userId mancante" });
+      return;
+    }
+    try {
+      logger.info(
+        `${fn} start user=${userIdSafe} pipe=${pipeIdSafe} date=${targetDate} model=${modelName || "Manual update"}:${modelVersion || "1.0"}`
+      );
+      const weights = await fetchUserScoreWeights(userIdSafe, pipeIdSafe);
+      const fundamentalsUrl = `${dbmanagerUrl}/fundamentals`;
+      const fundamentalsResp = await axios.get(fundamentalsUrl, { timeout: 15000 });
+      const fundamentalsRows = Array.isArray(fundamentalsResp.data) ? fundamentalsResp.data : [];
+
+      const marketCache = new Map();
+      const rawMomValues = [];
+      const rawShortValues = [];
+      const computed = [];
+
+      for (const row of fundamentalsRows) {
+        const job = userDailyJobs.get(jobId);
+        if (!job || job.cancel) break;
+
+        const symbol = row.symbol;
+        if (!symbol) continue;
+
+        if (!marketCache.has(symbol)) {
+          try {
+            const md = await fetchMarketDailyBySymbol(symbol);
+            marketCache.set(symbol, md);
+          } catch (err) {
+            const url = `${dbmanagerUrl}/fundamentals/market-daily?symbol=${encodeURIComponent(symbol)}`;
+            logger.warning(`${fn} market fetch failed ${safeStringify({ symbol, url, error: fmtErr(err) })}`);
+            continue;
+          }
+        }
+        const mdRows = marketCache.get(symbol) || [];
+        let p0 = findClose(mdRows, targetDate);
+        if (p0 == null) {
+          const fetched = await fetchCloseForDate(symbol, targetDate);
+          if (fetched?.date) {
+            mdRows.push({ date: fetched.date, close: fetched.close, adj_close: fetched.adj_close });
+            p0 = fetched.close ?? fetched.adj_close ?? null;
+          }
+        }
+        if (p0 == null) {
+          const list = userDailyJobs.get(jobId)?.errors || [];
+          const mdUrl = `${dbmanagerUrl}/fundamentals/market-daily?symbol=${encodeURIComponent(symbol)}`;
+          updateUserDailyJob(jobId, {
+            errors: [
+              ...list,
+              {
+                symbol,
+                error: "close mancante per data target",
+                url: mdUrl,
+                available: mdRows.length,
+              },
+            ],
+          });
+          continue;
+        }
+
+        const getPastClose = (days) => {
+          const d = new Date(targetDate);
+          d.setDate(d.getDate() - days);
+          const pastStr = d.toISOString().slice(0, 10);
+          return findClose(mdRows, pastStr);
+        };
+
+        const r = (a, b) => (a != null && b != null && b !== 0 ? a / b - 1 : null);
+        const r5 = r(p0, getPastClose(5));
+        const r10 = r(p0, getPastClose(10));
+        const r20 = r(p0, getPastClose(20));
+        const r60 = r(p0, getPastClose(60));
+        const r120 = r(p0, getPastClose(120));
+
+        const raw_mom = weightedSum([
+          [r20, weights.wt_raw_mom_20d],
+          [r60, weights.wt_raw_mom_60d],
+          [r120, weights.wt_raw_mom_120d],
+        ]);
+        const raw_short = weightedSum([
+          [r5, weights.wt_raw_short_5d],
+          [r10, weights.wt_raw_short_10d],
+        ]);
+
+        const quality_score = weightedSum([
+          [row.roe_score, weights.wt_quality_roe],
+          [row.roa_score, weights.wt_quality_roa],
+          [row.op_margin_score, weights.wt_quality_op_margin],
+          [row.piot_score, weights.wt_quality_piotroski],
+        ]);
+
+        const beta_score = row.beta != null ? clamp(1 - Math.abs(Number(row.beta) - 1) / 1.5, 0, 1) * 100 : null;
+        const debt_equity_score = row.debt_equity != null ? stepDebtEquityScore(row.debt_equity) * 100 : null;
+        const altman_z_score = row.altman_z != null ? clamp(Number(row.altman_z) / 3, 0, 1) * 100 : null;
+        const risk_score = weightedSum([
+          [beta_score, weights.wt_risk_beta],
+          [debt_equity_score, weights.wt_risk_debt_equity],
+          [altman_z_score, weights.wt_risk_altman],
+        ]);
+
+        const valuation_score = weightedSum([
+          [row.pe_score, weights.wt_val_pe],
+          [row.pb_score, weights.wt_val_pb],
+          [row.dcf_score, weights.wt_val_dcf],
+        ]);
+
+        computed.push({
+          symbol,
+          raw_mom,
+          raw_short,
+          quality_score,
+          risk_score,
+          valuation_score,
+        });
+        if (raw_mom != null) rawMomValues.push(raw_mom);
+        if (raw_short != null) rawShortValues.push(raw_short);
+      }
+
+      const results = [];
+      for (const c of computed) {
+        const job = userDailyJobs.get(jobId);
+        if (!job || job.cancel) break;
+
+        const momentum_score = c.raw_mom != null ? Math.round((percentileRank(rawMomValues, c.raw_mom) || 0) * 100) : null;
+        const momentum_score_short =
+          c.raw_short != null ? Math.round((percentileRank(rawShortValues, c.raw_short) || 0) * 100) : null;
+
+        const total_score = weightedSum([
+          [momentum_score, weights.wt_daily_momentum],
+          [c.quality_score, weights.wt_daily_quality],
+          [c.valuation_score, weights.wt_daily_valuation],
+          [c.risk_score, weights.wt_daily_risk],
+        ]);
+
+        results.push({
+          symbol: c.symbol,
+          score_date: targetDate,
+          user_id: userIdSafe,
+          pipe_id: pipeIdSafe,
+          momentum_score,
+          momentum_score_short,
+          quality_score: c.quality_score,
+          risk_score: c.risk_score,
+          valuation_score: c.valuation_score,
+          total_score: total_score != null ? Math.round(total_score) : null,
+        });
+      }
+
+      // scoring model SCD2: chiudi eventuale record attivo stesso name/version e inserisci nuovo
+      let modelId = null;
+      const modelNameSafe = modelName || "Manual update";
+      const modelVersionSafe = modelVersion || "1.0";
+      try {
+        const modelsResp = await axios.get(
+          `${dbmanagerUrl}/fundamentals/scoring-models?name=${encodeURIComponent(modelNameSafe)}`,
+          { timeout: 8000 }
+        );
+        const models = Array.isArray(modelsResp.data?.data)
+          ? modelsResp.data.data
+          : Array.isArray(modelsResp.data)
+          ? modelsResp.data
+          : [];
+        const active = models.find(
+          (m) => m.version === modelVersionSafe && (m.valid_to === null || m.valid_to === undefined)
+        );
+        if (active?.id) {
+          try {
+            await axios.put(
+              `${dbmanagerUrl}/fundamentals/scoring-models/${active.id}`,
+              { valid_to: targetDate },
+              { timeout: 8000 }
+            );
+          } catch (err) {
+            logger.warning(
+              `${fn} closing scoring_model failed ${safeStringify({ id: active.id, error: fmtErr(err) })}`
+            );
+          }
+        }
+        const insertResp = await axios.post(
+          `${dbmanagerUrl}/fundamentals/scoring-models`,
+          {
+            name: modelNameSafe,
+            version: modelVersionSafe,
+            valid_from: targetDate,
+            valid_to: null,
+            params_json: weights,
+          },
+          { timeout: 8000 }
+        );
+        modelId =
+          insertResp.data?.insertId ??
+          insertResp.data?.id ??
+          insertResp.data?.data?.insertId ??
+          insertResp.data?.data?.id ??
+          null;
+      } catch (err) {
+        logger.warning(
+          `${fn} scoring model insert failed ${safeStringify({ name: modelNameSafe, version: modelVersionSafe, error: fmtErr(err) })}`
+        );
+      }
+
+      // helper per fundamentals_history id
+      const getFundHistoryId = async (symbol) => {
+        try {
+          const resp = await axios.get(
+            `${dbmanagerUrl}/fundamentals/history/records?symbol=${encodeURIComponent(symbol)}`,
+            { timeout: 8000 }
+          );
+          const rows = Array.isArray(resp.data?.data)
+            ? resp.data.data
+            : Array.isArray(resp.data)
+            ? resp.data
+            : [];
+          const match = rows.find((r) => {
+            const from = (r.valid_from || "").slice(0, 10);
+            const to = r.valid_to ? r.valid_to.slice(0, 10) : null;
+            return from <= targetDate && (to === null || to > targetDate);
+          });
+          return match?.id ?? null;
+        } catch (err) {
+          logger.warning(
+            `${fn} fundamentals_history lookup failed ${safeStringify({ symbol, error: fmtErr(err) })}`
+          );
+          return null;
+        }
+      };
+
+      let saved = 0;
+      for (const r of results) {
+        const job = userDailyJobs.get(jobId);
+        if (!job || job.cancel) break;
+        const fhId = await getFundHistoryId(r.symbol);
+        try {
+          await axios.post(
+            `${dbmanagerUrl}/fundamentals/scores-daily`,
+            {
+              ...r,
+              model_id: modelId,
+              model_version: modelVersionSafe,
+              fundamentals_history_id: fhId,
+            },
+            { timeout: 8000 }
+          );
+          saved += 1;
+        } catch {
+          try {
+            await axios.put(
+              `${dbmanagerUrl}/fundamentals/scores-daily/${encodeURIComponent(r.symbol)}/${encodeURIComponent(
+                r.score_date
+              )}/${encodeURIComponent(userIdSafe)}/${encodeURIComponent(pipeIdSafe)}`,
+              {
+                ...r,
+                model_id: modelId,
+                model_version: modelVersionSafe,
+                fundamentals_history_id: fhId,
+              },
+              { timeout: 8000 }
+            );
+            saved += 1;
+          } catch (err2) {
+            const list = job.errors || [];
+            updateUserDailyJob(jobId, {
+              errors: [...list, { symbol: r.symbol, date: r.score_date, error: fmtErr(err2) }],
+            });
+          }
+        }
+      }
+
+      updateUserDailyJob(jobId, {
+        status: userDailyJobs.get(jobId)?.cancel ? "cancelled" : "completed",
+        saved,
+        total: results.length,
+      });
+      logger.info(
+        `${fn} completed ${safeStringify({
+          date: targetDate,
+          pipeId: pipeIdSafe,
+          total: results.length,
+          saved,
+          errors: userDailyJobs.get(jobId)?.errors?.length || 0,
+        })}`
+      );
+      if (!results.length) {
+        const errSample = (userDailyJobs.get(jobId)?.errors || []).slice(0, 5);
+        logger.warning(
+          `${fn} nessun risultato calcolato (market data mancanti o screener vuoto) ${safeStringify({
+            errors_sample: errSample,
+          })}`
+        );
+      }
+    } catch (err) {
+      updateUserDailyJob(jobId, { status: "error", error: fmtErr(err) });
+      logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
+    }
+  };
+
+  // Avvia job asincrono per daily scores
+  router.post("/user-daily-scores", async (req, res) => {
+    const fn = `${fnPrefix}.POST:/user-daily-scores`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const targetDate = (req.body?.date || req.query?.date || new Date().toISOString().slice(0, 10)).toString().slice(0, 10);
+      const pipeIdRaw = req.body?.pipeId ?? req.body?.pipe_id ?? req.query?.pipeId ?? req.query?.pipe_id ?? undefined;
+      const pipeId = pipeIdRaw !== undefined && pipeIdRaw !== null && pipeIdRaw !== "" ? Number(pipeIdRaw) : undefined;
+      const modelName = req.body?.name ?? req.body?.note ?? req.body?.description ?? "Manual update";
+      const modelVersion = req.body?.version ?? "1.0";
+
+      if (pipeId === undefined) {
+        // carica tutte le pipe e avvia un job per ciascuna
+        const url = `${dbmanagerUrl}/auth/users/${userId}/score-weights`;
+        const resp = await axios.get(url, { timeout: 8000 });
+        const list = Array.isArray(resp.data) ? resp.data : [];
+        if (!list.length) {
+          return res.status(404).json({ ok: false, error: "Pesi/pipe non trovati per l'utente" });
+        }
+        const jobs = [];
+        for (const row of list) {
+          const pid = row.pipe_id ?? row.pipeId ?? 0;
+          const job = createUserDailyJob();
+          updateUserDailyJob(job.id, { date: targetDate, pipeId: pid, userId });
+          setImmediate(() => runUserDailyJob(job.id, { userId, targetDate, pipeId: pid, modelName, modelVersion }));
+          jobs.push(job.id);
+        }
+        return res.json({ ok: true, jobIds: jobs });
+      } else {
+        const job = createUserDailyJob();
+        updateUserDailyJob(job.id, { date: targetDate, pipeId, userId });
+        setImmediate(() => runUserDailyJob(job.id, { userId, targetDate, pipeId, modelName, modelVersion }));
+        return res.json({ ok: true, jobId: job.id });
+      }
+    } catch (err) {
+      const url = `${dbmanagerUrl}/fundamentals/market-daily?symbol=${encodeURIComponent("ALL")}`;
+      logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)} url_hint=${url}`);
+      return res.status(500).json({ ok: false, error: "Errore avvio calcolo user_daily_scores" });
+    }
+  });
+
+  // Lista job attivi
+  router.get("/user-daily-scores", (_req, res) => {
+    return res.json({ ok: true, jobs: getActiveUserDailyJobs() });
+  });
+
+  // Cancella job
+  router.delete("/user-daily-scores/:jobId", (req, res) => {
+    const job = userDailyJobs.get(req.params.jobId);
+    if (!job) return res.status(404).json({ ok: false, error: "Job non trovato" });
+    if (job.status === "completed" || job.status === "error") {
+      return res.status(400).json({ ok: false, error: "Job già terminato" });
+    }
+    job.cancel = true;
+    updateUserDailyJob(job.id, { status: "cancelled" });
+    return res.json({ ok: true, jobId: job.id });
+  });
+
+  // Lista job attivi (queued/running)
+  router.get("/update-market-daily", (_req, res) => {
+    return res.json({ ok: true, jobs: getActiveMarketJobs() });
+  });
+
+  // Cancella un job attivo
+  router.delete("/update-market-daily/:jobId", (req, res) => {
+    const job = marketDailyJobs.get(req.params.jobId);
+    if (!job) return res.status(404).json({ ok: false, error: "Job non trovato" });
+    if (job.status === "completed" || job.status === "error" || job.status === "cancelled") {
+      return res.status(400).json({ ok: false, error: "Job già terminato" });
+    }
+    job.cancel = true;
+    updateMarketJob(job.id, { status: "cancelled" });
+    return res.json({ ok: true, jobId: job.id });
+  });
+
+
   const computeVolumeScore = (momentumObj, weights) => {
     const vol = momentumObj?.components?.volume;
     const comps = vol?.components;

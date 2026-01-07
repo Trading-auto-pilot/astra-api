@@ -889,6 +889,22 @@ async function getUserScoreWeights(userId, pipeId = null) {
   }
 }
 
+async function getUserScoreWeightsList(userId) {
+  const conn = await getDbConnection();
+  try {
+    const [rows] = await conn.query(
+      "SELECT * FROM user_score_weights WHERE user_id = ? ORDER BY pipe_id ASC",
+      [userId]
+    );
+    return rows;
+  } catch (err) {
+    logger.error("[getUserScoreWeightsList] Error", err.message || err);
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 /**
  * Aggiorna i pesi personalizzati per un utente nella tabella user_score_weights.
  * payload: oggetto con le colonne da aggiornare (es. { wt_growth_momentum: 0.5 })
@@ -1012,6 +1028,7 @@ module.exports = {
   deleteUserPermission,
   // pesi personalizzati
   getUserScoreWeights,
+  getUserScoreWeightsList,
   insertUserScoreWeights,
   deleteUserScoreWeights,
   updateUserScoreWeights,

@@ -114,6 +114,7 @@ module.exports = (dbManager) => {
   });
 
   // GET /auth/users/:id/score-weights
+  // Se pipeId è presente -> singola riga; se assente -> tutte le pipe
   router.get("/users/:id/score-weights/:pipeId?", async (req, res) => {
     const userId = Number(req.params.id);
     const pipeIdParam = req.params.pipeId;
@@ -127,6 +128,12 @@ module.exports = (dbManager) => {
     if (!userId) return res.status(400).json({ error: "ID non valido" });
 
     try {
+      if (pipeIdParam === undefined && pipeIdQuery === null && pipeId === null) {
+        // restituisce tutte le pipe per l'utente
+        const list = await dbManager.getUserScoreWeightsList(userId);
+        if (!list.length) return res.status(404).json({ error: "Non trovato" });
+        return res.json(list);
+      }
       const data = await dbManager.getUserScoreWeights(userId, Number.isFinite(pipeId) ? pipeId : null);
       if (!data) return res.status(404).json({ error: "Non trovato" });
       return res.json(data);

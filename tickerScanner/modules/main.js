@@ -2,6 +2,7 @@
 "use strict";
 
 const path = require("path");
+const crypto = require("crypto");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 const fs = require("fs").promises;
 const createLogger = require("../../shared/logger");
@@ -14,8 +15,29 @@ const {
   updateScanJob,
   getScanJob,
   getActiveJobs,
+  cancelScanJob,
   buildFundamentalsRecord
 } = require("./scanJob");
+
+const numOrNull = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+function buildHistoryVersionHash(rec) {
+  const fields = [
+    rec?.sector ?? "",
+    rec?.industry ?? "",
+    rec?.roe ?? "",
+    rec?.roa ?? "",
+    rec?.op_margin ?? "",
+    rec?.piotroski ?? "",
+    rec?.debt_equity ?? "",
+    rec?.altman_z ?? "",
+  ];
+  const payload = fields.join("|");
+  return crypto.createHash("sha256").update(payload).digest("hex"); // alfanumerico hex
+}
 
 const ScreenerService = require("./screenerService");
 const FmpFundamentalsService = require("./fmpFundamentalsService");
@@ -390,18 +412,35 @@ class TickerScanner {
   async _runScanJob(jobId, filterOverrides = {}, options = {}) {
     updateScanJob(jobId, { status: "running" });
 
-    const result = await this.scanAndScoreUniverse(filterOverrides, options); // la funzione che abbiamo già
+    try {
+      const result = await this.scanAndScoreUniverse(filterOverrides, { ...options, jobId }); // la funzione che abbiamo già
 
-    updateScanJob(jobId, {
-      status: "completed",
-      totalProcessed: result.count,
-      dbHits: result.dbHits,
-      newCalculated: result.newCalculated,
-    });
+      const finalJob = getScanJob(jobId);
+      if (finalJob?.cancel || finalJob?.status === "cancelled") {
+        updateScanJob(jobId, { status: "cancelled" });
+        this.logger.info(`[tickScanner] Scan job ${jobId} cancelled`);
+        return;
+      }
 
-    this.logger.info(
-      `[tickScanner] Scan job ${jobId} completed: total=${result.count}, dbHits=${result.dbHits}, new=${result.newCalculated}`
-    );
+      updateScanJob(jobId, {
+        status: "completed",
+        totalProcessed: result.count,
+        dbHits: result.dbHits,
+        newCalculated: result.newCalculated,
+      });
+
+      this.logger.info(
+        `[tickScanner] Scan job ${jobId} completed: total=${result.count}, dbHits=${result.dbHits}, new=${result.newCalculated}`
+      );
+    } catch (err) {
+      if (err?.code === "CANCELLED") {
+        updateScanJob(jobId, { status: "cancelled" });
+        this.logger.info(`[tickScanner] Scan job ${jobId} cancelled`);
+        return;
+      }
+      updateScanJob(jobId, { status: "error", error: err?.message || String(err) });
+      this.logger.error(`[tickScanner] Scan job ${jobId} error: ${err?.message || String(err)}`);
+    }
   }
 
   getScanStatus(jobId) {
@@ -419,6 +458,16 @@ class TickerScanner {
     return getActiveJobs();
   }
 
+  cancelScanJob(jobId) {
+    const job = cancelScanJob(jobId);
+    if (!job) {
+      const err = new Error("Job not found");
+      err.code = "NOT_FOUND";
+      throw err;
+    }
+    return job;
+  }
+
   /**
   * Esegue lo screener usando i parametri letti da DB (getSetting)
   * e restituisce il risultato dell'API FMP.
@@ -428,10 +477,10 @@ class TickerScanner {
   }
 
   /**
-   * /scan:
-   * 1) screener FMP -> lista simboli
-   * 2) GET DBManager /fundamentals -> cosa ho già
-   * 3) per i ticker mancanti:
+  * /scan:
+  * 1) screener FMP -> lista simboli
+  * 2) GET DBManager /fundamentals -> cosa ho già
+  * 3) per i ticker mancanti:
    *    - chiamo FMP
    *    - calcolo score
    *    - salvo su DB via /fundamentals/bulk (batch da 50)
@@ -439,9 +488,22 @@ class TickerScanner {
   */
   async scanAndScoreUniverse(filterOverrides = {}, options = {}) {
     const forceRefresh = !!options.forceRefresh;
+    const jobId = options.jobId;
+    const abortIfCancelled = () => {
+      if (!jobId) return;
+      const job = getScanJob(jobId);
+      if (job?.cancel || job?.status === "cancelled") {
+        const e = new Error("Scan cancelled");
+        e.code = "CANCELLED";
+        throw e;
+      }
+    };
+
+    abortIfCancelled();
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
     // 1) screener
     const screener = await this.runScreener(filterOverrides);
+    abortIfCancelled();
     const data = screener?.data || [];
     const symbols = data.map(d => d.symbol).filter(Boolean);
 
@@ -488,6 +550,7 @@ class TickerScanner {
     const missingSymbols = [];
 
     for (const sym of symbols) {
+      abortIfCancelled();
       const row = existingMap.get(sym);
       if (row && !forceRefresh) {
         existingRecords.push(mapDbRowToScoredRecord(row));
@@ -505,6 +568,7 @@ class TickerScanner {
 
     const batches = chunkArray(missingSymbols, 50);
     for (const batch of batches) {
+      abortIfCancelled();
       this.logger.info(
         `[scanAndScoreUniverse] Processing batch di ${batch.length} simboli mancanti`
       );
@@ -517,6 +581,7 @@ class TickerScanner {
       const fundamentalsRecords = [];   // 👈 record piatti per la tabella fundamentals
 
       for (const fmpData of fundamentalsBatch) {
+        abortIfCancelled();
         const symbol = fmpData.symbol;
 
         // momentum completo (score + components)
@@ -542,37 +607,18 @@ class TickerScanner {
         scoredBatch.push(scored);
 
         // usato per il salvataggio in tabella fundamentals
-        fundamentalsRecords.push(
-          buildFundamentalsRecord(scored, momentum)   // 👈 qui usi la funzione che hai in scanJob
-        );
+        const fundamentalsRecord = buildFundamentalsRecord(scored, momentum);
+        fundamentalsRecords.push(fundamentalsRecord);
 
-        // salvataggio storico immediato per evitare payload enormi
-        try {
-          const historyUrl = `${this.dbmanagerUrl}/fundamentals/history`;
-          const historyPayload = {
-            records: [
-              {
-                ...fundamentalsRecords[fundamentalsRecords.length - 1],
-                as_of_date: today,
-              },
-            ],
-          };
-          const resHist = await fetch(historyUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(historyPayload),
-          });
-          if (!resHist.ok) {
-            const text = await resHist.text().catch(() => "");
-            this.logger.error(
-              `[scanAndScoreUniverse] Errore POST /fundamentals/history (symbol=${symbol}): ${resHist.status} - ${text}`
-            );
-          }
-        } catch (err) {
+        // salvataggio storico SCD2 (fundamentals_history)
+        await this.upsertFundamentalsHistory(symbol, fundamentalsRecord, {
+          fmpData,
+          today,
+        }).catch((err) => {
           this.logger.error(
-            `[scanAndScoreUniverse] Errore chiamando POST /fundamentals/history (symbol=${symbol}): ${err?.message || String(err)}`
+            `[scanAndScoreUniverse] Errore fundamentals_history ${symbol}: ${err?.message || String(err)}`
           );
-        }
+        });
       }
 
       newScoredRecords.push(...scoredBatch);
@@ -619,6 +665,121 @@ class TickerScanner {
       newCalculated: newScoredRecords.length,
       results,
     };
+  }
+
+  async upsertFundamentalsHistory(symbol, fundamentalsRecord, { fmpData = {}, today } = {}) {
+    // prepara payload SCD2
+    const version_hash = buildHistoryVersionHash(fundamentalsRecord);
+    const ratios = fmpData?.ratios || fmpData?.stableRatios || {};
+    const kmRaw = fmpData?.keyMetrics || fmpData?.stable || {};
+    const km = Array.isArray(kmRaw) ? kmRaw[0] || {} : kmRaw;
+    const isRaw = fmpData?.incomeStatement;
+    const is = Array.isArray(isRaw) ? isRaw[0] || {} : isRaw || {};
+    const bsRaw = fmpData?.balanceSheet;
+    const bs = Array.isArray(bsRaw) ? bsRaw[0] || {} : bsRaw || {};
+    const period_end =
+      is?.date ||
+      km?.date ||
+      fmpData?.periodEnd ||
+      fmpData?.period_end ||
+      null;
+    const as_of_date = fmpData?.asOfDate || fmpData?.as_of_date || null;
+    const netIncome = numOrNull(is?.netIncome ?? is?.net_income);
+    const totalEquity = numOrNull(bs?.totalStockholdersEquity ?? bs?.totalEquity ?? bs?.total_stockholders_equity);
+    const totalAssets = numOrNull(bs?.totalAssets ?? bs?.total_assets);
+    const roeDerived = netIncome !== null && totalEquity ? (totalEquity !== 0 ? netIncome / totalEquity : null) : null;
+    const roaDerived = netIncome !== null && totalAssets ? (totalAssets !== 0 ? netIncome / totalAssets : null) : null;
+    const roe =
+      roeDerived ??
+      numOrNull(ratios?.returnOnEquity) ??
+      numOrNull(km?.returnOnEquity) ??
+      fundamentalsRecord?.roe ??
+      null;
+    const roa =
+      roaDerived ??
+      numOrNull(ratios?.returnOnAssets) ??
+      numOrNull(km?.returnOnAssets) ??
+      fundamentalsRecord?.roa ??
+      null;
+    const operating_income = numOrNull(is?.operatingIncome ?? is?.operating_income);
+    const revenue = numOrNull(is?.revenue);
+    const op_margin_raw =
+      numOrNull(ratios?.operatingProfitMargin) ??
+      numOrNull(km?.operatingProfitMargin) ??
+      fundamentalsRecord?.op_margin ??
+      null;
+    const op_margin_derived =
+      operating_income !== null && revenue
+        ? revenue !== 0
+          ? operating_income / revenue
+          : null
+        : null;
+    const op_margin = op_margin_raw ?? op_margin_derived ?? null;
+    const debt_equity =
+      numOrNull(ratios?.debtToEquityRatio) ??
+      numOrNull(km?.debtToEquityRatio ?? km?.debtToEquity) ??
+      numOrNull(ratios?.debtEquityRatio) ??
+      fundamentalsRecord?.debt_equity ??
+      null;
+    const payload = {
+      symbol,
+      valid_from: today,
+      valid_to: null,
+      period_end,
+      as_of_date,
+      last_seen_at: today,
+      version_hash,
+      sector: fundamentalsRecord?.sector ?? null,
+      industry: fundamentalsRecord?.industry ?? null,
+      country: fundamentalsRecord?.country ?? null,
+      roe,
+      roa,
+      op_margin,
+      piotroski: fundamentalsRecord?.piotroski ?? null,
+      debt_equity,
+      altman_z: fundamentalsRecord?.altman_z ?? null,
+    };
+
+    // leggi gli esistenti per il simbolo
+    const urlGet = `${this.dbmanagerUrl}/fundamentals/history/records?symbol=${encodeURIComponent(symbol)}`;
+    const existingResp = await fetch(urlGet);
+    const existingData = existingResp.ok ? await existingResp.json().catch(() => ({})) : {};
+    const existing = Array.isArray(existingData?.data) ? existingData.data : Array.isArray(existingData) ? existingData : [];
+    const openRecord = existing.find((r) => r.valid_to === null || r.valid_to === undefined);
+
+    if (openRecord) {
+      const existingHash =
+        typeof openRecord.version_hash === "string"
+          ? openRecord.version_hash
+          : openRecord.version_hash?.toString?.("hex") || null;
+      const sameHash = existingHash === version_hash;
+      if (sameHash) {
+        // aggiorna solo last_seen_at
+        const urlPut = `${this.dbmanagerUrl}/fundamentals/history/records/${openRecord.id}`;
+        await fetch(urlPut, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ last_seen_at: today }),
+        });
+        return;
+      }
+
+      // chiudi record precedente
+      const urlClose = `${this.dbmanagerUrl}/fundamentals/history/records/${openRecord.id}`;
+      await fetch(urlClose, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ valid_to: today }),
+      });
+    }
+
+    // inserisci nuovo record
+    const urlPost = `${this.dbmanagerUrl}/fundamentals/history/records`;
+    await fetch(urlPost, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
   }
 
 async refreshMomentumAll() {

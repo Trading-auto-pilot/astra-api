@@ -28,6 +28,217 @@ module.exports = (dbManager) => {
     }
   });
 
+  // CRUD per fundamentals_history (SCD2)
+  router.get("/history/records", async (req, res) => {
+    const symbol = req.query.symbol ? String(req.query.symbol).toUpperCase() : null;
+    try {
+      const rows = await dbManager.getFundamentalsHistoryRecords({ symbol });
+      return res.json({ ok: true, data: rows });
+    } catch (err) {
+      console.error("[GET /fundamentals/history/records] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore lettura fundamentals_history" });
+    }
+  });
+
+  router.post("/history/records", async (req, res) => {
+    const body = req.body || {};
+    try {
+      const result = await dbManager.insertFundamentalsHistoryRecord(body);
+      if (result.ok === false) return res.status(400).json(result);
+      return res.json(result);
+    } catch (err) {
+      console.error("[POST /fundamentals/history/records] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore inserimento fundamentals_history" });
+    }
+  });
+
+  router.put("/history/records/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+    try {
+      const result = await dbManager.updateFundamentalsHistoryRecord(id, req.body || {});
+      if (result.ok === false && result.error) return res.status(400).json(result);
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[PUT /fundamentals/history/records/:id] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore aggiornamento fundamentals_history" });
+    }
+  });
+
+  router.delete("/history/records/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+    try {
+      const result = await dbManager.deleteFundamentalsHistoryRecord(id);
+      if (!result.affectedRows) return res.status(404).json({ ok: false, error: "Record non trovato" });
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[DELETE /fundamentals/history/records/:id] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore cancellazione fundamentals_history" });
+    }
+  });
+
+  // CRUD market_daily
+  router.get("/market-daily", async (req, res) => {
+    const symbol = req.query.symbol ? String(req.query.symbol).toUpperCase() : null;
+    const trade_date = req.query.trade_date ?? req.query.tradeDate ?? null;
+    try {
+      const rows = await dbManager.getMarketDaily({ symbol, trade_date });
+      return res.json({ ok: true, data: rows });
+    } catch (err) {
+      console.error("[GET /fundamentals/market-daily] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore lettura market_daily" });
+    }
+  });
+
+  router.post("/market-daily", async (req, res) => {
+    try {
+      const result = await dbManager.insertMarketDailyRecord(req.body || {});
+      if (result.ok === false && result.error) return res.status(400).json(result);
+      return res.json(result);
+    } catch (err) {
+      console.error("[POST /fundamentals/market-daily] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore inserimento market_daily" });
+    }
+  });
+
+  router.put("/market-daily/:symbol/:tradeDate", async (req, res) => {
+    const symbol = req.params.symbol ? String(req.params.symbol).toUpperCase() : null;
+    const tradeDate = req.params.tradeDate;
+    if (!symbol || !tradeDate) return res.status(400).json({ ok: false, error: "symbol e trade_date obbligatori" });
+    try {
+      const result = await dbManager.updateMarketDailyRecord(symbol, tradeDate, req.body || {});
+      if (result.ok === false && result.error) return res.status(400).json(result);
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[PUT /fundamentals/market-daily/:symbol/:tradeDate] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore aggiornamento market_daily" });
+    }
+  });
+
+  router.delete("/market-daily/:symbol/:tradeDate", async (req, res) => {
+    const symbol = req.params.symbol ? String(req.params.symbol).toUpperCase() : null;
+    const tradeDate = req.params.tradeDate;
+    if (!symbol || !tradeDate) return res.status(400).json({ ok: false, error: "symbol e trade_date obbligatori" });
+    try {
+      const result = await dbManager.deleteMarketDailyRecord(symbol, tradeDate);
+      if (!result.affectedRows) return res.status(404).json({ ok: false, error: "Record non trovato" });
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[DELETE /fundamentals/market-daily/:symbol/:tradeDate] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore cancellazione market_daily" });
+    }
+  });
+
+  // CRUD scores_daily
+  router.get("/scores-daily", async (req, res) => {
+    const symbol = req.query.symbol ? String(req.query.symbol).toUpperCase() : null;
+    const score_date = req.query.score_date ?? req.query.scoreDate ?? null;
+    const user_id = req.query.user_id !== undefined ? Number(req.query.user_id) : undefined;
+    const pipe_id = req.query.pipe_id !== undefined ? Number(req.query.pipe_id) : undefined;
+    try {
+      const rows = await dbManager.getScoresDaily({ symbol, score_date, user_id, pipe_id });
+      return res.json({ ok: true, data: rows });
+    } catch (err) {
+      console.error("[GET /fundamentals/scores-daily] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore lettura scores_daily" });
+    }
+  });
+
+  router.post("/scores-daily", async (req, res) => {
+    try {
+      const result = await dbManager.insertScoresDailyRecord(req.body || {});
+      if (result.ok === false && result.error) return res.status(400).json(result);
+      return res.json(result);
+    } catch (err) {
+      console.error("[POST /fundamentals/scores-daily] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore inserimento scores_daily" });
+    }
+  });
+
+  router.put("/scores-daily/:symbol/:scoreDate/:userId/:pipeId", async (req, res) => {
+    const symbol = req.params.symbol ? String(req.params.symbol).toUpperCase() : null;
+    const scoreDate = req.params.scoreDate;
+    const userId = Number(req.params.userId);
+    const pipeId = Number(req.params.pipeId);
+    if (!symbol || !scoreDate || !Number.isFinite(userId) || !Number.isFinite(pipeId))
+      return res.status(400).json({ ok: false, error: "symbol, score_date, user_id, pipe_id obbligatori" });
+    try {
+      const result = await dbManager.updateScoresDailyRecord(symbol, scoreDate, { ...req.body, user_id: userId, pipe_id: pipeId });
+      if (result.ok === false && result.error) return res.status(400).json(result);
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[PUT /fundamentals/scores-daily/:symbol/:scoreDate/:userId/:pipeId] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore aggiornamento scores_daily" });
+    }
+  });
+
+  router.delete("/scores-daily/:symbol/:scoreDate/:userId/:pipeId", async (req, res) => {
+    const symbol = req.params.symbol ? String(req.params.symbol).toUpperCase() : null;
+    const scoreDate = req.params.scoreDate;
+    const userId = Number(req.params.userId);
+    const pipeId = Number(req.params.pipeId);
+    if (!symbol || !scoreDate || !Number.isFinite(userId) || !Number.isFinite(pipeId))
+      return res.status(400).json({ ok: false, error: "symbol, score_date, user_id, pipe_id obbligatori" });
+    try {
+      const result = await dbManager.deleteScoresDailyRecord(symbol, scoreDate, userId, pipeId);
+      if (!result.affectedRows) return res.status(404).json({ ok: false, error: "Record non trovato" });
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[DELETE /fundamentals/scores-daily/:symbol/:scoreDate/:userId/:pipeId] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore cancellazione scores_daily" });
+    }
+  });
+
+  // CRUD scoring_models
+  router.get("/scoring-models", async (req, res) => {
+    const name = req.query.name ? String(req.query.name) : null;
+    try {
+      const rows = await dbManager.getScoringModels({ name });
+      return res.json({ ok: true, data: rows });
+    } catch (err) {
+      console.error("[GET /fundamentals/scoring-models] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore lettura scoring_models" });
+    }
+  });
+
+  router.post("/scoring-models", async (req, res) => {
+    try {
+      const result = await dbManager.insertScoringModel(req.body || {});
+      if (result.ok === false && result.error) return res.status(400).json(result);
+      return res.json(result);
+    } catch (err) {
+      console.error("[POST /fundamentals/scoring-models] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore inserimento scoring_model" });
+    }
+  });
+
+  router.put("/scoring-models/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+    try {
+      const result = await dbManager.updateScoringModel(id, req.body || {});
+      if (result.ok === false && result.error) return res.status(400).json(result);
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("[PUT /fundamentals/scoring-models/:id] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore aggiornamento scoring_model" });
+    }
+  });
+
+  router.delete("/scoring-models/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+    try {
+      const result = await dbManager.deleteScoringModel(id);
+      if (!result.affectedRows) return res.status(404).json({ ok: false, error: "Record non trovato" });
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[DELETE /fundamentals/scoring-models/:id] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore cancellazione scoring_model" });
+    }
+  });
+
   /**
    * POST /fundamentals/history
    * Body: { records: [ { symbol, as_of_date, ... } ] }
