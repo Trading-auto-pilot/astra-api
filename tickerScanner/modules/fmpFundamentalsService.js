@@ -65,9 +65,9 @@ class FmpFundamentalsService {
     return Array.isArray(data) && data[0] ? data[0] : null;
   }
 
-  async fetchRatiosTTM(symbol) {
-    const url = this.buildUrl("/stable/ratios-ttm", { symbol });
-    const data = await this.fetchJson(url, `ratios-ttm(${symbol})`);
+  async fetchKeyMetrics(symbol) {
+    const url = this.buildUrl("/stable/key-metrics", { symbol });
+    const data = await this.fetchJson(url, `key-metrics(${symbol})`);
     return Array.isArray(data) && data[0] ? data[0] : null;
   }
 
@@ -83,16 +83,40 @@ class FmpFundamentalsService {
     return Array.isArray(data) && data[0] ? data[0] : null;
   }
 
+  async fetchIncomeStatement(symbol) {
+    const url = this.buildUrl("/stable/income-statement", { symbol, limit: 1 });
+    const data = await this.fetchJson(url, `income-statement(${symbol})`);
+    return Array.isArray(data) && data[0] ? data[0] : null;
+  }
+
+  async fetchBalanceSheet(symbol) {
+    const url = this.buildUrl("/stable/balance-sheet-statement", { symbol, limit: 1 });
+    const data = await this.fetchJson(url, `balance-sheet(${symbol})`);
+    return Array.isArray(data) && data[0] ? data[0] : null;
+  }
+
+  async fetchRatios(symbol) {
+    const url = this.buildUrl("/stable/ratios", { symbol, limit: 1 });
+    const data = await this.fetchJson(url, `ratios(${symbol})`);
+    return Array.isArray(data) && data[0] ? data[0] : null;
+  }
+
   async getFundamentalsForSymbol(symbol) {
-    const [profile, ratios, scores, dcf] = await Promise.all([
+    const [profile, keyMetrics, ratiosRaw, scores, dcf, incomeStatement, balanceSheet] = await Promise.all([
       this.fetchProfile(symbol),
-      this.fetchRatiosTTM(symbol),
+      this.fetchKeyMetrics(symbol),
+      this.fetchRatios(symbol),
       this.fetchFinancialScores(symbol),
       this.fetchDCF(symbol),
+      this.fetchIncomeStatement(symbol),
+      this.fetchBalanceSheet(symbol),
     ]);
 
-    this.logger.info("[DEBUG raw ratios]", { symbol, ratios_raw: ratios });
-    const normalized = this.normalizeRatios(ratios);
+    this.logger.info("[DEBUG raw keyMetrics]", { symbol, keyMetrics_raw: keyMetrics });
+    this.logger.info("[DEBUG raw ratios]", { symbol, ratios_raw: ratiosRaw });
+    const normalized = this.normalizeKeyMetrics(keyMetrics);
+    const normalizedRatios = this.normalizeRatios(ratiosRaw);
+    const mergedRatios = { ...normalized, ...normalizedRatios };
     this.logger.info("[DEBUG normalized ratios]", { symbol, normalized });
 
     const price = profile?.price != null ? Number(profile.price) : null;
@@ -106,10 +130,16 @@ class FmpFundamentalsService {
     return {
       symbol,
       profile,
-      ratios: normalized,
+      ratios: mergedRatios, // naming legacy for scoringService
+      keyMetrics,
+      ratiosRaw,
+      stableRatios: mergedRatios,
+      stable: keyMetrics, // alias per i campi della stable (es. debtToEquityRatio)
       scores,
       dcf,
       dcfUpside,
+      incomeStatement,
+      balanceSheet,
     };
   }
 
@@ -128,16 +158,28 @@ class FmpFundamentalsService {
     return out;
   }
 
-  normalizeRatios(raw = {}) {
+  normalizeKeyMetrics(raw = {}) {
     if (!raw || typeof raw !== "object") return {};
 
     return {
-      priceEarningsRatio: Number(raw.priceEarningsRatioTTM ?? raw.priceEarningsRatio) || null,
-      priceToBookRatio: Number(raw.priceToBookRatioTTM ?? raw.priceToBookRatio) || null,
+      priceEarningsRatio: Number(raw.priceEarningsRatioTTM ?? raw.peRatio ?? raw.priceEarningsRatio) || null,
+      priceToBookRatio: Number(raw.priceToBookRatioTTM ?? raw.pbRatio ?? raw.priceToBookRatio) || null,
       returnOnEquity: Number(raw.returnOnEquityTTM ?? raw.returnOnEquity) || null,
       returnOnAssets: Number(raw.returnOnAssetsTTM ?? raw.returnOnAssets) || null,
-      operatingProfitMargin: Number(raw.operatingProfitMarginTTM ?? raw.operatingProfitMargin) || null,
-      debtEquityRatio: Number(raw.debtEquityRatioTTM ?? raw.debtEquityRatio) || null,
+      operatingProfitMargin: Number(raw.operatingProfitMarginTTM ?? raw.operatingMargin ?? raw.operatingProfitMargin) || null,
+      debtEquityRatio: Number(raw.debtToEquityRatio ?? raw.debtToEquity ?? raw.debtEquityRatioTTM ?? raw.debtEquityRatio) || null,
+      date: raw.date ?? null,
+    };
+  }
+
+  normalizeRatios(raw = {}) {
+    if (!raw || typeof raw !== "object") return {};
+    return {
+      debtToEquityRatio: Number(raw.debtToEquityRatio ?? raw.debtEquityRatio ?? raw.debtToEquity) || null,
+      returnOnEquity: Number(raw.returnOnEquity) || null,
+      returnOnAssets: Number(raw.returnOnAssets) || null,
+      operatingProfitMargin: Number(raw.operatingProfitMargin) || null,
+      date: raw.date ?? null,
     };
   }
 

@@ -499,6 +499,32 @@ app.get("/scan/jobs", requireReady, async (_req, res) => {
   }
 });
 
+// Cancella/termina uno scan job
+app.delete("/scan/jobs/:jobId", requireReady, async (req, res) => {
+  if (!serviceInstance?.cancelScanJob) {
+    return res.status(501).json({
+      ok: false,
+      error: "cancelScanJob() not implemented in this microservice",
+    });
+  }
+
+  try {
+    const job = serviceInstance.cancelScanJob(req.params.jobId);
+    if (!job) {
+      return res.status(404).json({ ok: false, error: "Job not found" });
+    }
+    return res.json({ ok: true, job });
+  } catch (e) {
+    logger.error(
+      `[DELETE /scan/jobs/${req.params.jobId}] Error: ${e?.message || String(e)}`
+    );
+    return res.status(500).json({
+      ok: false,
+      error: e?.message || String(e),
+    });
+  }
+});
+
 // Aggiorna momentum per tutti i tickers presenti in DB
 app.post("/momentum/refresh", requireReady, async (_req, res) => {
   if (!serviceInstance?.refreshMomentumAll) {

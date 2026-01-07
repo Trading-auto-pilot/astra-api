@@ -86,6 +86,7 @@ function createScanJob(totalRaw) {
   const job = {
     id,
     status: "queued", // queued | running | completed | error
+    cancel: false,
     totalRawTickers: totalRaw,
     totalProcessed: 0,
     dbHits: 0,
@@ -120,11 +121,24 @@ function getActiveJobs() {
   );
 }
 
+function cancelScanJob(id) {
+  const job = jobs.get(id);
+  if (!job) return null;
+  job.cancel = true;
+  // se non è già terminato, metti subito lo stato a cancelled
+  if (job.status === "queued" || job.status === "running") {
+    job.status = "cancelled";
+  }
+  job.updatedAt = new Date().toISOString();
+  return job;
+}
+
 module.exports = {
   createScanJob,
   updateScanJob,
   getScanJob,
   getAllJobs,
   getActiveJobs,
+  cancelScanJob,
   buildFundamentalsRecord
 };

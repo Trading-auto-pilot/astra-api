@@ -15,21 +15,31 @@ services:
       - "--providers.docker.network=trading_net"
       # EntryPoints (solo HTTP)
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
 
       # Dashboard
       - "--api.dashboard=true"
       - "--api.insecure=false"
 
+      # IBKR API Gatewar
+      - "--providers.file.filename=/etc/traefik/dynamic.yml"
+
       # log (opzionale)
       - "--log.level=INFO"
+      
 
     ports:
       - "8080:80"
+      - "8443:443"
 
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+      - ./traefik-dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - ./traefik-dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - ./certs:/etc/traefik/certs:ro
+
     networks:
       - trading_net
 
@@ -110,6 +120,36 @@ services:
       - "6379:6379"
     networks:
       - trading_net
+
+
+  ibkrgw-paper:
+    image: local/ibkr-clientportal:1.0
+    build:
+      context: .
+      dockerfile: IBKR_API_Gateway/Dockerfile
+    restart: unless-stopped
+    networks:
+      - trading_net
+    volumes:
+      - ./IBKR_API_Gateway/conf.local.expopaper.yaml:/opt/ibkr/root/conf.yaml:ro
+    labels:
+      - "traefik.enable=true"
+
+      - "traefik.http.routers.ibkrgw-expopaper.rule=Host(`expopaper.localhost`)"
+      - "traefik.http.routers.ibkrgw-expopaper.entrypoints=websecure"
+      - "traefik.http.routers.ibkrgw-expopaper.tls=true"
+
+      # ✅ middleware headers per “simulare” localhost:5000
+      - "traefik.http.routers.ibkrgw-expopaper.middlewares=ibkrgw-expopaper-headers"
+      - "traefik.http.middlewares.ibkrgw-expopaper-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
+      - "traefik.http.middlewares.ibkrgw-expopaper-headers.headers.customRequestHeaders.X-Forwarded-Host=localhost:5000"
+
+      - "traefik.http.services.ibkrgw-expopaper.loadbalancer.server.port=5000"
+      - "traefik.http.services.ibkrgw-expopaper.loadbalancer.server.scheme=https"
+      - "traefik.http.services.ibkrgw-expopaper.loadbalancer.serversTransport=ibkr-insecure@file"
+
+      - "traefik.http.middlewares.ibkrgw-expopaper-headers.headers.customRequestHeaders.X-Forwarded-For=127.0.0.1"
+      - "traefik.http.middlewares.ibkrgw-expopaper-headers.headers.customRequestHeaders.X-Real-IP=127.0.0.1"
 
   dbmanager:
     image: local/dbmanager:${DBMANAGER_VERSION:-latest}
@@ -381,6 +421,12 @@ services:
       - "traefik.http.routers.tickerscanner-glossary.priority=10010"
       - "traefik.http.routers.tickerscanner-glossary.service=tickerscanner"
       - "traefik.http.routers.tickerscanner-glossary.middlewares=tickerscanner-stripprefix,cors-default@docker"
+      # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
+      - "traefik.http.routers.tickerscanner-preflight.rule=Host(`localhost`) && PathPrefix(`/tickerscanner`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.tickerscanner-preflight.entrypoints=web"
+      - "traefik.http.routers.tickerscanner-preflight.priority=10000"
+      - "traefik.http.routers.tickerscanner-preflight.service=tickerscanner"
+      - "traefik.http.routers.tickerscanner-preflight.middlewares=tickerscanner-stripprefix,cors-default@docker"
 
   servicecontrolplane:
     image: local/servicecontrolplane:${SERVICECONTROLPLANE_VERSION:-latest}
@@ -441,12 +487,6 @@ services:
       - "traefik.http.routers.servicecontrolplane-preflight.priority=10000"
       - "traefik.http.routers.servicecontrolplane-preflight.service=servicecontrolplane"
       - "traefik.http.routers.servicecontrolplane-preflight.middlewares=servicecontrolplane-stripprefix,cors-default@docker"
-      # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
-      - "traefik.http.routers.tickerscanner-preflight.rule=Host(`localhost`) && PathPrefix(`/tickerscanner`) && Method(`OPTIONS`)"
-      - "traefik.http.routers.tickerscanner-preflight.entrypoints=web"
-      - "traefik.http.routers.tickerscanner-preflight.priority=10000"
-      - "traefik.http.routers.tickerscanner-preflight.service=tickerscanner"
-      - "traefik.http.routers.tickerscanner-preflight.middlewares=tickerscanner-stripprefix,cors-default@docker"
 
   authservice:
     image: local/authservice:${AUTHSERVICE_VERSION:-latest}
