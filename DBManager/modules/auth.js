@@ -938,7 +938,7 @@ async function updateUserScoreWeights(userId, payload = {}, pipeId = null) {
 
     const [res] = await conn.query(sql, params);
     logger.info(
-      `[updateUserScoreWeights] userId=${userId} pipeId=${pipeId ?? "NULL"} updated=${res.affectedRows}`
+      `[updateUserScoreWeights] userId=${userId} pipeId=${pipeId ?? "NULL"} updated=${res.affectedRows} fields=${fields.length}`
     );
     return { ok: true, updated: res.affectedRows };
   } catch (err) {

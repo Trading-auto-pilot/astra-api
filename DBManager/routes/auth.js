@@ -161,6 +161,11 @@ module.exports = (dbManager) => {
     if (!userId) return res.status(400).json({ error: "ID non valido" });
 
     const payload = req.body || {};
+    console.info("[PUT /auth/users/:id/score-weights] incoming", {
+      userId,
+      pipeId,
+      payloadKeys: Object.keys(payload || {}),
+    });
 
     try {
       const result = await dbManager.updateUserScoreWeights(

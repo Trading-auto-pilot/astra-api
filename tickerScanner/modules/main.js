@@ -34,6 +34,12 @@ function buildHistoryVersionHash(rec) {
     rec?.piotroski ?? "",
     rec?.debt_equity ?? "",
     rec?.altman_z ?? "",
+    rec?.market_cap ?? "",
+    rec?.beta ?? "",
+    rec?.is_etf ?? "",
+    rec?.is_actively_trading ?? "",
+    rec?.is_adr ?? "",
+    rec?.is_fund ?? "",
   ];
   const payload = fields.join("|");
   return crypto.createHash("sha256").update(payload).digest("hex"); // alfanumerico hex
@@ -669,10 +675,10 @@ class TickerScanner {
 
   async upsertFundamentalsHistory(symbol, fundamentalsRecord, { fmpData = {}, today } = {}) {
     // prepara payload SCD2
-    const version_hash = buildHistoryVersionHash(fundamentalsRecord);
     const ratios = fmpData?.ratios || fmpData?.stableRatios || {};
     const kmRaw = fmpData?.keyMetrics || fmpData?.stable || {};
     const km = Array.isArray(kmRaw) ? kmRaw[0] || {} : kmRaw;
+    const profile = fmpData?.profile || {};
     const isRaw = fmpData?.incomeStatement;
     const is = Array.isArray(isRaw) ? isRaw[0] || {} : isRaw || {};
     const bsRaw = fmpData?.balanceSheet;
@@ -721,6 +727,28 @@ class TickerScanner {
       numOrNull(ratios?.debtEquityRatio) ??
       fundamentalsRecord?.debt_equity ??
       null;
+    const toTinyInt = (v) => (v === null || v === undefined ? null : asBool(v) ? 1 : 0);
+    const market_cap = numOrNull(profile?.marketCap ?? fundamentalsRecord?.market_cap ?? fundamentalsRecord?.marketCap);
+    const beta = numOrNull(profile?.beta ?? fundamentalsRecord?.beta);
+    const cik = profile?.cik ?? fundamentalsRecord?.cik ?? null;
+    const isin = profile?.isin ?? fundamentalsRecord?.isin ?? null;
+    const cusip = profile?.cusip ?? fundamentalsRecord?.cusip ?? null;
+    const exchange_full_name = profile?.exchangeFullName ?? fundamentalsRecord?.exchange_full_name ?? null;
+    const is_etf = toTinyInt(profile?.isEtf ?? fundamentalsRecord?.is_etf ?? fundamentalsRecord?.isEtf);
+    const is_actively_trading = toTinyInt(
+      profile?.isActivelyTrading ?? fundamentalsRecord?.is_actively_trading ?? fundamentalsRecord?.isActivelyTrading
+    );
+    const is_adr = toTinyInt(profile?.isAdr ?? fundamentalsRecord?.is_adr ?? fundamentalsRecord?.isAdr);
+    const is_fund = toTinyInt(profile?.isFund ?? fundamentalsRecord?.is_fund ?? fundamentalsRecord?.isFund);
+    const version_hash = buildHistoryVersionHash({
+      ...fundamentalsRecord,
+      market_cap,
+      beta,
+      is_etf,
+      is_actively_trading,
+      is_adr,
+      is_fund,
+    });
     const payload = {
       symbol,
       valid_from: today,
@@ -732,6 +760,16 @@ class TickerScanner {
       sector: fundamentalsRecord?.sector ?? null,
       industry: fundamentalsRecord?.industry ?? null,
       country: fundamentalsRecord?.country ?? null,
+      market_cap,
+      beta,
+      cik,
+      isin,
+      cusip,
+      exchange_full_name,
+      is_etf,
+      is_actively_trading,
+      is_adr,
+      is_fund,
       roe,
       roa,
       op_margin,
