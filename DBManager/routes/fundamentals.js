@@ -2,7 +2,22 @@
 
 const express = require("express");
 const cache = require("../../shared/cache");
+const createLogger = require("../../shared/logger");
+
+const MICROSERVICE = "DBManager";
+const MODULE_NAME = "RESTServer fundamentals";
+const MODULE_VERSION = "2.0";
+
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || "info");
 const router = express.Router();
+
+const safeStringify = (value) => {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
 
 module.exports = (dbManager) => {
 
@@ -79,6 +94,26 @@ module.exports = (dbManager) => {
   });
 
   // CRUD market_daily
+  router.get("/market-daily/latest", async (req, res) => {
+    const raw = req.query.symbols ?? req.query.symbol ?? null;
+    const symbols =
+      typeof raw === "string"
+        ? raw
+            .split(",")
+            .map((s) => s.trim().toUpperCase())
+            .filter(Boolean)
+        : Array.isArray(raw)
+          ? raw.map((s) => String(s).trim().toUpperCase()).filter(Boolean)
+          : null;
+    try {
+      const rows = await dbManager.getMarketDailyLatest({ symbols });
+      return res.json({ ok: true, data: rows });
+    } catch (err) {
+      console.error("[GET /fundamentals/market-daily/latest] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore lettura market_daily latest" });
+    }
+  });
+
   router.get("/market-daily", async (req, res) => {
     const symbol = req.query.symbol ? String(req.query.symbol).toUpperCase() : null;
     const trade_date = req.query.trade_date ?? req.query.tradeDate ?? null;
@@ -97,7 +132,11 @@ module.exports = (dbManager) => {
       if (result.ok === false && result.error) return res.status(400).json(result);
       return res.json(result);
     } catch (err) {
-      console.error("[POST /fundamentals/market-daily] Errore:", err?.message || err);
+      logger.error(
+        "[POST /fundamentals/market-daily] Errore:",
+        err?.message || err,
+        safeStringify({ code: err?.code, sqlMessage: err?.sqlMessage, payload: req.body })
+      );
       return res.status(500).json({ ok: false, error: "Errore inserimento market_daily" });
     }
   });
@@ -111,7 +150,11 @@ module.exports = (dbManager) => {
       if (result.ok === false && result.error) return res.status(400).json(result);
       return res.json({ ok: true, ...result });
     } catch (err) {
-      console.error("[PUT /fundamentals/market-daily/:symbol/:tradeDate] Errore:", err?.message || err);
+      logger.error(
+        "[PUT /fundamentals/market-daily/:symbol/:tradeDate] Errore:",
+        err?.message || err,
+        safeStringify({ code: err?.code, sqlMessage: err?.sqlMessage, payload: req.body })
+      );
       return res.status(500).json({ ok: false, error: "Errore aggiornamento market_daily" });
     }
   });
@@ -142,6 +185,42 @@ module.exports = (dbManager) => {
     } catch (err) {
       console.error("[GET /fundamentals/scores-daily] Errore:", err?.message || err);
       return res.status(500).json({ ok: false, error: "Errore lettura scores_daily" });
+    }
+  });
+
+  router.get("/scores-daily/by-user", async (req, res) => {
+    const userId = Number(req.query.user_id);
+    const pipeId = Number(req.query.pipe_id);
+    const scoreDate = req.query.score_date ?? req.query.scoreDate ?? null;
+    if (!Number.isFinite(userId) || !Number.isFinite(pipeId) || !scoreDate) {
+      return res.status(400).json({ ok: false, error: "user_id, pipe_id, score_date obbligatori" });
+    }
+    try {
+      const rows = await dbManager.getScoresDailyWithFundamentalsByUserPipeDate({
+        user_id: userId,
+        pipe_id: pipeId,
+        score_date: scoreDate,
+      });
+      return res.json({ ok: true, data: rows });
+    } catch (err) {
+      logger.error("[GET /fundamentals/scores-daily/by-user] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore lettura scores_daily by-user" });
+    }
+  });
+
+  router.get("/scores-daily/counts", async (req, res) => {
+    const userId = Number(req.query.user_id);
+    const pipeId = req.query.pipe_id !== undefined ? Number(req.query.pipe_id) : null;
+    if (!Number.isFinite(userId)) return res.status(400).json({ ok: false, error: "user_id non valido" });
+    try {
+      const rows = await dbManager.getScoresDailyCountsByDate({
+        user_id: userId,
+        pipe_id: Number.isFinite(pipeId) ? pipeId : null,
+      });
+      return res.json({ ok: true, data: rows });
+    } catch (err) {
+      logger.error("[GET /fundamentals/scores-daily/counts] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore lettura counts scores_daily" });
     }
   });
 
@@ -472,7 +551,7 @@ module.exports = (dbManager) => {
       const rows = await dbManager.getUserOrderBy(userId, Number.isFinite(pipeId) ? pipeId : null);
       return res.json({ ok: true, data: rows });
     } catch (err) {
-      console.error("[GET /fundamentals/user-order/:userId] Errore:", err?.message || err);
+      logger.error("[GET /fundamentals/user-order/:userId] Errore:", err?.message || err);
       return res.status(500).json({ ok: false, error: "Errore lettura user_order_by" });
     }
   });
@@ -494,7 +573,7 @@ module.exports = (dbManager) => {
       });
       return res.json({ ok: true, ...result });
     } catch (err) {
-      console.error("[POST /fundamentals/user-order] Errore:", err?.message || err);
+      logger.error("[POST /fundamentals/user-order] Errore:", err?.message || err);
       return res.status(500).json({ ok: false, error: "Errore inserimento user_order_by" });
     }
   });
@@ -519,7 +598,7 @@ module.exports = (dbManager) => {
       if (!result.affectedRows) return res.status(404).json({ ok: false, error: "Record non trovato" });
       return res.json({ ok: true });
     } catch (err) {
-      console.error("[PUT /fundamentals/user-order/:id] Errore:", err?.message || err);
+      logger.error("[PUT /fundamentals/user-order/:id] Errore:", err?.message || err);
       return res.status(500).json({ ok: false, error: "Errore aggiornamento user_order_by" });
     }
   });
@@ -545,8 +624,159 @@ module.exports = (dbManager) => {
       if (!result.affectedRows) return res.status(404).json({ ok: false, error: "Record non trovato" });
       return res.json({ ok: true });
     } catch (err) {
-      console.error("[DELETE /fundamentals/user-order/:id/:userId] Errore:", err?.message || err);
+      logger.error("[DELETE /fundamentals/user-order/:id/:userId] Errore:", err?.message || err);
       return res.status(500).json({ ok: false, error: "Errore cancellazione user_order_by" });
+    }
+  });
+
+  // CRUD user_daily_score_jobs
+  router.get("/user-daily-score-jobs/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+    try {
+      const rows = await dbManager.getUserDailyScoreJobs({ id, limit: 1 });
+      if (!rows.length) return res.status(404).json({ ok: false, error: "Non trovato" });
+      return res.json({ ok: true, data: rows[0] });
+    } catch (err) {
+      logger.error("[GET /fundamentals/user-daily-score-jobs/:id] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore lettura user_daily_score_jobs" });
+    }
+  });
+
+  router.get("/user-daily-score-jobs", async (req, res) => {
+    const userId = Number(req.query.user_id);
+    if (!Number.isFinite(userId)) return res.status(400).json({ ok: false, error: "user_id non valido" });
+    const pipeId = req.query.pipe_id !== undefined ? Number(req.query.pipe_id) : undefined;
+    const jobId = req.query.job_id ? String(req.query.job_id) : null;
+    const status = req.query.status ? String(req.query.status) : null;
+    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+    try {
+      const rows = await dbManager.getUserDailyScoreJobs({
+        user_id: userId,
+        pipe_id: Number.isFinite(pipeId) ? pipeId : undefined,
+        job_id: jobId,
+        status,
+        limit,
+      });
+      return res.json({ ok: true, data: rows });
+    } catch (err) {
+      logger.error(
+        "[GET /fundamentals/user-daily-score-jobs] Errore:",
+        err?.message || err,
+        safeStringify({
+          code: err?.code,
+          sqlMessage: err?.sqlMessage,
+          params: { user_id: userId, pipe_id: pipeId, job_id: jobId, status, limit },
+        })
+      );
+      return res.status(500).json({ ok: false, error: "Errore lettura user_daily_score_jobs" });
+    }
+  });
+
+  router.post("/user-daily-score-jobs", async (req, res) => {
+    const { user_id, job_id, target_date } = req.body || {};
+    if (!Number.isFinite(Number(user_id)) || !job_id || !target_date) {
+      return res.status(400).json({ ok: false, error: "user_id, job_id e target_date obbligatori" });
+    }
+    try {
+      const result = await dbManager.insertUserDailyScoreJob(req.body || {});
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      logger.error("[POST /fundamentals/user-daily-score-jobs] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore inserimento user_daily_score_jobs" });
+    }
+  });
+
+  router.put("/user-daily-score-jobs/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+    try {
+      const result = await dbManager.updateUserDailyScoreJob(id, req.body || {});
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      logger.error("[PUT /fundamentals/user-daily-score-jobs/:id] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore aggiornamento user_daily_score_jobs" });
+    }
+  });
+
+  router.delete("/user-daily-score-jobs/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+    try {
+      const result = await dbManager.deleteUserDailyScoreJob(id);
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      logger.error("[DELETE /fundamentals/user-daily-score-jobs/:id] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore cancellazione user_daily_score_jobs" });
+    }
+  });
+
+  // CRUD market_daily_jobs
+  router.get("/market-daily-jobs/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+    try {
+      const rows = await dbManager.getMarketDailyJobs({ id, limit: 1 });
+      if (!rows.length) return res.status(404).json({ ok: false, error: "Non trovato" });
+      return res.json({ ok: true, data: rows[0] });
+    } catch (err) {
+      logger.error("[GET /fundamentals/market-daily-jobs/:id] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore lettura market_daily_jobs" });
+    }
+  });
+
+  router.get("/market-daily-jobs", async (req, res) => {
+    const jobId = req.query.job_id ? String(req.query.job_id) : null;
+    const status = req.query.status ? String(req.query.status) : null;
+    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+    try {
+      const rows = await dbManager.getMarketDailyJobs({
+        job_id: jobId,
+        status,
+        limit,
+      });
+      return res.json({ ok: true, data: rows });
+    } catch (err) {
+      logger.error("[GET /fundamentals/market-daily-jobs] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore lettura market_daily_jobs" });
+    }
+  });
+
+  router.post("/market-daily-jobs", async (req, res) => {
+    const { job_id, status } = req.body || {};
+    if (!job_id || !status) {
+      return res.status(400).json({ ok: false, error: "job_id e status obbligatori" });
+    }
+    try {
+      const result = await dbManager.insertMarketDailyJob(req.body || {});
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      logger.error("[POST /fundamentals/market-daily-jobs] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore inserimento market_daily_jobs" });
+    }
+  });
+
+  router.put("/market-daily-jobs/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+    try {
+      const result = await dbManager.updateMarketDailyJob(id, req.body || {});
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      logger.error("[PUT /fundamentals/market-daily-jobs/:id] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore aggiornamento market_daily_jobs" });
+    }
+  });
+
+  router.delete("/market-daily-jobs/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+    try {
+      const result = await dbManager.deleteMarketDailyJob(id);
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      logger.error("[DELETE /fundamentals/market-daily-jobs/:id] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore cancellazione market_daily_jobs" });
     }
   });
 

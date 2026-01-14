@@ -199,8 +199,11 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       processed: 0,
       inserted: 0,
       updated: 0,
+      persisted: false,
       errors: [],
       cancel: false,
+      startedAt: null,
+      finishedAt: null,
     };
     marketDailyJobs.set(job.id, job);
     return job;
@@ -213,6 +216,17 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
   };
   const getActiveMarketJobs = () =>
     Array.from(marketDailyJobs.values()).filter((j) => j.status === "queued" || j.status === "running");
+
+  const persistMarketDailyJobRecord = async (jobId, payload) => {
+    const job = marketDailyJobs.get(jobId);
+    if (job?.persisted) return;
+    try {
+      await axios.post(`${dbmanagerUrl}/fundamentals/market-daily-jobs`, payload, { timeout: 8000 });
+      if (job) job.persisted = true;
+    } catch (err) {
+      logger.warning(`${fnPrefix}.market-daily job=${jobId} persist failed ${safeStringify({ error: fmtErr(err) })}`);
+    }
+  };
 
   const getFmpApiKey = () => process.env.FMP_API_KEY || process.env.FMP_KEY || null;
   const fmtErr = (err) => {
@@ -230,6 +244,13 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
     return status ? `${status} ${err.message || String(err)}` : err.message || String(err);
   };
 
+  const toSqlDateTime = (value) => {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toISOString().replace("T", " ").slice(0, 19);
+  };
+
   // ====== User daily scores async jobs ======
   const userDailyJobs = new Map();
   const newUserDailyJobId = () => `udaily_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -244,9 +265,15 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       saved: 0,
       total: 0,
       cancel: false,
+      persisted: false,
       errors: [],
       date: null,
       pipeId: null,
+      userId: null,
+      modelName: null,
+      modelVersion: null,
+      startedAt: null,
+      finishedAt: null,
     };
     userDailyJobs.set(job.id, job);
     return job;
@@ -260,13 +287,38 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
   const getActiveUserDailyJobs = () =>
     Array.from(userDailyJobs.values()).filter((j) => j.status === "queued" || j.status === "running");
 
+  const persistUserDailyJobRecord = async (jobId, payload) => {
+    const job = userDailyJobs.get(jobId);
+    if (job?.persisted) return;
+    try {
+      await axios.post(`${dbmanagerUrl}/fundamentals/user-daily-score-jobs`, payload, { timeout: 8000 });
+      if (job) job.persisted = true;
+    } catch (err) {
+      logger.warning(`${fnPrefix}.user-daily job=${jobId} persist failed ${safeStringify({ error: fmtErr(err) })}`);
+    }
+  };
+
   const runMarketDailyJob = async (jobId) => {
     logger.info(`${fnPrefix} update-market-daily start job=${jobId}`);
-    const job = updateMarketJob(jobId, { status: "running" });
+    const startedAt = new Date().toISOString();
+    const job = updateMarketJob(jobId, { status: "running", startedAt });
     if (!job) return;
     const apiKey = getFmpApiKey();
     if (!apiKey) {
-      updateMarketJob(jobId, { status: "error", error: "FMP_API_KEY non configurata" });
+      updateMarketJob(jobId, { status: "error", error: "FMP_API_KEY non configurata", finishedAt: new Date().toISOString() });
+      await persistMarketDailyJobRecord(jobId, {
+        job_id: jobId,
+        status: "error",
+        total_symbols: 0,
+        processed: 0,
+        inserted: 0,
+        updated: 0,
+        error_count: 1,
+        errors_json: [{ error: "FMP_API_KEY non configurata" }],
+        params_json: {},
+        started_at: toSqlDateTime(startedAt),
+        finished_at: toSqlDateTime(new Date().toISOString()),
+      });
       return;
     }
 
@@ -287,19 +339,34 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
           const cur = marketDailyJobs.get(jobId);
           if (cur) updateMarketJob(jobId, { inserted: (cur.inserted || 0) + 1 });
         } catch (err) {
-          const cur = marketDailyJobs.get(jobId);
-          const list = cur?.errors || [];
-          const errMsg = fmtErr(err);
-          updateMarketJob(jobId, {
-            errors: [...list, { symbol: payload.symbol, trade_date: payload.trade_date, error: errMsg }],
-          });
-          logger.error(
-            `${fnPrefix} update-market-daily job=${jobId} insert error ${safeStringify({
-              symbol: payload.symbol,
-              trade_date: payload.trade_date,
-              error: errMsg,
-            })}`
-          );
+          try {
+            const putResp = await axios.put(
+              `${dbmanagerUrl}/fundamentals/market-daily/${encodeURIComponent(payload.symbol)}/${encodeURIComponent(
+                payload.trade_date
+              )}`,
+              payload,
+              { timeout: 8000 }
+            );
+            if (putResp.data?.ok === false) {
+              throw new Error(putResp.data.error || "PUT market-daily failed");
+            }
+            const cur = marketDailyJobs.get(jobId);
+            if (cur) updateMarketJob(jobId, { updated: (cur.updated || 0) + 1 });
+          } catch (err2) {
+            const cur = marketDailyJobs.get(jobId);
+            const list = cur?.errors || [];
+            const errMsg = fmtErr(err2);
+            updateMarketJob(jobId, {
+              errors: [...list, { symbol: payload.symbol, trade_date: payload.trade_date, error: errMsg }],
+            });
+            logger.error(
+              `${fnPrefix} update-market-daily job=${jobId} upsert error ${safeStringify({
+                symbol: payload.symbol,
+                trade_date: payload.trade_date,
+                error: errMsg,
+              })}`
+            );
+          }
         }
       };
 
@@ -321,7 +388,7 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
               : [];
           existingDates = new Set(
             existingRows
-              .map((r) => (r.trade_date || r.tradeDate || r.trade_date)?.toString()?.slice(0, 10))
+              .map((r) => normalizeMarketDate(r.trade_date || r.tradeDate || r.trade_date))
               .filter(Boolean)
           );
         } catch (err) {
@@ -364,7 +431,7 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
         for (const row of data) {
           const cur3 = marketDailyJobs.get(jobId);
           if (!cur3 || cur3.cancel) break;
-          const tradeDate = (row.date || row.tradeDate || row.dateTime || row.datetime || "").toString().slice(0, 10);
+          const tradeDate = normalizeMarketDate(row.date || row.tradeDate || row.dateTime || row.datetime);
           if (!tradeDate) continue;
           if (existingDates.has(tradeDate)) continue; // già presente, skip
 
@@ -415,10 +482,36 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
 
       const end = marketDailyJobs.get(jobId);
       if (end?.cancel) {
-        updateMarketJob(jobId, { status: "cancelled" });
+        updateMarketJob(jobId, { status: "cancelled", finishedAt: new Date().toISOString() });
+        await persistMarketDailyJobRecord(jobId, {
+          job_id: jobId,
+          status: "cancelled",
+          total_symbols: end?.totalSymbols || 0,
+          processed: end?.processed || 0,
+          inserted: end?.inserted || 0,
+          updated: end?.updated || 0,
+          error_count: end?.errors?.length || 0,
+          errors_json: end?.errors || [],
+          params_json: {},
+          started_at: toSqlDateTime(startedAt),
+          finished_at: toSqlDateTime(end?.finishedAt || new Date().toISOString()),
+        });
         logger.info(`${fnPrefix} update-market-daily job=${jobId} cancelled`);
       } else {
-        updateMarketJob(jobId, { status: "completed" });
+        updateMarketJob(jobId, { status: "completed", finishedAt: new Date().toISOString() });
+        await persistMarketDailyJobRecord(jobId, {
+          job_id: jobId,
+          status: "completed",
+          total_symbols: end?.totalSymbols || 0,
+          processed: end?.processed || 0,
+          inserted: end?.inserted || 0,
+          updated: end?.updated || 0,
+          error_count: end?.errors?.length || 0,
+          errors_json: end?.errors || [],
+          params_json: {},
+          started_at: toSqlDateTime(startedAt),
+          finished_at: toSqlDateTime(end?.finishedAt || new Date().toISOString()),
+        });
         logger.info(
           `${fnPrefix} update-market-daily job=${jobId} completed ${safeStringify({
             totalSymbols: end?.totalSymbols,
@@ -437,7 +530,21 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
         }
       }
     } catch (err) {
-      updateMarketJob(jobId, { status: "error", error: err?.response?.data || err?.message || err });
+      const errorStr = fmtErr(err);
+      updateMarketJob(jobId, { status: "error", error: errorStr, finishedAt: new Date().toISOString() });
+      await persistMarketDailyJobRecord(jobId, {
+        job_id: jobId,
+        status: "error",
+        total_symbols: job?.totalSymbols || 0,
+        processed: job?.processed || 0,
+        inserted: job?.inserted || 0,
+        updated: job?.updated || 0,
+        error_count: (job?.errors?.length || 0) + 1,
+        errors_json: [...(job?.errors || []), { error: errorStr }],
+        params_json: {},
+        started_at: toSqlDateTime(startedAt),
+        finished_at: toSqlDateTime(job?.finishedAt || new Date().toISOString()),
+      });
       logger.error(`${fnPrefix} update-market-daily job=${jobId} error ${safeStringify(err?.response?.data || err?.message || err)}`);
     }
   };
@@ -485,6 +592,24 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
     }
   };
 
+  const normalizeMarketDate = (value) => {
+    if (!value) return "";
+    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    const str = String(value);
+    return str.length >= 10 ? str.slice(0, 10) : str;
+  };
+
+  const computeDelta = (latestVal, targetVal) => {
+    const latestNum = safeNum(latestVal);
+    const targetNum = safeNum(targetVal);
+    if (latestNum === null || targetNum === null) {
+      return { abs: null, pct: null };
+    }
+    const abs = latestNum - targetNum;
+    const pct = targetNum !== 0 ? (abs / targetNum) * 100 : null;
+    return { abs, pct };
+  };
+
   const fetchMarketDailyBySymbol = async (symbol) => {
     const url = `${dbmanagerUrl}/fundamentals/market-daily?symbol=${encodeURIComponent(symbol)}`;
     const resp = await axios.get(url, { timeout: 12000 });
@@ -492,7 +617,7 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
     // normalizza e ordina per data crescente
     return rows
       .map((r) => ({
-        date: (r.trade_date || r.tradeDate || r.date || "").toString().slice(0, 10),
+        date: normalizeMarketDate(r.trade_date || r.tradeDate || r.date),
         close: safeNum(r.close),
         open: safeNum(r.open),
         high: safeNum(r.high),
@@ -515,7 +640,7 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       if (!rows.length) return null;
       const r = rows[0];
       return {
-        date: (r.trade_date || r.tradeDate || r.date || "").toString().slice(0, 10),
+        date: normalizeMarketDate(r.trade_date || r.tradeDate || r.date),
         close: safeNum(r.close),
         adj_close: safeNum(r.adj_close ?? r.adjClose),
       };
@@ -570,13 +695,23 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
   // ---- async job per user_daily_scores ----
   const runUserDailyJob = async (jobId, { userId, targetDate, pipeId, modelName, modelVersion }) => {
     const fn = `${fnPrefix}.user-daily job=${jobId}`;
-    updateUserDailyJob(jobId, { status: "running", date: targetDate, pipeId });
+    const startedAt = new Date().toISOString();
+    updateUserDailyJob(jobId, {
+      status: "running",
+      date: targetDate,
+      pipeId,
+      startedAt,
+      userId,
+      modelName,
+      modelVersion,
+    });
     const userIdSafe = Number.isFinite(Number(userId)) ? Number(userId) : null;
     const pipeIdSafe = pipeId !== null && pipeId !== undefined && pipeId !== "" ? Number(pipeId) : 0;
     if (userIdSafe === null) {
       updateUserDailyJob(jobId, { status: "error", error: "userId mancante" });
       return;
     }
+
     try {
       logger.info(
         `${fn} start user=${userIdSafe} pipe=${pipeIdSafe} date=${targetDate} model=${modelName || "Manual update"}:${modelVersion || "1.0"}`
@@ -680,6 +815,15 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
           [row.dcf_score, weights.wt_val_dcf],
         ]);
 
+        let momentumObj = null;
+        try {
+          if (row.momentum_json) {
+            momentumObj = typeof row.momentum_json === "string" ? JSON.parse(row.momentum_json) : row.momentum_json;
+          }
+        } catch {
+          momentumObj = null;
+        }
+
         computed.push({
           symbol,
           raw_mom,
@@ -687,6 +831,8 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
           quality_score,
           risk_score,
           valuation_score,
+          momentumObj,
+          row,
         });
         if (raw_mom != null) rawMomValues.push(raw_mom);
         if (raw_short != null) rawShortValues.push(raw_short);
@@ -708,6 +854,19 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
           [c.risk_score, weights.wt_daily_risk],
         ]);
 
+        const marketRiskScore = computeMarketRiskScore(c.momentumObj, weights);
+        const volumeScore = computeVolumeScore(c.momentumObj, weights);
+        const { marketScore, shortRiskScore } = normalizeShortRisk(
+          { ...(c.row || {}), risk_score: c.risk_score },
+          c.momentumObj,
+          weights
+        );
+        const growthProbability = computeGrowthProbability(
+          { ...(c.row || {}), risk_score: c.risk_score, momentum_score },
+          c.momentumObj,
+          weights
+        );
+
         results.push({
           symbol: c.symbol,
           score_date: targetDate,
@@ -719,6 +878,11 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
           risk_score: c.risk_score,
           valuation_score: c.valuation_score,
           total_score: total_score != null ? Math.round(total_score) : null,
+          market_score: marketScore ?? null,
+          market_risk_score: marketRiskScore ?? null,
+          short_risk_score: shortRiskScore ?? null,
+          volume_score: volumeScore ?? null,
+          growth_probability: growthProbability ?? null,
         });
       }
 
@@ -736,39 +900,44 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
           : Array.isArray(modelsResp.data)
           ? modelsResp.data
           : [];
-        const active = models.find(
-          (m) => m.version === modelVersionSafe && (m.valid_to === null || m.valid_to === undefined)
-        );
-        if (active?.id) {
-          try {
-            await axios.put(
-              `${dbmanagerUrl}/fundamentals/scoring-models/${active.id}`,
-              { valid_to: targetDate },
-              { timeout: 8000 }
-            );
-          } catch (err) {
-            logger.warning(
-              `${fn} closing scoring_model failed ${safeStringify({ id: active.id, error: fmtErr(err) })}`
-            );
+        const existingSameVersion = models.find((m) => m.version === modelVersionSafe);
+        if (existingSameVersion?.id) {
+          modelId = existingSameVersion.id;
+        } else {
+          const active = models.find(
+            (m) => m.version === modelVersionSafe && (m.valid_to === null || m.valid_to === undefined)
+          );
+          if (active?.id) {
+            try {
+              await axios.put(
+                `${dbmanagerUrl}/fundamentals/scoring-models/${active.id}`,
+                { valid_to: targetDate },
+                { timeout: 8000 }
+              );
+            } catch (err) {
+              logger.warning(
+                `${fn} closing scoring_model failed ${safeStringify({ id: active.id, error: fmtErr(err) })}`
+              );
+            }
           }
+          const insertResp = await axios.post(
+            `${dbmanagerUrl}/fundamentals/scoring-models`,
+            {
+              name: modelNameSafe,
+              version: modelVersionSafe,
+              valid_from: targetDate,
+              valid_to: null,
+              params_json: weights,
+            },
+            { timeout: 8000 }
+          );
+          modelId =
+            insertResp.data?.insertId ??
+            insertResp.data?.id ??
+            insertResp.data?.data?.insertId ??
+            insertResp.data?.data?.id ??
+            null;
         }
-        const insertResp = await axios.post(
-          `${dbmanagerUrl}/fundamentals/scoring-models`,
-          {
-            name: modelNameSafe,
-            version: modelVersionSafe,
-            valid_from: targetDate,
-            valid_to: null,
-            params_json: weights,
-          },
-          { timeout: 8000 }
-        );
-        modelId =
-          insertResp.data?.insertId ??
-          insertResp.data?.id ??
-          insertResp.data?.data?.insertId ??
-          insertResp.data?.data?.id ??
-          null;
       } catch (err) {
         logger.warning(
           `${fn} scoring model insert failed ${safeStringify({ name: modelNameSafe, version: modelVersionSafe, error: fmtErr(err) })}`
@@ -842,10 +1011,29 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
         }
       }
 
+      const finalStatus = userDailyJobs.get(jobId)?.cancel ? "cancelled" : "completed";
       updateUserDailyJob(jobId, {
-        status: userDailyJobs.get(jobId)?.cancel ? "cancelled" : "completed",
+        status: finalStatus,
         saved,
         total: results.length,
+        finishedAt: new Date().toISOString(),
+      });
+      const job = userDailyJobs.get(jobId);
+      await persistUserDailyJobRecord(jobId, {
+        job_id: jobId,
+        user_id: userIdSafe,
+        pipe_id: pipeIdSafe,
+        status: finalStatus,
+        target_date: targetDate,
+        model_name: modelNameSafe,
+        model_version: modelVersionSafe,
+        total_items: results.length,
+        saved_items: saved,
+        error_count: job?.errors?.length || 0,
+        errors_json: job?.errors || [],
+        params_json: weights,
+        started_at: toSqlDateTime(startedAt),
+        finished_at: toSqlDateTime(job?.finishedAt || new Date().toISOString()),
       });
       logger.info(
         `${fn} completed ${safeStringify({
@@ -865,7 +1053,24 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
         );
       }
     } catch (err) {
-      updateUserDailyJob(jobId, { status: "error", error: fmtErr(err) });
+      const errorStr = fmtErr(err);
+      updateUserDailyJob(jobId, { status: "error", error: errorStr, finishedAt: new Date().toISOString() });
+      const job = userDailyJobs.get(jobId);
+      await persistUserDailyJobRecord(jobId, {
+        job_id: jobId,
+        user_id: userIdSafe,
+        pipe_id: pipeIdSafe,
+        status: "error",
+        target_date: targetDate,
+        model_name: modelName || "Manual update",
+        model_version: modelVersion || "1.0",
+        total_items: job?.total || 0,
+        saved_items: job?.saved || 0,
+        error_count: (job?.errors?.length || 0) + 1,
+        errors_json: [...(job?.errors || []), { error: errorStr }],
+        started_at: toSqlDateTime(startedAt),
+        finished_at: toSqlDateTime(job?.finishedAt || new Date().toISOString()),
+      });
       logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
     }
   };
@@ -894,14 +1099,26 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
         for (const row of list) {
           const pid = row.pipe_id ?? row.pipeId ?? 0;
           const job = createUserDailyJob();
-          updateUserDailyJob(job.id, { date: targetDate, pipeId: pid, userId });
+          updateUserDailyJob(job.id, {
+            date: targetDate,
+            pipeId: pid,
+            userId,
+            modelName,
+            modelVersion,
+          });
           setImmediate(() => runUserDailyJob(job.id, { userId, targetDate, pipeId: pid, modelName, modelVersion }));
           jobs.push(job.id);
         }
         return res.json({ ok: true, jobIds: jobs });
       } else {
         const job = createUserDailyJob();
-        updateUserDailyJob(job.id, { date: targetDate, pipeId, userId });
+        updateUserDailyJob(job.id, {
+          date: targetDate,
+          pipeId,
+          userId,
+          modelName,
+          modelVersion,
+        });
         setImmediate(() => runUserDailyJob(job.id, { userId, targetDate, pipeId, modelName, modelVersion }));
         return res.json({ ok: true, jobId: job.id });
       }
@@ -925,13 +1142,118 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       return res.status(400).json({ ok: false, error: "Job già terminato" });
     }
     job.cancel = true;
-    updateUserDailyJob(job.id, { status: "cancelled" });
+    updateUserDailyJob(job.id, { status: "cancelled", finishedAt: new Date().toISOString() });
+    if (!job.persisted) {
+      persistUserDailyJobRecord(job.id, {
+        job_id: job.id,
+        user_id: Number.isFinite(Number(job.userId)) ? Number(job.userId) : null,
+        pipe_id: job.pipeId ?? null,
+        status: "cancelled",
+        target_date: job.date,
+        model_name: job.modelName || "Manual update",
+        model_version: job.modelVersion || "1.0",
+        total_items: job.total || 0,
+        saved_items: job.saved || 0,
+        error_count: job.errors?.length || 0,
+        errors_json: job.errors || [],
+        started_at: toSqlDateTime(job.startedAt || job.createdAt || new Date().toISOString()),
+        finished_at: toSqlDateTime(job.finishedAt || new Date().toISOString()),
+      });
+    }
     return res.json({ ok: true, jobId: job.id });
   });
 
   // Lista job attivi (queued/running)
   router.get("/update-market-daily", (_req, res) => {
     return res.json({ ok: true, jobs: getActiveMarketJobs() });
+  });
+
+  // Confronto market_daily: data specifica vs ultima disponibile
+  router.get("/market-daily/compare", async (req, res) => {
+    const fn = `${fnPrefix}.GET:/market-daily/compare`;
+    try {
+      const tradeDate = req.query.trade_date ?? req.query.tradeDate ?? req.query.date ?? null;
+      if (!tradeDate) {
+        return res.status(400).json({ ok: false, error: "trade_date obbligatoria" });
+      }
+
+      const targetUrl = `${dbmanagerUrl}/fundamentals/market-daily?trade_date=${encodeURIComponent(tradeDate)}`;
+      const targetResp = await axios.get(targetUrl, { timeout: 12000 });
+      const targetRows = Array.isArray(targetResp.data?.data)
+        ? targetResp.data.data
+        : Array.isArray(targetResp.data)
+          ? targetResp.data
+          : [];
+      const symbols = [
+        ...new Set(
+          targetRows
+            .map((r) => (r?.symbol ? String(r.symbol).toUpperCase() : null))
+            .filter(Boolean)
+        ),
+      ];
+      if (!symbols.length) {
+        return res.json({ ok: true, data: [] });
+      }
+
+      const latestUrl = `${dbmanagerUrl}/fundamentals/market-daily/latest?symbols=${encodeURIComponent(
+        symbols.join(",")
+      )}`;
+      const latestResp = await axios.get(latestUrl, { timeout: 12000 });
+      const latestRows = Array.isArray(latestResp.data?.data)
+        ? latestResp.data.data
+        : Array.isArray(latestResp.data)
+          ? latestResp.data
+          : [];
+      const latestBySymbol = new Map(
+        latestRows.map((row) => [String(row.symbol).toUpperCase(), row])
+      );
+
+      const data = targetRows.map((row) => {
+        const symbol = String(row.symbol).toUpperCase();
+        const latest = latestBySymbol.get(symbol) || null;
+        const deltaOpen = computeDelta(latest?.open, row.open);
+        const deltaClose = computeDelta(latest?.close, row.close);
+        const deltaHigh = computeDelta(latest?.high, row.high);
+        const deltaLow = computeDelta(latest?.low, row.low);
+
+        return {
+          symbol,
+          target: {
+            trade_date: normalizeMarketDate(row.trade_date || row.tradeDate || row.date),
+            open: safeNum(row.open),
+            close: safeNum(row.close),
+            high: safeNum(row.high),
+            low: safeNum(row.low),
+            volume: safeNum(row.volume),
+          },
+          latest: latest
+            ? {
+                trade_date: normalizeMarketDate(latest.trade_date || latest.tradeDate || latest.date),
+                open: safeNum(latest.open),
+                close: safeNum(latest.close),
+                high: safeNum(latest.high),
+                low: safeNum(latest.low),
+                volume: safeNum(latest.volume),
+              }
+            : null,
+          delta: {
+            open_abs: deltaOpen.abs,
+            open_pct: deltaOpen.pct,
+            close_abs: deltaClose.abs,
+            close_pct: deltaClose.pct,
+            high_abs: deltaHigh.abs,
+            high_pct: deltaHigh.pct,
+            low_abs: deltaLow.abs,
+            low_pct: deltaLow.pct,
+          },
+        };
+      });
+
+      return res.json({ ok: true, data });
+    } catch (err) {
+      logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
+      return res.status(500).json({ ok: false, error: "Errore confronto market_daily" });
+    }
   });
 
   // Cancella un job attivo
@@ -942,8 +1264,236 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       return res.status(400).json({ ok: false, error: "Job già terminato" });
     }
     job.cancel = true;
-    updateMarketJob(job.id, { status: "cancelled" });
+    updateMarketJob(job.id, { status: "cancelled", finishedAt: new Date().toISOString() });
+    if (!job.persisted) {
+      persistMarketDailyJobRecord(job.id, {
+        job_id: job.id,
+        status: "cancelled",
+        total_symbols: job.totalSymbols || 0,
+        processed: job.processed || 0,
+        inserted: job.inserted || 0,
+        updated: job.updated || 0,
+        error_count: job.errors?.length || 0,
+        errors_json: job.errors || [],
+        params_json: {},
+        started_at: toSqlDateTime(job.startedAt || job.createdAt || new Date().toISOString()),
+        finished_at: toSqlDateTime(job.finishedAt || new Date().toISOString()),
+      });
+    }
     return res.json({ ok: true, jobId: job.id });
+  });
+
+  // CRUD user_daily_score_jobs (proxy verso DBManager)
+  router.get("/user-daily-score-jobs/:id", async (req, res) => {
+    const fn = `${fnPrefix}.GET:/user-daily-score-jobs/:id`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+      const url = `${dbmanagerUrl}/fundamentals/user-daily-score-jobs/${encodeURIComponent(id)}`;
+      const resp = await axios.get(url, { timeout: 8000 });
+      return res.json(resp.data);
+    } catch (err) {
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
+      return res.status(500).json({ ok: false, error: "Errore lettura user_daily_score_jobs" });
+    }
+  });
+
+  router.get("/user-daily-score-jobs", async (req, res) => {
+    const fn = `${fnPrefix}.GET:/user-daily-score-jobs`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const pipeId = req.query.pipe_id ?? req.query.pipeId;
+      const jobId = req.query.job_id ?? req.query.jobId;
+      const status = req.query.status;
+      const limit = req.query.limit;
+      const qs = new URLSearchParams({
+        user_id: String(userId),
+        ...(pipeId !== undefined ? { pipe_id: String(pipeId) } : {}),
+        ...(jobId !== undefined ? { job_id: String(jobId) } : {}),
+        ...(status !== undefined ? { status: String(status) } : {}),
+        ...(limit !== undefined ? { limit: String(limit) } : {}),
+      });
+      const url = `${dbmanagerUrl}/fundamentals/user-daily-score-jobs?${qs.toString()}`;
+      const resp = await axios.get(url, { timeout: 8000 });
+      return res.json(resp.data);
+    } catch (err) {
+      logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
+      return res.status(500).json({ ok: false, error: "Errore lettura user_daily_score_jobs" });
+    }
+  });
+
+  router.post("/user-daily-score-jobs", async (req, res) => {
+    const fn = `${fnPrefix}.POST:/user-daily-score-jobs`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const body = { ...(req.body || {}), user_id: userId };
+      const url = `${dbmanagerUrl}/fundamentals/user-daily-score-jobs`;
+      const resp = await axios.post(url, body, { timeout: 8000 });
+      return res.json(resp.data);
+    } catch (err) {
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
+      return res.status(500).json({ ok: false, error: "Errore inserimento user_daily_score_jobs" });
+    }
+  });
+
+  router.put("/user-daily-score-jobs/:id", async (req, res) => {
+    const fn = `${fnPrefix}.PUT:/user-daily-score-jobs/:id`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+      const url = `${dbmanagerUrl}/fundamentals/user-daily-score-jobs/${encodeURIComponent(id)}`;
+      const resp = await axios.put(url, req.body || {}, { timeout: 8000 });
+      return res.json(resp.data);
+    } catch (err) {
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
+      return res.status(500).json({ ok: false, error: "Errore aggiornamento user_daily_score_jobs" });
+    }
+  });
+
+  router.delete("/user-daily-score-jobs/:id", async (req, res) => {
+    const fn = `${fnPrefix}.DELETE:/user-daily-score-jobs/:id`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+      const url = `${dbmanagerUrl}/fundamentals/user-daily-score-jobs/${encodeURIComponent(id)}`;
+      const resp = await axios.delete(url, { timeout: 8000 });
+      return res.json(resp.data);
+    } catch (err) {
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
+      return res.status(500).json({ ok: false, error: "Errore cancellazione user_daily_score_jobs" });
+    }
+  });
+
+  // CRUD market_daily_jobs (proxy verso DBManager)
+  router.get("/market-daily-jobs/:id", async (req, res) => {
+    const fn = `${fnPrefix}.GET:/market-daily-jobs/:id`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+      const url = `${dbmanagerUrl}/fundamentals/market-daily-jobs/${encodeURIComponent(id)}`;
+      const resp = await axios.get(url, { timeout: 8000 });
+      return res.json(resp.data);
+    } catch (err) {
+      logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
+      return res.status(500).json({ ok: false, error: "Errore lettura market_daily_jobs" });
+    }
+  });
+
+  router.get("/market-daily-jobs", async (req, res) => {
+    const fn = `${fnPrefix}.GET:/market-daily-jobs`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const jobId = req.query.job_id ?? req.query.jobId;
+      const status = req.query.status;
+      const limit = req.query.limit;
+      const qs = new URLSearchParams({
+        ...(jobId !== undefined ? { job_id: String(jobId) } : {}),
+        ...(status !== undefined ? { status: String(status) } : {}),
+        ...(limit !== undefined ? { limit: String(limit) } : {}),
+      });
+      const url = `${dbmanagerUrl}/fundamentals/market-daily-jobs${qs.toString() ? `?${qs.toString()}` : ""}`;
+      const resp = await axios.get(url, { timeout: 8000 });
+      return res.json(resp.data);
+    } catch (err) {
+      logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
+      return res.status(500).json({ ok: false, error: "Errore lettura market_daily_jobs" });
+    }
+  });
+
+  router.post("/market-daily-jobs", async (req, res) => {
+    const fn = `${fnPrefix}.POST:/market-daily-jobs`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const url = `${dbmanagerUrl}/fundamentals/market-daily-jobs`;
+      const resp = await axios.post(url, req.body || {}, { timeout: 8000 });
+      return res.json(resp.data);
+    } catch (err) {
+      logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
+      return res.status(500).json({ ok: false, error: "Errore inserimento market_daily_jobs" });
+    }
+  });
+
+  router.put("/market-daily-jobs/:id", async (req, res) => {
+    const fn = `${fnPrefix}.PUT:/market-daily-jobs/:id`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+      const url = `${dbmanagerUrl}/fundamentals/market-daily-jobs/${encodeURIComponent(id)}`;
+      const resp = await axios.put(url, req.body || {}, { timeout: 8000 });
+      return res.json(resp.data);
+    } catch (err) {
+      logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
+      return res.status(500).json({ ok: false, error: "Errore aggiornamento market_daily_jobs" });
+    }
+  });
+
+  router.delete("/market-daily-jobs/:id", async (req, res) => {
+    const fn = `${fnPrefix}.DELETE:/market-daily-jobs/:id`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+      const url = `${dbmanagerUrl}/fundamentals/market-daily-jobs/${encodeURIComponent(id)}`;
+      const resp = await axios.delete(url, { timeout: 8000 });
+      return res.json(resp.data);
+    } catch (err) {
+      logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
+      return res.status(500).json({ ok: false, error: "Errore cancellazione market_daily_jobs" });
+    }
+  });
+
+  router.get("/scores-daily/counts/:pipeId", async (req, res) => {
+    const fn = `${fnPrefix}.GET:/scores-daily/counts/:pipeId`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const pipeId = Number(req.params.pipeId);
+      if (!Number.isFinite(pipeId)) return res.status(400).json({ ok: false, error: "pipe_id non valido" });
+      const url = `${dbmanagerUrl}/fundamentals/scores-daily/counts?user_id=${encodeURIComponent(
+        userId
+      )}&pipe_id=${encodeURIComponent(pipeId)}`;
+      const resp = await axios.get(url, { timeout: 8000 });
+      return res.json(resp.data);
+    } catch (err) {
+      logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
+      return res.status(500).json({ ok: false, error: "Errore lettura counts scores_daily" });
+    }
+  });
+
+  router.get("/scores-daily/by-user/:pipeId/:scoreDate", async (req, res) => {
+    const fn = `${fnPrefix}.GET:/scores-daily/by-user/:pipeId/:scoreDate`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const pipeId = Number(req.params.pipeId);
+      const scoreDate = req.params.scoreDate;
+      if (!Number.isFinite(pipeId) || !scoreDate) {
+        return res.status(400).json({ ok: false, error: "pipe_id e score_date obbligatori" });
+      }
+      const url = `${dbmanagerUrl}/fundamentals/scores-daily/by-user?user_id=${encodeURIComponent(
+        userId
+      )}&pipe_id=${encodeURIComponent(pipeId)}&score_date=${encodeURIComponent(scoreDate)}`;
+      const resp = await axios.get(url, { timeout: 8000 });
+      return res.json(resp.data);
+    } catch (err) {
+      logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
+      return res.status(500).json({ ok: false, error: "Errore lettura scores_daily by-user" });
+    }
   });
 
 
@@ -1183,6 +1733,57 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
   router.post("/user-order", postUserOrder);
   router.post("/user-order/:pipeId", postUserOrder);
 
+  // bulk order by pipe
+  router.put("/user-order/pipe/:pipeId", async (req, res) => {
+    const fn = `${fnPrefix}.PUT:/user-order/pipe/:pipeId`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) {
+        logger.error(
+          `${fn} userId missing ${safeStringify({
+            headers: {
+              "x-user-id": req.headers["x-user-id"],
+              "x-api-key-id": req.headers["x-api-key-id"],
+              "x-auth-subject-type": req.headers["x-auth-subject-type"],
+              auth: req.headers.authorization ? "present" : "absent",
+            },
+          })}`
+        );
+        return res.status(401).json({ ok: false, error: "User non identificato" });
+      }
+      const pipeIdVal =
+        req.params.pipeId ??
+        req.body?.pipe_id ??
+        req.body?.pipeId ??
+        req.query?.pipe_id ??
+        req.query?.pipeId;
+      const orders = Array.isArray(req.body?.orders) ? req.body.orders : [];
+      const urlBase = `${dbmanagerUrl}/fundamentals/user-order`;
+      const results = [];
+      for (const o of orders) {
+        const targetId = o?.id;
+        const url = targetId
+          ? `${urlBase}/${encodeURIComponent(targetId)}${pipeIdVal ? `?pipeId=${encodeURIComponent(pipeIdVal)}` : ""}`
+          : urlBase;
+        const body = {
+          ...o,
+          user_id: userId,
+          ...(pipeIdVal !== undefined ? { pipe_id: pipeIdVal } : {}),
+        };
+        const method = targetId ? "put" : "post";
+        const resp = await axios({ url, method, data: body, timeout: 8000 }).catch((err) => {
+          logger.error(`${fn} single order error ${safeStringify(err?.response?.data || err?.message || err)}`);
+          return { data: { ok: false, error: err?.message || "errore ordine" } };
+        });
+        results.push(resp?.data ?? { ok: false, order: o });
+      }
+      return res.json({ ok: true, results });
+    } catch (err) {
+      logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
+      return res.status(500).json({ ok: false, error: "Errore aggiornamento user_order_by" });
+    }
+  });
+
   const putUserOrder = async (req, res) => {
     const fn = `${fnPrefix}.PUT:/user-order/:id`;
     try {
@@ -1207,13 +1808,45 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
         req.body?.pipeId ??
         req.query?.pipe_id ??
         req.query?.pipeId;
+      // se arriva una lista orders, gestisci bulk (post/put); se la pipe non è specificata usiamo id come pipeId
+      if (Array.isArray(req.body?.orders)) {
+        const orders = req.body.orders;
+        const pipeIdForOrders = pipeIdVal !== undefined ? pipeIdVal : id;
+        const results = [];
+        for (const o of orders) {
+          const targetId = o?.id;
+          const url = targetId
+            ? `${dbmanagerUrl}/fundamentals/user-order/${targetId}${
+                pipeIdForOrders ? `?pipeId=${encodeURIComponent(pipeIdForOrders)}` : ""
+              }`
+            : `${dbmanagerUrl}/fundamentals/user-order`;
+          const orderField = o?.order_field || o?.field || o?.orderField || o?.name;
+          if (!orderField) {
+            results.push({ ok: false, error: "order_field mancante" });
+            continue;
+          }
+          const body = {
+            ...o,
+            order_field: orderField,
+            user_id: userId,
+            ...(pipeIdForOrders !== undefined ? { pipe_id: pipeIdForOrders } : {}),
+          };
+          const method = targetId ? "put" : "post";
+          const resp = await axios({ url, method, data: body, timeout: 8000 }).catch((err) => {
+            logger.error(`${fn} single order error ${safeStringify(err?.response?.data || err?.message || err)}`);
+            return { data: { ok: false, error: err?.message || "errore ordine" } };
+          });
+          results.push(resp?.data ?? { ok: false, order: o });
+        }
+        return res.json({ ok: true, results });
+      }
       const body = { ...req.body, user_id: userId, ...(pipeIdVal !== undefined ? { pipe_id: pipeIdVal } : {}) };
       const pipeQuery = pipeIdVal ? `?pipeId=${encodeURIComponent(pipeIdVal)}` : "";
       const url = `${dbmanagerUrl}/fundamentals/user-order/${id}${pipeQuery}`;
       const resp = await axios.put(url, body, { timeout: 8000 });
       return res.json(resp.data);
     } catch (err) {
-      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
+      logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
       return res.status(500).json({ ok: false, error: "Errore aggiornamento user_order_by" });
     }
   };
@@ -1317,6 +1950,47 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
     }
   });
 
+  // bulk update user_filters per pipe
+  router.put("/user-filters/:pipeId", async (req, res) => {
+    const fn = `${fnPrefix}.PUT:/user-filters/:pipeId`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) {
+        logger.error(
+          `${fn} userId missing ${safeStringify({
+            headers: {
+              "x-user-id": req.headers["x-user-id"],
+              "x-api-key-id": req.headers["x-api-key-id"],
+              "x-auth-subject-type": req.headers["x-auth-subject-type"],
+              auth: req.headers.authorization ? "present" : "absent",
+            },
+          })}`
+        );
+        return res.status(401).json({ ok: false, error: "User non identificato" });
+      }
+      const pipeId =
+        req.params.pipeId ?? req.body?.pipe_id ?? req.body?.pipeId ?? req.query?.pipe_id ?? req.query?.pipeId;
+      const filters = Array.isArray(req.body?.filters) ? req.body.filters : [];
+      const results = [];
+      for (const f of filters) {
+        const filterName = f?.filter_name || f?.filterName || f?.name;
+        if (!filterName) continue;
+        const pipeQuery = pipeId ? `?pipeId=${encodeURIComponent(pipeId)}` : "";
+        const url = `${dbmanagerUrl}/fundamentals/user-filters/${userId}/${encodeURIComponent(filterName)}${pipeQuery}`;
+        const body = { ...f, user_id: userId, pipe_id: pipeId };
+        const resp = await axios.put(url, body || {}, { timeout: 8000 }).catch((err) => {
+          logger.error(`${fn} single error ${safeStringify(err?.response?.data || err?.message || err)}`);
+          return { data: { ok: false, error: err?.message || "errore singolo filtro" } };
+        });
+        results.push(resp?.data ?? { ok: false, filter: filterName });
+      }
+      return res.json({ ok: true, results });
+    } catch (err) {
+      logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
+      return res.status(500).json({ ok: false, error: "Errore aggiornamento user_filters" });
+    }
+  });
+
   router.put("/user-filters/:filterName/:pipeId", async (req, res) => {
     const fn = `${fnPrefix}.PUT:/user-filters/:filterName/:pipeId`;
     try {
@@ -1347,7 +2021,7 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       const resp = await axios.put(url, body || {}, { timeout: 8000 });
       return res.json(resp.data);
     } catch (err) {
-      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
+      logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
       return res.status(500).json({ ok: false, error: "Errore aggiornamento user_filters" });
     }
   });
@@ -1602,7 +2276,18 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
         return res.status(401).json({ ok: false, error: "User o pipe non identificato" });
       }
       const url = `${dbmanagerUrl}/auth/users/${userId}/score-weights/${encodeURIComponent(pipeId)}`;
+      logger.info(
+        `${fn} proxying to DBManager ${safeStringify({ url, userId, pipeId })}`
+      );
       const resp = await axios.get(url, { timeout: 6000 });
+      logger.info(
+        `${fn} DBManager response ${safeStringify({
+          status: resp?.status,
+          dataType: typeof resp?.data,
+          dataKeys: resp?.data && typeof resp.data === "object" ? Object.keys(resp.data) : null,
+          dataLength: typeof resp?.data === "string" ? resp.data.length : null,
+        })}`
+      );
       return res.json(resp.data);
     } catch (err) {
       logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
@@ -1614,7 +2299,6 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
 
   router.put("/user/score-weights/:pipeId", async (req, res) => {
     const fn = `${fnPrefix}.PUT:/user/score-weights/:pipeId`;
-    console.log(fn);
     try {
       const userId = await fetchUserId(req);
       const pipeId = Number(req.params.pipeId);
@@ -1632,12 +2316,20 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
         );
         return res.status(401).json({ ok: false, error: "User o pipe non identificato" });
       }
-      const body = { ...req.body, pipe_id: pipeId, pipeId: pipeId };
+      const body = { ...req.body, user_id: userId, pipe_id: pipeId, pipeId: pipeId };
       const url = `${dbmanagerUrl}/auth/users/${userId}/score-weights/${encodeURIComponent(pipeId)}`;
+      logger.info(
+        `${fn} proxying to DBManager ${safeStringify({
+          url,
+          userId,
+          pipeId,
+          bodyKeys: Object.keys(body || {}),
+        })}`
+      );
       const resp = await axios.put(url, body, { timeout: 8000 });
       return res.json(resp.data);
     } catch (err) {
-      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
+      logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
       return res
         .status(err?.response?.status || 500)
         .json({ ok: false, error: err?.response?.data || "Errore aggiornamento score_weights" });
