@@ -14,9 +14,14 @@ module.exports = (dbManager) => {
   // GET /scheduler/jobs
   // Ritorna i job pronti per lo Scheduler microservizio
   // ---------------------------------------------------------------------
-  router.get("/jobs", async (_req, res) => {
+  router.get("/jobs", async (req, res) => {
     try {
-      const items = await dbManager.getSchedulerJobsForScheduler(true);
+      const includeDisabled =
+        req.query.include_disabled === "1" ||
+        req.query.include_disabled === "true" ||
+        req.query.includeDisabled === "1" ||
+        req.query.includeDisabled === "true";
+      const items = await dbManager.getSchedulerJobsForScheduler(!includeDisabled);
       return res.json({ ok: true, items });
     } catch (err) {
       console.error("[GET /scheduler/jobs] Errore:", err.message);
