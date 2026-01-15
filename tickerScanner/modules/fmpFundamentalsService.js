@@ -143,18 +143,31 @@ class FmpFundamentalsService {
     };
   }
 
-  async getFundamentalsForSymbols(symbols = []) {
+  async getFundamentalsForSymbols(symbols = [], options = {}) {
     const out = [];
-    for (const symbol of symbols) {
-      try {
-        const f = await this.getFundamentalsForSymbol(symbol);
-        out.push(f);
-      } catch (e) {
-        this.logger.error(
-          `[FMP Fundamentals] Error on ${symbol}: ${e?.message || String(e)}`
-        );
+    if (!Array.isArray(symbols) || symbols.length === 0) return out;
+    const rawConcurrency =
+      options.concurrency ?? process.env.FMP_SYMBOL_CONCURRENCY ?? process.env.SCAN_FMP_CONCURRENCY;
+    const limit = Number.isFinite(Number(rawConcurrency)) && Number(rawConcurrency) > 0
+      ? Math.floor(Number(rawConcurrency))
+      : 3;
+    let idx = 0;
+    const worker = async () => {
+      while (idx < symbols.length) {
+        const symbol = symbols[idx];
+        idx += 1;
+        try {
+          const f = await this.getFundamentalsForSymbol(symbol);
+          out.push(f);
+        } catch (e) {
+          this.logger.error(
+            `[FMP Fundamentals] Error on ${symbol}: ${e?.message || String(e)}`
+          );
+        }
       }
-    }
+    };
+    const workers = Array.from({ length: Math.min(limit, symbols.length) }, () => worker());
+    await Promise.all(workers);
     return out;
   }
 

@@ -1,6 +1,6 @@
 {
-    "lastUpdate" : "14/01/2026",
-    "version": "3.0.0",
+    "lastUpdate" : "15/01/2026",
+    "version": "3.1.0",
     "note" : [  "1.1.0 DBManager : First version test in PAPER environment",
                 "1.1.0 Aggiunta funzione updateStrategies con relativo endpoint",
                 "2.0.0 Refactoring completo suddividendo un file unico in vari moduli sotto /modules e /routes",
@@ -11,6 +11,7 @@
                 "2.8.0 Adattamento backend per esposizione Pagine amministrazione",
                 "2.8.1 Fix varie",
                 "2.9.0 Gestione tabella user_score_weights e ticker_fundamentals_history, aggiunto info microservice su user agent, aggiunto info microservice su user agent",
-                "3.0.0 Supporto al nuovo refactoring per Liste utente"
+                "3.0.0 Supporto al nuovo refactoring per Liste utente",
+                "3.1.0 Storico Ticker Scanner"
             ]
 }

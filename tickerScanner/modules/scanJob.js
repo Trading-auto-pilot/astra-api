@@ -92,6 +92,9 @@ function createScanJob(totalRaw) {
     dbHits: 0,
     newCalculated: 0,
     error: null,
+    persisted: false,
+    startedAt: null,
+    finishedAt: null,
     createdAt: now,
     updatedAt: now,
   };

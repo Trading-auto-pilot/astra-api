@@ -1,6 +1,6 @@
 {
-  "lastUpdate": "24/12/2025 21:28", 
-  "version": "2.0.0",
+  "lastUpdate": "15/01/2026 21:28", 
+  "version": "2.1.0",
   "microservice": "tickerScanner",
 
   "note": [
@@ -10,6 +10,7 @@
     "v.1.3.0 Esposizione Glossary",
     "v.1.4.0 Creazione endpoint loglevel e db settings",
     "v.1.5.0 Fix varie per adattamento frontend, gestione tabella ticker_fundamentals_history, aggiunto info microservice in user agent",
-    "v.2.0.0 Supporto per refactoring supporto liste utente e pipe id"
+    "v.2.0.0 Supporto per refactoring supporto liste utente e pipe id",
+    "v.2.1.0 Miglioramento Performance e implementazione storico Scan"
   ]
 }
