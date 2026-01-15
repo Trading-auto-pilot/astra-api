@@ -2114,6 +2114,38 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       const pipeId =
         req.params.pipeId ?? req.body?.pipe_id ?? req.body?.pipeId ?? req.query?.pipe_id ?? req.query?.pipeId;
       const filters = Array.isArray(req.body?.filters) ? req.body.filters : [];
+      const incomingNames = new Set(
+        filters
+          .map((f) => f?.filter_name || f?.filterName || f?.name)
+          .filter((name) => typeof name === "string" && name.length > 0)
+      );
+      // elimina filtri non piu presenti
+      try {
+        const pipeQuery = pipeId ? `?pipeId=${encodeURIComponent(pipeId)}` : "";
+        const listUrl = `${dbmanagerUrl}/fundamentals/user-filters/${userId}${pipeQuery}`;
+        const listResp = await axios.get(listUrl, { timeout: 8000 });
+        const existingRows = Array.isArray(listResp.data?.data)
+          ? listResp.data.data
+          : Array.isArray(listResp.data)
+            ? listResp.data
+            : [];
+        const toDelete = existingRows
+          .map((r) => r?.filter_name || r?.filterName || r?.name)
+          .filter((name) => name && !incomingNames.has(name));
+        for (const name of toDelete) {
+          const delUrl = `${dbmanagerUrl}/fundamentals/user-filters/${userId}/${encodeURIComponent(name)}${pipeQuery}`;
+          await axios.delete(delUrl, { timeout: 8000 }).catch((err) => {
+            logger.warning(`${fn} delete missing filter failed`, {
+              filter: name,
+              error: safeStringify(err?.response?.data || err?.message || err),
+            });
+          });
+        }
+      } catch (err) {
+        logger.warning(`${fn} fetch existing filters failed`, {
+          error: safeStringify(err?.response?.data || err?.message || err),
+        });
+      }
       const results = [];
       for (const f of filters) {
         const filterName = f?.filter_name || f?.filterName || f?.name;

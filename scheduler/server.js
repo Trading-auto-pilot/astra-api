@@ -339,12 +339,27 @@ app.post("/reload", async (req, res) => {
 });
 
 // Per vedere lo stato attuale dei job
-app.get("/jobs", (req, res) => {
+app.get("/jobs", async (req, res) => {
+  const includeDisabled =
+    req.query.include_disabled === "1" ||
+    req.query.include_disabled === "true" ||
+    req.query.includeDisabled === "1" ||
+    req.query.includeDisabled === "true";
+  if (includeDisabled) {
+    try {
+      const url = `${serviceInstance.dbmanagerUrl}/scheduler/jobs?include_disabled=1`;
+      const resp = await axios.get(url, { timeout: 15000 });
+      return res.json(resp.data);
+    } catch (e) {
+      serviceInstance.getLogger().error("[GET /jobs] errore include_disabled", e.message || e);
+      return res.status(500).json({ ok: false, error: "Errore lettura scheduler jobs" });
+    }
+  }
   const core = serviceInstance.getSchedulerCore();
   if (!core) {
     return res.status(500).json({ ok: false, error: "SchedulerCore non inizializzato" });
   }
-  res.json({ ok: true, items: core.getJobsSnapshot() });
+  return res.json({ ok: true, items: core.getJobsSnapshot() });
 });
 
 // Crea/aggiorna un job nello scheduler (pass-through verso dbManager)
