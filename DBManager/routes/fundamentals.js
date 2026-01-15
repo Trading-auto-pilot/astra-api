@@ -141,6 +141,22 @@ module.exports = (dbManager) => {
     }
   });
 
+  router.post("/market-daily/bulk", async (req, res) => {
+    try {
+      const payloads = Array.isArray(req.body) ? req.body : req.body?.rows ?? [];
+      const result = await dbManager.insertMarketDailyBulk(payloads);
+      if (result.ok === false && result.error) return res.status(400).json(result);
+      return res.json(result);
+    } catch (err) {
+      logger.error(
+        "[POST /fundamentals/market-daily/bulk] Errore:",
+        err?.message || err,
+        safeStringify({ code: err?.code, sqlMessage: err?.sqlMessage })
+      );
+      return res.status(500).json({ ok: false, error: "Errore inserimento bulk market_daily" });
+    }
+  });
+
   router.put("/market-daily/:symbol/:tradeDate", async (req, res) => {
     const symbol = req.params.symbol ? String(req.params.symbol).toUpperCase() : null;
     const tradeDate = req.params.tradeDate;
@@ -777,6 +793,75 @@ module.exports = (dbManager) => {
     } catch (err) {
       logger.error("[DELETE /fundamentals/market-daily-jobs/:id] Errore:", err?.message || err);
       return res.status(500).json({ ok: false, error: "Errore cancellazione market_daily_jobs" });
+    }
+  });
+
+  // CRUD ticker_scan_jobs (storico scan/force)
+  router.get("/ticker-scan-jobs/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+    try {
+      const rows = await dbManager.getTickerScanJobsHistory({ id, limit: 1 });
+      if (!rows.length) return res.status(404).json({ ok: false, error: "Non trovato" });
+      return res.json({ ok: true, data: rows[0] });
+    } catch (err) {
+      logger.error("[GET /fundamentals/ticker-scan-jobs/:id] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore lettura ticker_scan_jobs" });
+    }
+  });
+
+  router.get("/ticker-scan-jobs", async (req, res) => {
+    const jobId = req.query.job_id ? String(req.query.job_id) : null;
+    const status = req.query.status ? String(req.query.status) : null;
+    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+    try {
+      const rows = await dbManager.getTickerScanJobsHistory({
+        job_id: jobId,
+        status,
+        limit,
+      });
+      return res.json({ ok: true, data: rows });
+    } catch (err) {
+      logger.error("[GET /fundamentals/ticker-scan-jobs] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore lettura ticker_scan_jobs" });
+    }
+  });
+
+  router.post("/ticker-scan-jobs", async (req, res) => {
+    const { job_id, status } = req.body || {};
+    if (!job_id || !status) {
+      return res.status(400).json({ ok: false, error: "job_id e status obbligatori" });
+    }
+    try {
+      const result = await dbManager.insertTickerScanJob(req.body || {});
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      logger.error("[POST /fundamentals/ticker-scan-jobs] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore inserimento ticker_scan_jobs" });
+    }
+  });
+
+  router.put("/ticker-scan-jobs/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+    try {
+      const result = await dbManager.updateTickerScanJob(id, req.body || {});
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      logger.error("[PUT /fundamentals/ticker-scan-jobs/:id] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore aggiornamento ticker_scan_jobs" });
+    }
+  });
+
+  router.delete("/ticker-scan-jobs/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "id non valido" });
+    try {
+      const result = await dbManager.deleteTickerScanJob(id);
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      logger.error("[DELETE /fundamentals/ticker-scan-jobs/:id] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore cancellazione ticker_scan_jobs" });
     }
   });
 

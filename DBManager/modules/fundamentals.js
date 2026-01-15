@@ -776,6 +776,56 @@ async function insertMarketDailyRecord(payload = {}) {
   }
 }
 
+async function insertMarketDailyBulk(payloads = []) {
+  const connection = await getDbConnection();
+  try {
+    if (!Array.isArray(payloads) || payloads.length === 0) {
+      return { ok: false, error: "payloads deve essere un array non vuoto" };
+    }
+    const rows = payloads.filter((p) => p?.symbol && p?.trade_date);
+    if (!rows.length) {
+      return { ok: false, error: "Nessun record valido (symbol, trade_date obbligatori)" };
+    }
+    const sql = `
+      INSERT INTO market_daily
+        (symbol, trade_date, open, high, low, close, adj_close, vwap, \`change\`, change_percent, source, volume)
+      VALUES ${rows.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ")}
+      ON DUPLICATE KEY UPDATE
+        open = VALUES(open),
+        high = VALUES(high),
+        low = VALUES(low),
+        close = VALUES(close),
+        adj_close = VALUES(adj_close),
+        vwap = VALUES(vwap),
+        \`change\` = VALUES(\`change\`),
+        change_percent = VALUES(change_percent),
+        source = VALUES(source),
+        volume = VALUES(volume)
+    `;
+    const params = [];
+    for (const p of rows) {
+      params.push(
+        p.symbol,
+        p.trade_date,
+        p.open ?? null,
+        p.high ?? null,
+        p.low ?? null,
+        p.close ?? null,
+        p.adj_close ?? null,
+        p.vwap ?? null,
+        p.change ?? null,
+        p.change_percent ?? null,
+        p.source ?? null,
+        p.volume ?? null
+      );
+    }
+    const [res] = await connection.query(sql, params);
+    return { ok: true, total: rows.length, affectedRows: res.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
 async function updateMarketDailyRecord(symbol, trade_date, payload = {}) {
   const connection = await getDbConnection();
   try {
@@ -1543,6 +1593,109 @@ async function deleteMarketDailyJob(id) {
   }
 }
 
+// -------------------------
+// ticker_scan_jobs CRUD
+// -------------------------
+async function getTickerScanJobsHistory({ id = null, job_id = null, status = null, limit = 50 } = {}) {
+  const connection = await getDbConnection();
+  try {
+    let sql = "SELECT * FROM ticker_scan_jobs WHERE 1=1";
+    const params = [];
+    if (id !== null && id !== undefined) {
+      sql += " AND id = ?";
+      params.push(id);
+    } else {
+      if (job_id) {
+        sql += " AND job_id = ?";
+        params.push(job_id);
+      }
+      if (status) {
+        sql += " AND status = ?";
+        params.push(status);
+      }
+    }
+    sql += " ORDER BY id DESC";
+    if (Number.isFinite(Number(limit)) && Number(limit) > 0) {
+      sql += " LIMIT ?";
+      params.push(Number(limit));
+    }
+    const [rows] = await connection.query(sql, params);
+    return rows;
+  } finally {
+    connection.release();
+  }
+}
+
+async function insertTickerScanJob(payload = {}) {
+  const connection = await getDbConnection();
+  try {
+    const fields = [];
+    const placeholders = [];
+    const params = [];
+
+    Object.entries(payload || {}).forEach(([key, value]) => {
+      if (value === undefined) return;
+      fields.push(key);
+      placeholders.push("?");
+      if (key === "errors_json" || key === "params_json") {
+        params.push(typeof value === "string" ? value : JSON.stringify(value));
+      } else {
+        params.push(value);
+      }
+    });
+
+    if (!fields.length) {
+      return { ok: false, error: "Nessun campo da inserire" };
+    }
+
+    const sql = `INSERT INTO ticker_scan_jobs (${fields.join(", ")}) VALUES (${placeholders.join(", ")})`;
+    const [result] = await connection.query(sql, params);
+    return { insertId: result.insertId, affectedRows: result.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+async function updateTickerScanJob(id, payload = {}) {
+  const connection = await getDbConnection();
+  try {
+    const fields = [];
+    const params = [];
+
+    Object.entries(payload || {}).forEach(([key, value]) => {
+      if (value === undefined) return;
+      if (key === "id") return;
+      fields.push(`${key} = ?`);
+      if (key === "errors_json" || key === "params_json") {
+        params.push(typeof value === "string" ? value : JSON.stringify(value));
+      } else {
+        params.push(value);
+      }
+    });
+
+    if (!fields.length) {
+      return { ok: false, updated: 0, error: "Nessun campo da aggiornare" };
+    }
+
+    params.push(id);
+    const sql = `UPDATE ticker_scan_jobs SET ${fields.join(", ")} WHERE id = ?`;
+    const [result] = await connection.query(sql, params);
+    return { affectedRows: result.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
+async function deleteTickerScanJob(id) {
+  const connection = await getDbConnection();
+  try {
+    const [result] = await connection.query("DELETE FROM ticker_scan_jobs WHERE id = ?", [id]);
+    return { affectedRows: result.affectedRows };
+  } finally {
+    connection.release();
+  }
+}
+
 module.exports = {
   insertOrUpdateFundamentalsBulk,
   getAllFundamentals,
@@ -1572,6 +1725,10 @@ module.exports = {
   insertMarketDailyJob,
   updateMarketDailyJob,
   deleteMarketDailyJob,
+  getTickerScanJobsHistory,
+  insertTickerScanJob,
+  updateTickerScanJob,
+  deleteTickerScanJob,
   copyDefaultUserFilters,
   deleteUserFiltersByPipe,
   getFundamentalsHistoryRecords,
@@ -1581,6 +1738,7 @@ module.exports = {
   getMarketDaily,
   getMarketDailyLatest,
   insertMarketDailyRecord,
+  insertMarketDailyBulk,
   updateMarketDailyRecord,
   deleteMarketDailyRecord,
   getScoresDaily,

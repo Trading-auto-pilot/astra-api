@@ -24,6 +24,13 @@ const numOrNull = (v) => {
   return Number.isFinite(n) ? n : null;
 };
 
+const toSqlDateTime = (value) => {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 19).replace("T", " ");
+};
+
 function buildHistoryVersionHash(rec) {
   const fields = [
     rec?.sector ?? "",
@@ -394,6 +401,7 @@ class TickerScanner {
     const totalRaw = data.length;
 
     const job = createScanJob(totalRaw);
+    updateScanJob(job.id, { params: { overrides, forceRefresh } });
     this.logger.info(
       `[tickScanner] Scan job ${job.id} created with ${totalRaw} raw tickers (forceRefresh=${forceRefresh})`
     );
@@ -415,16 +423,56 @@ class TickerScanner {
     };
   }
 
+  async persistScanJobRecord(jobId) {
+    const job = getScanJob(jobId);
+    if (!job || job.persisted) return;
+    const payload = {
+      job_id: job.id,
+      status: job.status,
+      total_raw_tickers: job.totalRawTickers ?? null,
+      total_processed: job.totalProcessed ?? null,
+      db_hits: job.dbHits ?? null,
+      new_calculated: job.newCalculated ?? null,
+      error: job.error ?? null,
+      errors_json: job.errors ?? [],
+      params_json: job.params ?? {},
+      started_at: toSqlDateTime(job.startedAt || job.createdAt),
+      finished_at: toSqlDateTime(job.finishedAt),
+    };
+    try {
+      const url = `${this.dbmanagerUrl}/fundamentals/ticker-scan-jobs`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        this.logger.warning(
+          `[tickScanner] persist scan job ${jobId} failed: ${res.status} - ${text}`
+        );
+        return;
+      }
+      job.persisted = true;
+    } catch (err) {
+      this.logger.warning(
+        `[tickScanner] persist scan job ${jobId} error: ${err?.message || String(err)}`
+      );
+    }
+  }
+
   async _runScanJob(jobId, filterOverrides = {}, options = {}) {
-    updateScanJob(jobId, { status: "running" });
+    const startedAt = new Date().toISOString();
+    updateScanJob(jobId, { status: "running", startedAt });
 
     try {
       const result = await this.scanAndScoreUniverse(filterOverrides, { ...options, jobId }); // la funzione che abbiamo già
 
       const finalJob = getScanJob(jobId);
       if (finalJob?.cancel || finalJob?.status === "cancelled") {
-        updateScanJob(jobId, { status: "cancelled" });
+        updateScanJob(jobId, { status: "cancelled", finishedAt: new Date().toISOString() });
         this.logger.info(`[tickScanner] Scan job ${jobId} cancelled`);
+        await this.persistScanJobRecord(jobId);
         return;
       }
 
@@ -433,19 +481,27 @@ class TickerScanner {
         totalProcessed: result.count,
         dbHits: result.dbHits,
         newCalculated: result.newCalculated,
+        finishedAt: new Date().toISOString(),
       });
 
       this.logger.info(
         `[tickScanner] Scan job ${jobId} completed: total=${result.count}, dbHits=${result.dbHits}, new=${result.newCalculated}`
       );
+      await this.persistScanJobRecord(jobId);
     } catch (err) {
       if (err?.code === "CANCELLED") {
-        updateScanJob(jobId, { status: "cancelled" });
+        updateScanJob(jobId, { status: "cancelled", finishedAt: new Date().toISOString() });
         this.logger.info(`[tickScanner] Scan job ${jobId} cancelled`);
+        await this.persistScanJobRecord(jobId);
         return;
       }
-      updateScanJob(jobId, { status: "error", error: err?.message || String(err) });
+      updateScanJob(jobId, {
+        status: "error",
+        error: err?.message || String(err),
+        finishedAt: new Date().toISOString(),
+      });
       this.logger.error(`[tickScanner] Scan job ${jobId} error: ${err?.message || String(err)}`);
+      await this.persistScanJobRecord(jobId);
     }
   }
 
@@ -471,6 +527,10 @@ class TickerScanner {
       err.code = "NOT_FOUND";
       throw err;
     }
+    if (!job.finishedAt) {
+      updateScanJob(jobId, { status: "cancelled", finishedAt: new Date().toISOString() });
+      this.persistScanJobRecord(jobId);
+    }
     return job;
   }
 
@@ -495,6 +555,17 @@ class TickerScanner {
   async scanAndScoreUniverse(filterOverrides = {}, options = {}) {
     const forceRefresh = !!options.forceRefresh;
     const jobId = options.jobId;
+    let processedCount = 0;
+    let dbHitsCount = 0;
+    let newCalculatedCount = 0;
+    const syncJobProgress = () => {
+      if (!jobId) return;
+      updateScanJob(jobId, {
+        totalProcessed: processedCount,
+        dbHits: dbHitsCount,
+        newCalculated: newCalculatedCount,
+      });
+    };
     const abortIfCancelled = () => {
       if (!jobId) return;
       const job = getScanJob(jobId);
@@ -560,10 +631,14 @@ class TickerScanner {
       const row = existingMap.get(sym);
       if (row && !forceRefresh) {
         existingRecords.push(mapDbRowToScoredRecord(row));
+        processedCount += 1;
+        dbHitsCount += 1;
+        if (processedCount % 10 === 0) syncJobProgress();
       } else {
         missingSymbols.push(sym);
       }
     }
+    syncJobProgress();
 
     this.logger.info(
       `[scanAndScoreUniverse] Trovati ${existingRecords.length} simboli in DB, mancanti: ${missingSymbols.length} (forceRefresh=${forceRefresh})`
@@ -572,7 +647,19 @@ class TickerScanner {
     // 3) per i mancanti: FMP + scoring + salvataggio bulk
     const newScoredRecords = [];
 
-    const batches = chunkArray(missingSymbols, 50);
+    const batchSizeRaw = Number(process.env.SCAN_MISSING_BATCH);
+    const batchSize = Number.isFinite(batchSizeRaw) && batchSizeRaw > 0 ? Math.floor(batchSizeRaw) : 50;
+    const bulkSizeRaw = Number(process.env.SCAN_BULK_SIZE);
+    const bulkSize = Number.isFinite(bulkSizeRaw) && bulkSizeRaw > 0 ? Math.floor(bulkSizeRaw) : 200;
+    const fmpConcurrencyRaw = Number(process.env.SCAN_FMP_CONCURRENCY);
+    const fmpConcurrency =
+      Number.isFinite(fmpConcurrencyRaw) && fmpConcurrencyRaw > 0 ? Math.floor(fmpConcurrencyRaw) : 3;
+
+    this.logger.info(
+      `[scanAndScoreUniverse] batchSize=${batchSize} bulkSize=${bulkSize} fmpConcurrency=${fmpConcurrency}`
+    );
+
+    const batches = chunkArray(missingSymbols, batchSize);
     for (const batch of batches) {
       abortIfCancelled();
       this.logger.info(
@@ -581,7 +668,7 @@ class TickerScanner {
 
       // fundamentals da FMP
       const fundamentalsBatch =
-        await this.fmpFundamentals.getFundamentalsForSymbols(batch);
+        await this.fmpFundamentals.getFundamentalsForSymbols(batch, { concurrency: fmpConcurrency });
 
       const scoredBatch = [];
       const fundamentalsRecords = [];   // 👈 record piatti per la tabella fundamentals
@@ -625,40 +712,48 @@ class TickerScanner {
             `[scanAndScoreUniverse] Errore fundamentals_history ${symbol}: ${err?.message || String(err)}`
           );
         });
+
+        processedCount += 1;
+        newCalculatedCount += 1;
+        if (processedCount % 10 === 0) syncJobProgress();
       }
+      syncJobProgress();
 
       newScoredRecords.push(...scoredBatch);
 
 
       // salvataggio su DB via bulk
-      try {
-        const url = `${this.dbmanagerUrl}/fundamentals/bulk`;
-        const payload = {
-          ok: true,
-          count: fundamentalsRecords.length,
-          results: fundamentalsRecords,   
-        };
+      const bulkChunks = chunkArray(fundamentalsRecords, bulkSize);
+      for (const chunk of bulkChunks) {
+        try {
+          const url = `${this.dbmanagerUrl}/fundamentals/bulk`;
+          const payload = {
+            ok: true,
+            count: chunk.length,
+            results: chunk,
+          };
 
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
 
-        if (!res.ok) {
-          const text = await res.text().catch(() => "");
+          if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            this.logger.error(
+              `[scanAndScoreUniverse] Errore POST /fundamentals/bulk: ${res.status} - ${text}`
+            );
+          } else {
+            this.logger.info(
+              `[scanAndScoreUniverse] Salvati ${chunk.length} fundamentals su DB`
+            );
+          }
+        } catch (e) {
           this.logger.error(
-            `[scanAndScoreUniverse] Errore POST /fundamentals/bulk: ${res.status} - ${text}`
-          );
-        } else {
-          this.logger.info(
-            `[scanAndScoreUniverse] Salvati ${scoredBatch.length} fundamentals su DB`
+            `[scanAndScoreUniverse] Errore chiamando POST /fundamentals/bulk: ${e.message}`
           );
         }
-      } catch (e) {
-        this.logger.error(
-          `[scanAndScoreUniverse] Errore chiamando POST /fundamentals/bulk: ${e.message}`
-        );
       }
     }
 
