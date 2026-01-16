@@ -1139,10 +1139,29 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
     try {
       const userId = await fetchUserId(req);
       if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
-      const targetDate = (req.body?.date || req.query?.date || new Date().toISOString().slice(0, 10)).toString().slice(0, 10);
+      const tz =
+        req.body?.timezone ||
+        req.query?.timezone ||
+        process.env.DEFAULT_JOB_TIMEZONE ||
+        process.env.SCHEDULER_TIMEZONE ||
+        "UTC";
+      const getDateInTz = (zone) => {
+        try {
+          return new Intl.DateTimeFormat("en-CA", {
+            timeZone: zone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          }).format(new Date());
+        } catch {
+          return new Date().toISOString().slice(0, 10);
+        }
+      };
+      const defaultDate = getDateInTz(tz);
+      const targetDate = (req.body?.date || req.query?.date || defaultDate).toString().slice(0, 10);
       const pipeIdRaw = req.body?.pipeId ?? req.body?.pipe_id ?? req.query?.pipeId ?? req.query?.pipe_id ?? undefined;
       const pipeId = pipeIdRaw !== undefined && pipeIdRaw !== null && pipeIdRaw !== "" ? Number(pipeIdRaw) : undefined;
-      const modelName = req.body?.name ?? req.body?.note ?? req.body?.description ?? "Manual update";
+      const modelName = req.body?.name ?? req.body?.note ?? req.body?.description ?? "Non specificate";
       const modelVersion = req.body?.version ?? "1.0";
 
       if (pipeId === undefined) {

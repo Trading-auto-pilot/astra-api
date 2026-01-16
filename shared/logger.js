@@ -122,6 +122,18 @@ function createLogger(
     return normModule(moduleName);
   };
 
+  const formatArg = (arg) => {
+    if (arg === null || arg === undefined) return String(arg);
+    if (arg instanceof Error) return arg.stack || arg.message || String(arg);
+    if (typeof arg === 'string') return arg;
+    if (typeof arg === 'number' || typeof arg === 'boolean') return String(arg);
+    try {
+      return JSON.stringify(arg);
+    } catch (_) {
+      return String(arg);
+    }
+  };
+
   // core logging (console + enqueue DB + publish bus)
   const logToConsoleAndQueue = async (levelKey, color, moduleForLog, ...args) => {
     const _moduleName = moduleForLog
@@ -142,7 +154,7 @@ function createLogger(
     }
     // ----------------------------------------------------------------------
 
-    const fullMessage = args.join(' ');
+    const fullMessage = args.map(formatArg).join(' ');
 
     // 1) Console
     if (consoleEnabled) {
