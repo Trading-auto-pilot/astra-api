@@ -60,7 +60,17 @@ class SchedulerEngine {
     }
 
     for (const job of jobs) {
-      if (!job.enabled) continue;
+      const enabled =
+        job?.enabled === true ||
+        job?.enabled === 1 ||
+        job?.enabled === "1" ||
+        job?.enabled === "true" ||
+        job?.enabled === "TRUE" ||
+        job?.enabled === "True";
+      if (!enabled) {
+        this.logger.log?.(`[start] Skip job=${job?.jobKey || "unknown"} disabled (enabled=${job?.enabled})`);
+        continue;
+      }
       if (!job.rules || !job.rules.length) continue;
 
       for (const rule of job.rules) {
