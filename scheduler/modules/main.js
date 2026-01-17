@@ -98,6 +98,7 @@ class Scheduler {
 
     // Scheduler core
     this.schedulerCore = null;
+    this._initRetryTimer = null;
   }
 
   // =========================================================
@@ -107,27 +108,40 @@ class Scheduler {
     this.logger.info("[init] Initializing...");
 
     // 1) CONNECT REDIS BUS
-    await this.bus.connect();
-    this.logger.attachBus(this.bus);
+    try {
+      await this.bus.connect();
+      this.logger.attachBus(this.bus);
+    } catch (err) {
+      this.logger.error(`[init] Redis connection failed: ${err?.message || String(err)}`);
+    }
 
     // STATUS: STARTING
-    await this.bus.publish(this.redisStatusChannel, {
-      status: "STARTING",
-      details: "Loading DB settings"
-    });
+    try {
+      await this.bus.publish(this.redisStatusChannel, {
+        status: "STARTING",
+        details: "Loading DB settings"
+      });
+    } catch {
+      // ignore bus errors
+    }
 
     // 2) LOAD SETTINGS DAL DB
     const ok = await initializeSettings(this.dbmanagerUrl);
     if (!ok) {
       this._status = "ERROR";
       this.statusDetails = "DB unreachable";
-      await this.bus.publish(this.redisStatusChannel, {
-        status: this._status,
-        details: this.statusDetails
-      });
+      try {
+        await this.bus.publish(this.redisStatusChannel, {
+          status: this._status,
+          details: this.statusDetails
+        });
+      } catch {
+        // ignore bus errors
+      }
 
       this.logger.error("[init] Failed DB initialization");
-      process.exit(1);
+      this._scheduleInitRetry("dbmanager");
+      return;
     }
 
     // 3) APPLY COMMON SETTINGS
@@ -151,6 +165,70 @@ class Scheduler {
       status: this._status,
       details: this.statusDetails
     });
+  }
+
+  _scheduleInitRetry(reason) {
+    if (this._initRetryTimer) return;
+    const delayMs = asInt(process.env.SCHEDULER_INIT_RETRY_MS, 10000);
+    this.logger.warning(
+      `[init] Retry scheduled in ${delayMs}ms${reason ? ` (${reason})` : ""}`
+    );
+    this._initRetryTimer = setTimeout(() => {
+      this._initRetryTimer = null;
+      this._retryInit().catch((err) => {
+        this.logger.error(`[init] Retry failed: ${err?.message || String(err)}`);
+        this._scheduleInitRetry("retry-failed");
+      });
+    }, delayMs);
+  }
+
+  async _retryInit() {
+    if (this._status === "READY") return;
+
+    try {
+      await this.bus.connect();
+      this.logger.attachBus(this.bus);
+    } catch (err) {
+      this.logger.error(`[init] Redis reconnect failed: ${err?.message || String(err)}`);
+    }
+
+    const ok = await reloadSettings(this.dbmanagerUrl).catch(() => null);
+    if (!ok) {
+      this._status = "ERROR";
+      this.statusDetails = "DB unreachable";
+      this._scheduleInitRetry("dbmanager");
+      return;
+    }
+
+    this.delayBetweenMessages = asInt(
+      getSetting("PROCESS_DELAY_BETWEEN_MESSAGES"),
+      500
+    );
+    this.logger.info(
+      `[init] Settings loaded after retry: delayBetweenMessages=${this.delayBetweenMessages}`
+    );
+
+    try {
+      await this.afterInit();
+      this._status = "READY";
+      this.statusDetails = "Initialization complete";
+      try {
+        await this.bus.publish(this.redisStatusChannel, {
+          status: this._status,
+          details: this.statusDetails
+        });
+      } catch {
+        // ignore bus errors
+      }
+    } catch (e) {
+      this._status = "ERROR";
+      this.statusDetails = "SchedulerCore init failed";
+      this.logger.error(
+        "[init] SchedulerCore init failed after retry",
+        e?.message || String(e)
+      );
+      this._scheduleInitRetry("afterInit");
+    }
   }
 
   // =========================================================

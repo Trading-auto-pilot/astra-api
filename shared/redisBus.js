@@ -131,6 +131,35 @@ class RedisBus {
       if (!this.pub) this.pub = createClient({ url: this.url });
       if (!this.sub) this.sub = createClient({ url: this.url });
 
+      if (this.pub && !this._pubBound) {
+        this.pub.on('error', (e) => {
+          this._connected = false;
+          this._log('error', `[${this.name}] pub error: ${e?.message || e}`);
+        });
+        this.pub.on('end', () => {
+          this._connected = false;
+          this._log('warn', `[${this.name}] pub connection ended`);
+        });
+        this.pub.on('reconnecting', () => {
+          this._log('warn', `[${this.name}] pub reconnecting`);
+        });
+        this._pubBound = true;
+      }
+      if (this.sub && !this._subBound) {
+        this.sub.on('error', (e) => {
+          this._connected = false;
+          this._log('error', `[${this.name}] sub error: ${e?.message || e}`);
+        });
+        this.sub.on('end', () => {
+          this._connected = false;
+          this._log('warn', `[${this.name}] sub connection ended`);
+        });
+        this.sub.on('reconnecting', () => {
+          this._log('warn', `[${this.name}] sub reconnecting`);
+        });
+        this._subBound = true;
+      }
+
       if (!this.pub.isOpen) await this.pub.connect();
       if (!this.sub.isOpen) await this.sub.connect();
 
