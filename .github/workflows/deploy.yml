@@ -142,12 +142,16 @@ jobs:
         fi
 
         echo "📦 Copio IBKR_API_Gateway sul server..."
-        scp -o StrictHostKeyChecking=no -r IBKR_API_Gateway $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/
+        scp -o StrictHostKeyChecking=no -r IBKR_API_Gateway $GCP_USER@$GCP_HOST:/tmp/IBKR_API_Gateway
 
         echo "🐳 Build e push su server: expovin/ibkr-clientportal:$IBKR_VERSION"
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME} DOCKERHUB_TOKEN=${DOCKERHUB_TOKEN} IBKR_VERSION=${IBKR_VERSION} bash -s" <<'EOF'
           set -e
-          cd ~/deploy/IBKR_API_Gateway
+          sudo mkdir -p /home/$USER/deploy
+          sudo rm -rf /home/$USER/deploy/IBKR_API_Gateway
+          sudo mv /tmp/IBKR_API_Gateway /home/$USER/deploy/IBKR_API_Gateway
+          sudo chown -R $USER:$USER /home/$USER/deploy/IBKR_API_Gateway
+          cd /home/$USER/deploy/IBKR_API_Gateway
           echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
           docker build -t "$DOCKERHUB_USERNAME/ibkr-clientportal:$IBKR_VERSION" -t "$DOCKERHUB_USERNAME/ibkr-clientportal:latest" -f Dockerfile .
           docker push "$DOCKERHUB_USERNAME/ibkr-clientportal:$IBKR_VERSION"
