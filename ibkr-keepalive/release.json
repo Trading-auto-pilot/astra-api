@@ -1,0 +1,9 @@
+{
+  "lastUpdate": "01/02/2026", 
+  "version": "1.0.0",
+  "microservice": "ibkr-keepalive",
+
+  "note": [
+    "v.1.0.0 ibkr-keepalive: Initial scaffolding generated from template."
+  ]
+}

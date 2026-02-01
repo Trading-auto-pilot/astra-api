@@ -118,6 +118,57 @@ services:
     networks:
       - trading_net
 
+  ibkrgw-paper:
+    image: ${IBKRGW_URL:-expovin/ibkr-clientportal}:${IBKRGW_VERSION:-latest}
+    restart: unless-stopped
+    networks:
+      - trading_net
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./IBKR_API_Gateway/conf.local.expopaper.yaml:/opt/ibkr/root/conf.yaml:ro
+    labels:
+      - "traefik.enable=true"
+
+      - "traefik.http.routers.ibkrgw-expopaper.rule=Host(`expopaper.localhost`)"
+      - "traefik.http.routers.ibkrgw-expopaper.entrypoints=websecure"
+      - "traefik.http.routers.ibkrgw-expopaper.tls=true"
+
+      - "traefik.http.routers.ibkrgw-expopaper.middlewares=ibkrgw-expopaper-headers"
+      - "traefik.http.middlewares.ibkrgw-expopaper-headers.headers.customRequestHeaders.X-Forwarded-Proto=https"
+      - "traefik.http.middlewares.ibkrgw-expopaper-headers.headers.customRequestHeaders.X-Forwarded-Host=localhost:5000"
+
+      - "traefik.http.services.ibkrgw-expopaper.loadbalancer.server.port=5000"
+      - "traefik.http.services.ibkrgw-expopaper.loadbalancer.server.scheme=https"
+      - "traefik.http.services.ibkrgw-expopaper.loadbalancer.serversTransport=ibkr-insecure@file"
+
+      - "traefik.http.middlewares.ibkrgw-expopaper-headers.headers.customRequestHeaders.X-Forwarded-For=127.0.0.1"
+      - "traefik.http.middlewares.ibkrgw-expopaper-headers.headers.customRequestHeaders.X-Real-IP=127.0.0.1"
+
+  ibkr-keepalive:
+    image: ${IBKRKEEPALIVE_URL}:${IBKRKEEPALIVE_VERSION}
+    container_name: ibkr-keepalive
+    network_mode: "service:ibkrgw-paper"
+    depends_on:
+      - ibkrgw-paper
+    environment:
+      - IBKR_BASE_URL=http://localhost:5000
+      - KEEPALIVE_INTERVAL_MS=45000
+      - REQUEST_TIMEOUT_MS=5000
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ibkr-keepalive.rule=Host(`localhost`) && PathPrefix(`/ibkr-keepalive`)"
+      - "traefik.http.routers.ibkr-keepalive.entrypoints=web"
+      - "traefik.http.services.ibkr-keepalive.loadbalancer.server.port=3019"
+      - "traefik.http.middlewares.ibkr-keepalive-stripprefix.stripPrefix.prefixes=/ibkr-keepalive"
+      - "traefik.http.routers.ibkr-keepalive.middlewares=ibkr-keepalive-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.ibkr-keepalive-preflight.rule=Host(`localhost`) && PathPrefix(`/ibkr-keepalive`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.ibkr-keepalive-preflight.entrypoints=web"
+      - "traefik.http.routers.ibkr-keepalive-preflight.priority=10000"
+      - "traefik.http.routers.ibkr-keepalive-preflight.service=ibkr-keepalive"
+      - "traefik.http.routers.ibkr-keepalive-preflight.middlewares=ibkr-keepalive-stripprefix,cors-default@docker"
+
   dbmanager:
     image: expovin/dbmanager:${DBMANAGER_VERSION}
     restart: unless-stopped
@@ -161,6 +212,7 @@ services:
       - APCA_API_KEY_ID=${APCA_API_KEY_ID}
       - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
       - FMP_API_KEY=${FMP_API_KEY}
+      - IBKR_BRIDGE_URL=${IBKRBRIDGE_URL}
       - TZ=Asia/Dubai
     depends_on:
       dbmanager:
@@ -170,6 +222,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+      - cachemanager_data:/app/cache
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3006/status/health"]
       interval: 10s
@@ -191,6 +244,91 @@ services:
       - "traefik.http.middlewares.cachemanager-stripprefix.stripPrefix.prefixes=/cachemanager"
       # 🔐 protetto via forwardAuth → /auth/validate
       - "traefik.http.routers.cachemanager.middlewares=cachemanager-stripprefix,cors-default@docker,auth-forward@docker"
+
+  decision-engine:
+    image: ${DECISIONENGINE_URL}:${DECISIONENGINE_VERSION}
+    restart: unless-stopped
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL}
+      - TZ=Asia/Dubai
+    depends_on:
+      dbmanager:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    profiles: ["decision-engine"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3018/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.decision-engine.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/decision-engine`)"
+      - "traefik.http.routers.decision-engine.entrypoints=websecure"
+      - "traefik.http.routers.decision-engine.tls.certresolver=le"
+      - "traefik.http.services.decision-engine.loadbalancer.server.port=3018"
+      - "traefik.http.middlewares.decision-engine-stripprefix.stripPrefix.prefixes=/decision-engine"
+      - "traefik.http.routers.decision-engine.middlewares=decision-engine-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.decision-engine-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/decision-engine`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.decision-engine-preflight.entrypoints=websecure"
+      - "traefik.http.routers.decision-engine-preflight.tls.certresolver=le"
+      - "traefik.http.routers.decision-engine-preflight.priority=10000"
+      - "traefik.http.routers.decision-engine-preflight.service=decision-engine"
+      - "traefik.http.routers.decision-engine-preflight.middlewares=decision-engine-stripprefix,cors-default@docker"
+
+  ibkr-bridge:
+    image: ${IBKRBRIDGE_URL}:${IBKRBRIDGE_VERSION}
+    restart: unless-stopped
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL}
+      - IBKRGW_BASE_URL=${IBKR_BASE_URL}
+      - IBKR_INSECURE_TLS=${IBKR_INSECURE_TLS}
+      - TICKLE_INTERVAL_MS=${TICKLE_INTERVAL_MS}
+      - AUTH_CHECK_INTERVAL_MS=${AUTH_CHECK_INTERVAL_MS}
+      - TZ=Asia/Dubai
+    depends_on:
+      dbmanager:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    profiles: ["ibkr-bridge"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3017/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ibkr-bridge.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/ibkr-bridge`)"
+      - "traefik.http.routers.ibkr-bridge.entrypoints=websecure"
+      - "traefik.http.routers.ibkr-bridge.tls.certresolver=le"
+      - "traefik.http.services.ibkr-bridge.loadbalancer.server.port=3017"
+      - "traefik.http.middlewares.ibkr-bridge-stripprefix.stripPrefix.prefixes=/ibkr-bridge"
+      - "traefik.http.routers.ibkr-bridge.middlewares=ibkr-bridge-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.ibkr-bridge-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/ibkr-bridge`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.ibkr-bridge-preflight.entrypoints=websecure"
+      - "traefik.http.routers.ibkr-bridge-preflight.tls.certresolver=le"
+      - "traefik.http.routers.ibkr-bridge-preflight.priority=10000"
+      - "traefik.http.routers.ibkr-bridge-preflight.service=ibkr-bridge"
+      - "traefik.http.routers.ibkr-bridge-preflight.middlewares=ibkr-bridge-stripprefix,cors-default@docker"
 
   capitalmanager:
     image: expovin/capitalmanager:${CAPITALMANAGER_VERSION}
@@ -483,6 +621,7 @@ volumes:
   traefik_letsencrypt:
   cache_data:
     driver: local
+  cachemanager_data:
 
 networks:
   trading_net:

@@ -1,0 +1,9 @@
+{
+  "lastUpdate": "01/02/2026", 
+  "version": "1.0.0",
+  "microservice": "decision-engine",
+
+  "note": [
+    "v.1.0.0 decision-engine: Initial scaffolding generated from template."
+  ]
+}

@@ -50,7 +50,12 @@ module.exports = function createStatsModule(cacheManager) {
           const stat = await fsp.stat(full);
           result.totalBytes += stat.size;
           result.fileCount += 1;
-          result.files.push({ path: full, size: stat.size });
+          result.files.push({
+            path: full,
+            size: stat.size,
+            createdAt: stat.birthtime?.toISOString?.() || stat.birthtime,
+            updatedAt: stat.mtime?.toISOString?.() || stat.mtime,
+          });
         } catch {
           // ignore unreadable file
         }
@@ -73,6 +78,47 @@ module.exports = function createStatsModule(cacheManager) {
     } catch {
       return false;
     }
+  };
+
+  const removeChildren = async (dir) => {
+    try {
+      const entries = await fsp.readdir(dir);
+      for (const entry of entries) {
+        const full = path.join(dir, entry);
+        await removePath(full);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const listFiles = async (dir, out = []) => {
+    let entries = [];
+    try {
+      entries = await fsp.readdir(dir, { withFileTypes: true });
+    } catch {
+      return out;
+    }
+
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await listFiles(full, out);
+      } else if (entry.isFile()) {
+        out.push(full);
+      }
+    }
+    return out;
+  };
+
+  const toTimestampMs = (value) => {
+    if (value === undefined || value === null || value === "") return null;
+    if (typeof value === "number") {
+      return value < 1e12 ? value * 1000 : value;
+    }
+    const parsed = Date.parse(String(value));
+    return Number.isNaN(parsed) ? null : parsed;
   };
 
   return {
@@ -163,8 +209,8 @@ module.exports = function createStatsModule(cacheManager) {
 
       // nessun segmento -> cancella tutto
       if (!segments.length) {
-        await removePath(root);
-        return { ok: true, deleted: root };
+        const ok = await removeChildren(root);
+        return { ok, deleted: root };
       }
 
       // costruisci percorso relativo
@@ -177,6 +223,168 @@ module.exports = function createStatsModule(cacheManager) {
       const target = path.join(root, ...safeSegments);
       const success = await removePath(target);
       return { ok: success, deleted: target };
+    },
+
+    /**
+     * Audit cache L2: statistiche su candele valide/rotte e coverage temporale.
+     */
+    async auditL2({ symbol, tf, clean } = {}) {
+      const root = resolveBasePath();
+      const exists = fs.existsSync(root);
+      if (!exists) {
+        return { ok: false, error: "cache base path not found", basePath: root };
+      }
+
+      const files = await listFiles(root);
+      const jsonFiles = files.filter((f) => f.toLowerCase().endsWith(".json"));
+      const wantedSymbol = symbol ? String(symbol).trim().toUpperCase() : null;
+      const wantedTf = tf ? String(tf).trim() : null;
+
+      const summary = {
+        basePath: root,
+        totalFiles: 0,
+        totalSymbols: 0,
+        totalCandles: 0,
+        validCandles: 0,
+        brokenCandles: 0,
+        brokenReasons: {
+          invalid_t: 0,
+          invalid_ohlc: 0,
+          invalid_json: 0,
+          not_array: 0,
+        },
+        providers: {},
+        timeRange: { start: null, end: null },
+        cleanedFiles: 0,
+        removedCandles: 0,
+        topBrokenFiles: [],
+      };
+
+      const perSymbol = {};
+      const brokenFileStats = [];
+
+      for (const file of jsonFiles) {
+        const rel = path.relative(root, file).replace(/\\/g, "/");
+        const parts = rel.split("/");
+        const fileSymbol = parts[0] || "UNKNOWN";
+        if (wantedSymbol && fileSymbol.toUpperCase() !== wantedSymbol) continue;
+
+        const tfMatch = rel.match(/_(.+)\.json$/);
+        const tfValue = tfMatch ? tfMatch[1] : "unknown";
+        if (wantedTf && tfValue.toLowerCase() !== wantedTf.toLowerCase()) continue;
+
+        summary.totalFiles += 1;
+        if (!perSymbol[fileSymbol]) {
+          perSymbol[fileSymbol] = {
+            files: 0,
+            totalCandles: 0,
+            validCandles: 0,
+            brokenCandles: 0,
+            providers: {},
+            timeRange: { start: null, end: null },
+            timeframes: {},
+          };
+        }
+
+        const tf = tfValue;
+        perSymbol[fileSymbol].files += 1;
+        perSymbol[fileSymbol].timeframes[tf] = (perSymbol[fileSymbol].timeframes[tf] || 0) + 1;
+
+        let data;
+        try {
+          const raw = await fsp.readFile(file, "utf8");
+          data = JSON.parse(raw);
+        } catch {
+          summary.brokenReasons.invalid_json += 1;
+          continue;
+        }
+
+        if (!Array.isArray(data)) {
+          summary.brokenReasons.not_array += 1;
+          continue;
+        }
+
+        let fileBroken = 0;
+        let fileValid = 0;
+        const cleaned = [];
+
+        for (const candle of data) {
+          summary.totalCandles += 1;
+          perSymbol[fileSymbol].totalCandles += 1;
+
+          const t = toTimestampMs(candle?.t ?? candle?.timestamp ?? candle?.time ?? candle?.date);
+          const o = Number(candle?.o ?? candle?.open);
+          const h = Number(candle?.h ?? candle?.high);
+          const l = Number(candle?.l ?? candle?.low);
+          const c = Number(candle?.c ?? candle?.close);
+
+          let valid = true;
+          if (!Number.isFinite(t)) {
+            summary.brokenReasons.invalid_t += 1;
+            valid = false;
+          }
+          if (![o, h, l, c].every((v) => Number.isFinite(v))) {
+            summary.brokenReasons.invalid_ohlc += 1;
+            valid = false;
+          }
+
+          if (valid) {
+            summary.validCandles += 1;
+            perSymbol[fileSymbol].validCandles += 1;
+            fileValid += 1;
+            cleaned.push(candle);
+          } else {
+            summary.brokenCandles += 1;
+            perSymbol[fileSymbol].brokenCandles += 1;
+            fileBroken += 1;
+          }
+
+          const provider = candle?.provider || "UNKNOWN";
+          summary.providers[provider] = (summary.providers[provider] || 0) + 1;
+          perSymbol[fileSymbol].providers[provider] =
+            (perSymbol[fileSymbol].providers[provider] || 0) + 1;
+
+          if (Number.isFinite(t)) {
+            const iso = new Date(t).toISOString();
+            if (!summary.timeRange.start || iso < summary.timeRange.start) summary.timeRange.start = iso;
+            if (!summary.timeRange.end || iso > summary.timeRange.end) summary.timeRange.end = iso;
+            if (!perSymbol[fileSymbol].timeRange.start || iso < perSymbol[fileSymbol].timeRange.start) {
+              perSymbol[fileSymbol].timeRange.start = iso;
+            }
+            if (!perSymbol[fileSymbol].timeRange.end || iso > perSymbol[fileSymbol].timeRange.end) {
+              perSymbol[fileSymbol].timeRange.end = iso;
+            }
+          }
+        }
+
+        if (fileBroken > 0) {
+          brokenFileStats.push({
+            file: rel,
+            symbol: fileSymbol,
+            tf,
+            total: fileValid + fileBroken,
+            broken: fileBroken,
+            brokenPct: (fileBroken / Math.max(1, fileValid + fileBroken)) * 100,
+          });
+        }
+
+        if (clean && fileBroken > 0) {
+          try {
+            await fsp.writeFile(file, JSON.stringify(cleaned, null, 2), "utf8");
+            summary.cleanedFiles += 1;
+            summary.removedCandles += fileBroken;
+          } catch {
+            // ignore write errors
+          }
+        }
+      }
+
+      summary.totalSymbols = Object.keys(perSymbol).length;
+      summary.topBrokenFiles = brokenFileStats
+        .sort((a, b) => b.brokenPct - a.brokenPct || b.broken - a.broken)
+        .slice(0, 10);
+
+      return { ok: true, summary, perSymbol };
     },
 
     /**

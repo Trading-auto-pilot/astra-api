@@ -15,5 +15,8 @@
     "tickerscanner": 3013,
     "scheduler": 3014,
     "authService": 3015,
-    "servicecontrolplane": 3016
+    "servicecontrolplane": 3016,
+    "ibkr-bridge": 3017,
+    "decision-engine": 3018,
+    "ibkr-keepalive": 3019
 }

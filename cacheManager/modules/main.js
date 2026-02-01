@@ -10,6 +10,7 @@ const { RedisBus } = require("../../shared/redisBus");
 const { asBool, asInt } = require("../../shared/helpers");
 const { AlpacaProvider } = require("./alpaca");
 const { FmpProvider } = require("./fmp");
+const axios = require("axios");
 const fs = require("fs");
 const fsp = require("fs/promises");
 
@@ -40,6 +41,10 @@ class CacheManager {
     this.sltpUrl = process.env.SLTP_URL || "http://sltp:3011";
     this.livemarketlistnerUrl = process.env.LIVEMARKETLISTNER_URL || "http://livemarketlistner:3012";
     this.tickerscannerUrl = process.env.TICKERSCANNER_URL || "http://tickerscanner:3013";
+    this.ibkrbridgeUrl =
+      process.env.IBKRBRIDGE_URL ||
+      process.env.IBKR_BRIDGE_URL ||
+      "http://ibkr-bridge:3017";
 
     this.cacheBasePath="./cache";
 
@@ -115,6 +120,8 @@ class CacheManager {
         logger: this.logger,
       });
       this.logger.info("[CacheManager] Provider storico: FMP");
+    } else if (this.providerType === "IBKR") {
+      this.logger.info("[CacheManager] Provider storico: IBKR");
     } else {
       this.logger.error(
         `[CacheManager] Provider storico sconosciuto: ${this.providerType}`
@@ -420,7 +427,17 @@ class CacheManager {
   // CANDLE CACHE: L3 (Redis) -> L2 (FS) -> L1 (Provider)
   // =========================================================
 
-  async getCandles(symbol, startDate, endDate, tf = "1Day") {
+  async getCandles(symbol, startDate, endDate, tf = "1Day", exchange) {
+    const startTs = new Date(startDate).getTime();
+    const endTs = new Date(endDate).getTime();
+    if (Number.isFinite(startTs) && Number.isFinite(endTs) && startTs > endTs) {
+      this.logger.warning(
+        `[getCandles] Intervallo invertito, swap start/end ${startDate} → ${endDate}`
+      );
+      const tmp = startDate;
+      startDate = endDate;
+      endDate = tmp;
+    }
     this.logger.info(
       `[getCandles] Richiesta candele ${symbol} ${startDate} → ${endDate} tf=${tf}`
     );
@@ -500,7 +517,13 @@ class CacheManager {
           `[getCandles] Intervallo ${pFrom}→${pTo} mancante anche in L2, uso provider remoto`
         );
 
-        const providerCandles = await this._retrieveFromProvider(symbol, pFrom, pTo, tf);
+        const providerCandles = await this._retrieveFromProvider(
+          symbol,
+          pFrom,
+          pTo,
+          tf,
+          exchange
+        );
 
         this.logger.info(
           `[getCandles] Provider remoto ha restituito ${providerCandles.length} candele per ${symbol} ${pFrom}→${pTo}`
@@ -537,6 +560,15 @@ class CacheManager {
     return `candles:${symbol}:${tf}`;
   }
 
+  _toTimestampMs(value) {
+    if (value === undefined || value === null || value === "") return null;
+    if (typeof value === "number") {
+      return value < 1e12 ? value * 1000 : value;
+    }
+    const parsed = Date.parse(String(value));
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
   _mapTfAlpaca(tf) {
     const val = String(tf || "1Day").toLowerCase();
     if (["1m", "1min"].includes(val)) return "1Min";
@@ -569,13 +601,108 @@ class CacheManager {
     return val;
   }
 
+  _mapTfIbkr(tf) {
+    const val = String(tf || "1day").toLowerCase();
+    if (["1m", "1min"].includes(val)) return "1min";
+    if (["2m", "2min"].includes(val)) return "2min";
+    if (["3m", "3min"].includes(val)) return "3min";
+    if (["5m", "5min"].includes(val)) return "5min";
+    if (["10m", "10min"].includes(val)) return "10min";
+    if (["15m", "15min"].includes(val)) return "15min";
+    if (["30m", "30min"].includes(val)) return "30min";
+    if (["1h", "1hr", "1hour"].includes(val)) return "1h";
+    if (["2h", "2hr", "2hour", "4h", "4hr", "4hour"].includes(val)) return "2h";
+    if (["1d", "1day"].includes(val)) return "1d";
+    if (["1w", "1week"].includes(val)) return "1w";
+    return "1d";
+  }
+
+  _buildIbkrPeriod(startDate, endDate) {
+    const start = new Date(startDate).getTime();
+    const end = new Date(endDate).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return "1d";
+    const days = Math.max(1, Math.ceil((end - start) / (24 * 60 * 60 * 1000)));
+    if (days <= 7) return `${days}d`;
+    if (days <= 30) return `${Math.ceil(days / 7)}w`;
+    return `${days}d`;
+  }
+
+  async _ibkrResolveConid(symbol, exchange) {
+    const url = `${this.ibkrbridgeUrl}/mirror/iserver/secdef/search`;
+    const preferredExchange = exchange || process.env.IBKR_EXCHANGE || "NASDAQ";
+    this.logger.trace?.(
+      `[L1][IBKR] Resolve conid URL=${url} symbol=${symbol} exchange=${preferredExchange || "-"}`
+    );
+    const resp = await axios.get(url, {
+      params: {
+        symbol,
+        name: true,
+        secType: "STK",
+        ...(preferredExchange ? { exchange: preferredExchange } : {}),
+      },
+      timeout: 8000,
+    });
+    const payload = resp.data;
+    const list = Array.isArray(payload) ? payload : payload?.data || [];
+    const match = list[0] || {};
+    const conid = match?.conid ?? match?.conidEx ?? match?.conId;
+    if (!conid) {
+      throw new Error(`IBKR conid not found for ${symbol}`);
+    }
+    return conid;
+  }
+
+  async _ibkrFetchHistory({ conid, startDate, endDate, bar, symbol }) {
+    const url = `${this.ibkrbridgeUrl}/mirror/iserver/marketdata/history`;
+    const period = this._buildIbkrPeriod(startDate, endDate);
+    this.logger.trace?.(
+      `[L1][IBKR] History URL=${url} conid=${conid} bar=${bar} period=${period} symbol=${symbol}`
+    );
+    const resp = await axios.get(url, {
+      params: {
+        conid,
+        bar,
+        period,
+        outsideRth: true,
+      },
+      timeout: 12000,
+    });
+
+    const rows = Array.isArray(resp.data?.data) ? resp.data.data : resp.data || [];
+    if (!Array.isArray(rows)) {
+      throw new Error("IBKR history invalid payload");
+    }
+
+    return rows
+      .map((row) => {
+        const tsRaw = Number(row.t ?? row.time);
+        const ts = Number.isFinite(tsRaw)
+          ? tsRaw < 1e12
+            ? tsRaw * 1000
+            : tsRaw
+          : null;
+        return {
+          t: ts ? new Date(ts).toISOString() : row.t,
+          o: row.o ?? row.open,
+          h: row.h ?? row.high,
+          l: row.l ?? row.low,
+          c: row.c ?? row.close,
+          v: row.v ?? row.volume,
+          tf: bar,
+          symbol,
+          conid,
+        };
+      })
+      .filter((r) => r.t);
+  }
+
   _filterCandlesByRange(candles, startDate, endDate) {
     const startTs = new Date(startDate).getTime();
     const endTs = new Date(endDate).getTime();
 
     return candles.filter((c) => {
-      const t = new Date(c.t).getTime();
-      return t >= startTs && t <= endTs;
+      const t = this._toTimestampMs(c?.t ?? c?.timestamp ?? c?.time ?? c?.date);
+      return Number.isFinite(t) && t >= startTs && t <= endTs;
     });
   }
 
@@ -638,7 +765,13 @@ class CacheManager {
 */
 
   _detectMissingRanges(candles, startDate, endDate, tf = "1Day") {
-    const sorted = [...candles].sort((a, b) => new Date(a.t) - new Date(b.t));
+    const sorted = candles
+      .map((c) => ({
+        ...c,
+        _ts: this._toTimestampMs(c?.t ?? c?.timestamp ?? c?.time ?? c?.date),
+      }))
+      .filter((c) => Number.isFinite(c._ts))
+      .sort((a, b) => a._ts - b._ts);
 
     // Nessuna candela → range completamente mancante
     if (!sorted.length) {
@@ -655,17 +788,20 @@ class CacheManager {
     const ranges = [];
     const startTs = new Date(startDate).getTime();
     const endTs = new Date(endDate).getTime();
-    const firstTs = new Date(sorted[0].t).getTime();
-    const lastTs = new Date(sorted[sorted.length - 1].t).getTime();
+    const firstTs = sorted[0]._ts;
+    const lastTs = sorted[sorted.length - 1]._ts;
 
     // gap iniziale
     if (firstTs > startTs) {
-      ranges.push({ from: startDate, to: sorted[0].t });
+      ranges.push({ from: startDate, to: sorted[0].t ?? new Date(firstTs).toISOString() });
     }
 
     // gap finale
     if (lastTs < endTs) {
-      ranges.push({ from: sorted[sorted.length - 1].t, to: endDate });
+      ranges.push({
+        from: sorted[sorted.length - 1].t ?? new Date(lastTs).toISOString(),
+        to: endDate,
+      });
     }
 
     if (ranges.length) {
@@ -748,6 +884,12 @@ class CacheManager {
     );
 
     try {
+      const normalize = (c) => {
+        const ts = this._toTimestampMs(c?.t ?? c?.timestamp ?? c?.time ?? c?.date);
+        if (!Number.isFinite(ts)) return null;
+        return { ...c, t: new Date(ts).toISOString() };
+      };
+
       // leggo eventuali esistenti per fare merge e non perdere nulla
       let existing = [];
       const raw = await this.bus.get(key);
@@ -764,8 +906,12 @@ class CacheManager {
       }
 
       const map = new Map();
-      for (const c of existing) map.set(c.t, c);
-      for (const c of candles) map.set(c.t, c);
+      for (const c of existing.map(normalize)) {
+        if (c) map.set(c.t, c);
+      }
+      for (const c of candles.map(normalize)) {
+        if (c) map.set(c.t, c);
+      }
 
       const merged = Array.from(map.values()).sort(
         (a, b) => new Date(a.t) - new Date(b.t)
@@ -846,13 +992,22 @@ class CacheManager {
     if (!candles || !candles.length) return;
 
     try {
+      const normalized = candles
+        .map((c) => {
+          const ts = this._toTimestampMs(c?.t ?? c?.timestamp ?? c?.time ?? c?.date);
+          if (!Number.isFinite(ts)) return null;
+          return { ...c, t: new Date(ts).toISOString() };
+        })
+        .filter(Boolean);
+      if (!normalized.length) return;
+
       const baseDir = path.join(this.cacheBasePath, symbol);
       if (!fs.existsSync(baseDir)) fs.mkdirSync(baseDir, { recursive: true });
 
       const groups = {};
 
       // raggruppa per yyyy-mm
-      for (const c of candles) {
+      for (const c of normalized) {
         const month = c.t.slice(0, 7); // "YYYY-MM"
         if (!groups[month]) groups[month] = [];
         groups[month].push(c);
@@ -873,7 +1028,11 @@ class CacheManager {
         }
 
         const map = new Map();
-        for (const c of existing) map.set(c.t, c);
+        for (const c of existing) {
+          const ts = this._toTimestampMs(c?.t ?? c?.timestamp ?? c?.time ?? c?.date);
+          if (!Number.isFinite(ts)) continue;
+          map.set(new Date(ts).toISOString(), { ...c, t: new Date(ts).toISOString() });
+        }
         for (const c of groups[month]) map.set(c.t, c);
 
         const merged = Array.from(map.values()).sort(
@@ -895,6 +1054,89 @@ class CacheManager {
         `[L2] Errore scrittura file L2: ${err.message}`
       );
     }
+  }
+
+  // =========================================================
+  // L2: Lettura file singolo (by year/month/tf or filename)
+  // =========================================================
+  async readL2File({ symbol, year, month, tf, fileName }) {
+    let targetPath = null;
+    if (fileName) {
+      const safeName = String(fileName).replace(/\\/g, "/");
+      if (safeName.includes("..")) {
+        throw new Error("Invalid fileName");
+      }
+      const baseDir = path.resolve(this.cacheBasePath || "cache");
+      const fullPath = path.resolve(baseDir, safeName);
+      if (!fullPath.startsWith(baseDir)) {
+        throw new Error("Invalid fileName");
+      }
+      targetPath = fullPath;
+    } else {
+      if (!symbol || !year || !month || !tf) {
+        throw new Error("symbol, year, month, tf required");
+      }
+      const safeSymbol = String(symbol).trim().toUpperCase();
+      const safeYear = String(year).trim();
+      const safeMonth = String(month).padStart(2, "0");
+      const safeTf = String(tf).trim();
+      targetPath = path.resolve(
+        this.cacheBasePath || "cache",
+        safeSymbol,
+        `${safeYear}-${safeMonth}_${safeTf}.json`
+      );
+    }
+    const raw = await fsp.readFile(targetPath, "utf8");
+    const stats = await fsp.stat(targetPath);
+    return {
+      data: JSON.parse(raw),
+      meta: {
+        file: targetPath,
+        createdAt: stats.birthtime?.toISOString?.() || stats.birthtime,
+        updatedAt: stats.mtime?.toISOString?.() || stats.mtime,
+      },
+    };
+  }
+
+  async writeL2File({ symbol, year, month, tf, fileName, data }) {
+    if (!data) {
+      throw new Error("data required");
+    }
+    const payload = Array.isArray(data) ? data : data?.candles || data?.data || data;
+    if (!payload || typeof payload !== "object") {
+      throw new Error("invalid data payload");
+    }
+
+    let targetPath = null;
+    if (fileName) {
+      const safeName = String(fileName).replace(/\\/g, "/");
+      if (safeName.includes("..")) {
+        throw new Error("Invalid fileName");
+      }
+      const baseDir = path.resolve(this.cacheBasePath || "cache");
+      const fullPath = path.resolve(baseDir, safeName);
+      if (!fullPath.startsWith(baseDir)) {
+        throw new Error("Invalid fileName");
+      }
+      targetPath = fullPath;
+    } else {
+      if (!symbol || !year || !month || !tf) {
+        throw new Error("symbol, year, month, tf required");
+      }
+      const safeSymbol = String(symbol).trim().toUpperCase();
+      const safeYear = String(year).trim();
+      const safeMonth = String(month).padStart(2, "0");
+      const safeTf = String(tf).trim();
+      targetPath = path.resolve(
+        this.cacheBasePath || "cache",
+        safeSymbol,
+        `${safeYear}-${safeMonth}_${safeTf}.json`
+      );
+    }
+
+    await fsp.mkdir(path.dirname(targetPath), { recursive: true });
+    await fsp.writeFile(targetPath, JSON.stringify(payload, null, 2), "utf8");
+    return { ok: true, file: targetPath };
   }
 
   /**
@@ -976,17 +1218,31 @@ class CacheManager {
   // =========================================================
   // L1: Provider remoto (ALPACA / FMP)
   // =========================================================
-  async _retrieveFromProvider(symbol, startDate, endDate, tf) {
+  async _retrieveFromProvider(symbol, startDate, endDate, tf, exchange) {
     const provider = this.providerType || "ALPACA";
     const tfAlpaca = this._mapTfAlpaca(tf);
     const tfFmp = this._mapTfFmp(tf);
+    const tfIbkr = this._mapTfIbkr(tf);
 
     this.logger.info(
       `[L1] Recupero da provider ${provider} per ${symbol} ${startDate}→${endDate} tf=${tf}`
     );
 
     try {
-      switch (provider) {
+      const tagBars = (bars, providerKey, fallbackFrom = null) => {
+        if (!Array.isArray(bars)) return [];
+        const fallbackInfo = fallbackFrom
+          ? { providerFallback: true, providerFallbackFrom: fallbackFrom }
+          : { providerFallback: false };
+        return bars.map((bar) => ({
+          ...bar,
+          provider: providerKey,
+          ...fallbackInfo,
+        }));
+      };
+
+      const fetchFrom = async (providerKey, fallbackFrom = null) => {
+        switch (providerKey) {
         case "ALPACA": {
           if (!this.alpaca) {
             throw new Error(
@@ -1000,13 +1256,14 @@ class CacheManager {
             end: endDate,
             timeframe: tfAlpaca,
           });
+          const tagged = tagBars(bars, "ALPACA", fallbackFrom);
 
           this.L1Hit = (this.L1Hit || 0) + 1;
           this.lastProviderCall = new Date().toISOString();
           this.logger.info(
             `[L1][ALPACA] Restituite ${bars.length} candele per ${symbol}`
           );
-          return bars;
+          return tagged;
         }
 
         case "FMP": {
@@ -1023,18 +1280,57 @@ class CacheManager {
             timeframe: tfFmp,
             periodLength: 10,
           });
+          const tagged = tagBars(bars, "FMP", fallbackFrom);
 
           this.L1Hit = (this.L1Hit || 0) + 1;
           this.lastProviderCall = new Date().toISOString();
           this.logger.info(
             `[L1][FMP] Restituite ${bars.length} candele per ${symbol}`
           );
-          return bars;
+          return tagged;
+        }
+
+        case "IBKR": {
+          const conid = await this._ibkrResolveConid(symbol, exchange);
+          const bars = await this._ibkrFetchHistory({
+            conid,
+            startDate,
+            endDate,
+            bar: tfIbkr,
+            symbol,
+          });
+          const tagged = tagBars(bars, "IBKR", fallbackFrom);
+          this.L1Hit = (this.L1Hit || 0) + 1;
+          this.lastProviderCall = new Date().toISOString();
+          this.logger.info(
+            `[L1][IBKR] Restituite ${bars.length} candele per ${symbol} conid=${conid}`
+          );
+          return tagged;
         }
 
         default:
-          throw new Error(`Provider storico non valido: ${provider}`);
+          throw new Error(`Provider storico non valido: ${providerKey}`);
+        }
+      };
+
+      if (provider === "IBKR") {
+        try {
+          return await fetchFrom("IBKR");
+        } catch (err) {
+          this.logger.warning(
+            `[L1] IBKR fallito per ${symbol}, provo FMP`
+          );
+          try {
+            return await fetchFrom("FMP", "IBKR");
+          } catch (err2) {
+            this.logger.warning(
+              `[L1] FMP fallito per ${symbol}, provo ALPACA`
+            );
+            return await fetchFrom("ALPACA", "IBKR");
+          }
+        }
       }
+      return await fetchFrom(provider);
     } catch (e) {
       this.logger.error(
         `[L1] Errore recupero candele da provider ${provider} per ${symbol}: ${

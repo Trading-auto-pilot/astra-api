@@ -1,0 +1,9 @@
+{
+  "lastUpdate": "01/02/2026", 
+  "version": "1.0.0",
+  "microservice": "ibkr-bridge",
+
+  "note": [
+    "v.1.0.0 ibkr-bridge: Initial scaffolding generated from template."
+  ]
+}
