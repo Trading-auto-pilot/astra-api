@@ -141,15 +141,26 @@ jobs:
           exit 1
         fi
 
-        echo "📦 Copio IBKR_API_Gateway sul server..."
-        scp -o StrictHostKeyChecking=no -r IBKR_API_Gateway $GCP_USER@$GCP_HOST:/tmp/IBKR_API_Gateway
+        echo "📦 Copio IBKR_API_Gateway (solo file config) sul server..."
+        scp -o StrictHostKeyChecking=no \
+          IBKR_API_Gateway/Dockerfile \
+          IBKR_API_Gateway/release.json \
+          IBKR_API_Gateway/conf.local.expopaper.yaml \
+          $GCP_USER@$GCP_HOST:/tmp/
 
         echo "🐳 Build e push su server: expovin/ibkr-clientportal:$IBKR_VERSION"
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME} DOCKERHUB_TOKEN=${DOCKERHUB_TOKEN} IBKR_VERSION=${IBKR_VERSION} bash -s" <<'EOF'
           set -e
-          sudo mkdir -p /home/$USER/deploy
-          sudo rm -rf /home/$USER/deploy/IBKR_API_Gateway
-          sudo mv /tmp/IBKR_API_Gateway /home/$USER/deploy/IBKR_API_Gateway
+          sudo mkdir -p /home/$USER/deploy/IBKR_API_Gateway
+          if [ -d /home/$USER/deploy/IBKR_API_Gateway/SW ]; then
+            echo "✅ SW già presente su server, la mantengo"
+          else
+            echo "❌ SW non presente su server. Carica clientportal.gw.zip in /home/$USER/deploy/IBKR_API_Gateway/SW"
+            exit 1
+          fi
+          sudo mv /tmp/Dockerfile /home/$USER/deploy/IBKR_API_Gateway/Dockerfile
+          sudo mv /tmp/release.json /home/$USER/deploy/IBKR_API_Gateway/release.json
+          sudo mv /tmp/conf.local.expopaper.yaml /home/$USER/deploy/IBKR_API_Gateway/conf.local.expopaper.yaml
           sudo chown -R $USER:$USER /home/$USER/deploy/IBKR_API_Gateway
           cd /home/$USER/deploy/IBKR_API_Gateway
           echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
