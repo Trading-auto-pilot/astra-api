@@ -123,6 +123,11 @@ jobs:
           fi
         done
 
+    - name: Setup SSH key
+      uses: webfactory/ssh-agent@v0.8.0
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
     - name: Build IBKR API Gateway on server and push
       run: |
         if [[ "${{ github.ref_name }}" == "LIVE" ]]; then
@@ -148,11 +153,6 @@ jobs:
           docker push "$DOCKERHUB_USERNAME/ibkr-clientportal:$IBKR_VERSION"
           docker push "$DOCKERHUB_USERNAME/ibkr-clientportal:latest"
         EOF
-
-    - name: Setup SSH key
-      uses: webfactory/ssh-agent@v0.8.0
-      with:
-        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
     - name: Creazione release su github
       run: |
