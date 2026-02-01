@@ -43,6 +43,26 @@ module.exports = (dbManager) => {
     }
   });
 
+  /**
+   * GET /fundamentals/history/by-date?date=YYYY-MM-DD
+   * Restituisce gli snapshot per una data specifica (ticker_fundamentals_history)
+   */
+  router.get("/history/by-date", async (req, res) => {
+    const date = req.query.date || req.query.asOfDate || null;
+    if (!date) {
+      return res.status(400).json({ ok: false, error: "date mancante" });
+    }
+    try {
+      const rows = await dbManager.getFundamentalsHistoryByDate({
+        asOfDate: String(date).slice(0, 10),
+      });
+      return res.json({ ok: true, data: rows });
+    } catch (err) {
+      console.error("[GET /fundamentals/history/by-date] Errore:", err?.message || err);
+      return res.status(500).json({ ok: false, error: "Errore lettura fundamentals_history by date" });
+    }
+  });
+
   // CRUD per fundamentals_history (SCD2)
   router.get("/history/records", async (req, res) => {
     const symbol = req.query.symbol ? String(req.query.symbol).toUpperCase() : null;

@@ -26,7 +26,7 @@ let logLevel = process.env.LOG_LEVEL || "info";
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, logLevel);
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: process.env.BODY_LIMIT || "20mb" }));
 let statsModule = null;
 
 // -------------------------------------------------------
@@ -327,8 +327,8 @@ app.get("/provider", (_req, res) => {
 
 app.put("/provider/:provider", (req, res) => {
   const next = (req.params.provider || "").toUpperCase();
-  if (!next || !["FMP", "ALPACA"].includes(next)) {
-    return res.status(400).json({ ok: false, error: "Provider non valido. Usare FMP o ALPACA." });
+  if (!next || !["FMP", "ALPACA", "IBKR"].includes(next)) {
+    return res.status(400).json({ ok: false, error: "Provider non valido. Usare FMP, ALPACA o IBKR." });
   }
 
   if (!serviceInstance) {
@@ -350,6 +350,9 @@ app.put("/provider/:provider", (req, res) => {
         logger.error(`[PUT /provider] Error init Alpaca: ${err?.message || String(err)}`);
         return res.status(500).json({ ok: false, error: "Impossibile inizializzare Alpaca" });
       }
+    }
+    if (next === "IBKR") {
+      logger.info("[PUT /provider] Provider impostato a IBKR");
     }
     serviceInstance.providerType = next;
     logger.info(`[PUT /provider] Provider impostato a ${next}`);
@@ -401,16 +404,102 @@ app.use("/status", (req, res, next) => {
 // Recupero candele
 app.get("/candles", async (req, res) => {
   try {
-    const { symbol, startDate, endDate, tf } = req.query;
+    const { symbol, startDate, endDate, tf, exchange } = req.query;
     if (!symbol || !startDate || !endDate) {
       return res.status(400).json({ error: "symbol, startDate, endDate richiesti" });
     }
 
-    const candles = await serviceInstance.getCandles(symbol, startDate, endDate, tf || "1Day");
+    const candles = await serviceInstance.getCandles(
+      symbol,
+      startDate,
+      endDate,
+      tf || "1Day",
+      exchange
+    );
     res.json(candles);
   } catch (err) {
     logger.error(`[CACHE] Errore GET /candles: ${err.message}`);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /l2/file?symbol=...&year=YYYY&month=MM&tf=1min
+// or /l2/file?fileName=SYMBOL/YYYY-MM_tf.json
+app.get("/l2/file", requireReady, async (req, res) => {
+  try {
+    const { symbol, year, month, tf, fileName } = req.query;
+    const result = await serviceInstance.readL2File({
+      symbol,
+      year,
+      month,
+      tf,
+      fileName,
+    });
+    res.json({ ok: true, data: result.data, meta: result.meta });
+  } catch (err) {
+    logger.error(`[CACHE] Errore GET /l2/file: ${err.message}`);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// PUT /l2/file?symbol=...&year=YYYY&month=MM&tf=1min
+// or /l2/file?fileName=SYMBOL/YYYY-MM_tf.json
+app.put("/l2/file", requireReady, async (req, res) => {
+  try {
+    const { symbol, year, month, tf, fileName } = req.query;
+    const result = await serviceInstance.writeL2File({
+      symbol,
+      year,
+      month,
+      tf,
+      fileName,
+      data: req.body,
+    });
+    res.json({ ok: true, data: result });
+  } catch (err) {
+    logger.error(`[CACHE] Errore PUT /l2/file: ${err.message}`);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET /l2/audit?symbol=SYM
+app.get("/l2/audit", requireReady, async (req, res) => {
+  try {
+    if (!statsModule && serviceInstance) {
+      statsModule = createStatsModule(serviceInstance);
+    }
+    const { symbol, tf, clean } = req.query;
+    const result = await statsModule.auditL2({
+      symbol,
+      tf,
+      clean: ["true", "1", "yes", "on"].includes(String(clean || "").toLowerCase()),
+    });
+    res.json({ ok: true, data: result });
+  } catch (err) {
+    logger.error(`[CACHE] Errore GET /l2/audit: ${err.message}`);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /l2/clear?symbol=...&file=YYYY-MM_tf.json
+// Without params it clears the entire L2 cache.
+app.post("/l2/clear", requireReady, async (req, res) => {
+  try {
+    if (!statsModule && serviceInstance) {
+      statsModule = createStatsModule(serviceInstance);
+    }
+    const { symbol, file } = req.query;
+    const segments = [];
+    if (symbol) segments.push(String(symbol));
+    if (file) segments.push(String(file));
+    const result = await statsModule.deleteL2(segments);
+    if (!result.ok) {
+      return res.status(404).json({ ok: false, error: "Path not found or not deleted" });
+    }
+    return res.json({ ok: true, deleted: result.deleted });
+  } catch (err) {
+    logger.error(`[CACHE] Errore POST /l2/clear: ${err.message}`);
+    return res.status(500).json({ ok: false, error: err.message });
   }
 });
 

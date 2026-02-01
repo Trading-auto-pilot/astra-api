@@ -1,0 +1,15 @@
+{
+  "watch": [
+    "server.js",
+    "status.js",
+    "modules/*"
+  ],
+  "ignore": [
+    "*.test.js",
+    "node_modules",
+    "Dockerfile",
+    "README.md",
+    "release.json"
+  ],
+  "exec": "node server.js"
+}

@@ -83,6 +83,9 @@ jobs:
           authService
           astraai-frontend
           serviceControlPlane
+          ibkr-bridge
+          decision-engine
+          ibkr-keepalive
         )
 
         for service in "${services[@]}"; do

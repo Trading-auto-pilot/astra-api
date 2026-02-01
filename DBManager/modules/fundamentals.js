@@ -413,6 +413,31 @@ async function getFundamentalsHistory({ symbol = null, limitDays = 70 } = {}) {
   }
 }
 
+async function getFundamentalsHistoryByDate({ asOfDate } = {}) {
+  const connection = await getDbConnection();
+  try {
+    if (!asOfDate) return [];
+    const sql = `
+      SELECT tfh.*,
+             fh.sector,
+             fh.industry,
+             fh.country,
+             fh.exchange_full_name AS exchange_full_name
+        FROM ticker_fundamentals_history tfh
+        LEFT JOIN fundamentals_history fh
+          ON fh.symbol = tfh.symbol
+         AND fh.valid_from <= tfh.as_of_date
+         AND (fh.valid_to > tfh.as_of_date OR fh.valid_to IS NULL)
+       WHERE DATE(tfh.as_of_date) = ?
+       ORDER BY tfh.symbol ASC
+    `;
+    const [rows] = await connection.query(sql, [asOfDate]);
+    return rows;
+  } finally {
+    connection.release();
+  }
+}
+
 
 async function getUserFilters(userId, pipeId = null) {
   const connection = await getDbConnection();
@@ -1704,6 +1729,7 @@ module.exports = {
   updateFundamentalsMomentumBulk,
   insertOrUpdateFundamentalsHistoryBulk,
   getFundamentalsHistory,
+  getFundamentalsHistoryByDate,
   getUserFilters,
   upsertUserFilter,
   deleteUserFilter,

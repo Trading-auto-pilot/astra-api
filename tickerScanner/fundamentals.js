@@ -123,6 +123,346 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
     }
   };
 
+  const FILTER_FIELD_MAP = {
+    growth_probability: [
+      "user_grow_score",
+      "grow_score",
+      "growth_probability",
+      "growthProbability",
+      "user_growth_probability",
+    ],
+    growthProbability: [
+      "user_grow_score",
+      "grow_score",
+      "growth_probability",
+      "growthProbability",
+      "user_growth_probability",
+    ],
+    growth_momentum: ["growth_momentum", "growthMomentum"],
+    growthMomentum: ["growth_momentum", "growthMomentum"],
+    growth_risk: ["growth_risk", "growthRisk"],
+    growthRisk: ["growth_risk", "growthRisk"],
+    growth_market: ["growth_market", "growthMarket"],
+    growthMarket: ["growth_market", "growthMarket"],
+    mom1m: ["mom_1m", "mom1m", "momentum.components.mom1mScore", "momentum_json.components.mom1mScore"],
+    mom_1m: ["mom_1m", "mom1m", "momentum.components.mom1mScore", "momentum_json.components.mom1mScore"],
+    mom3m: ["mom_3m", "mom3m", "momentum.components.mom3mScore", "momentum_json.components.mom3mScore"],
+    mom_3m: ["mom_3m", "mom3m", "momentum.components.mom3mScore", "momentum_json.components.mom3mScore"],
+    mom6m: ["mom_6m", "mom6m", "momentum.components.mom6mScore", "momentum_json.components.mom6mScore"],
+    mom_6m: ["mom_6m", "mom6m", "momentum.components.mom6mScore", "momentum_json.components.mom6mScore"],
+    mom12m: ["mom_12m", "mom12m", "momentum.components.mom12mScore", "momentum_json.components.mom12mScore"],
+    mom_12m: ["mom_12m", "mom12m", "momentum.components.mom12mScore", "momentum_json.components.mom12mScore"],
+    double_top_score: [
+      "user_double_top_score",
+      "double_top_score",
+      "momentum.components.doubleTop.score",
+      "momentum_json.components.doubleTop.score",
+    ],
+    doubletopScore: [
+      "user_double_top_score",
+      "double_top_score",
+      "momentum.components.doubleTop.score",
+      "momentum_json.components.doubleTop.score",
+    ],
+    momentum_score: ["user_momentum_score", "momentum_score", "momentumScore"],
+    momentumScore: ["user_momentum_score", "momentum_score", "momentumScore"],
+    momentum_score_short: ["momentum_score_short", "momentum_short_score", "momentumScoreShort"],
+    momentumScoreShort: ["momentum_score_short", "momentum_short_score", "momentumScoreShort"],
+    risk_score: ["user_risk_score", "risk_score", "riskScore", "short_risk_score"],
+    riskScore: ["user_risk_score", "risk_score", "riskScore", "short_risk_score"],
+    quality_score: ["user_quality_score", "quality_score", "qualityScore"],
+    qualityScore: ["user_quality_score", "quality_score", "qualityScore"],
+    valuation_score: ["user_valuation_score", "valuation_score", "valuation_scores", "valuationScore"],
+    valuationScore: ["user_valuation_score", "valuation_score", "valuation_scores", "valuationScore"],
+    total_score: ["total_score", "score", "totalScore"],
+    totalScore: ["total_score", "score", "totalScore"],
+    market_risk_score: [
+      "market_risk_score",
+      "marketRiskScore",
+      "user_market_score",
+      "market_score",
+      "momentum_json.components.marketRisk.score",
+      "momentum.components.marketRisk.score",
+    ],
+    marketRiskScore: [
+      "market_risk_score",
+      "marketRiskScore",
+      "user_market_score",
+      "market_score",
+      "momentum_json.components.marketRisk.score",
+      "momentum.components.marketRisk.score",
+    ],
+    market_score: [
+      "market_score",
+      "marketScore",
+      "user_market_score",
+      "momentum_json.components.marketRisk.score",
+      "momentum.components.marketRisk.score",
+    ],
+    marketScore: [
+      "market_score",
+      "marketScore",
+      "user_market_score",
+      "momentum_json.components.marketRisk.score",
+      "momentum.components.marketRisk.score",
+    ],
+    "Momentum score": ["user_momentum_score", "momentum_score", "momentumScore"],
+    "Momentum short score": ["momentum_score_short", "momentum_short_score", "momentumScoreShort"],
+    "Quality score": ["user_quality_score", "quality_score", "qualityScore"],
+    "Valuation score": ["user_valuation_score", "valuation_score", "valuation_scores", "valuationScore"],
+    "Risk score": ["user_risk_score", "risk_score", "riskScore", "short_risk_score"],
+    "Total score": ["total_score", "score", "totalScore"],
+    "Market risk score": [
+      "market_risk_score",
+      "marketRiskScore",
+      "user_market_score",
+      "market_score",
+      "momentum_json.components.marketRisk.score",
+      "momentum.components.marketRisk.score",
+    ],
+    "Growth probability": [
+      "user_grow_score",
+      "grow_score",
+      "growth_probability",
+      "growthProbability",
+      "user_growth_probability",
+    ],
+  };
+
+  const ORDER_FIELD_MAP = {
+    growth_probability: ["user_grow_score", "grow_score", "growth_probability"],
+    growthProbability: ["user_grow_score", "grow_score", "growth_probability"],
+    momentum_score: ["user_momentum_score", "momentum_score"],
+    momentum_score_short: ["momentum_score_short", "momentum_short_score", "momentum_score_short"],
+    momentumScoreShort: ["momentum_score_short", "momentum_short_score", "momentum_score_short"],
+    risk_score: ["user_risk_score", "risk_score"],
+    quality_score: ["user_quality_score", "quality_score"],
+    total_score: ["total_score", "score", "totalScore"],
+    market_score: [
+      "user_market_score",
+      "market_score",
+      "momentum_json.components.marketRisk.score",
+      "momentum.components.marketRisk.score",
+    ],
+    mom1mScore: [
+      "user_mom1m_score",
+      "mom_1m",
+      "mom1m",
+      "momentum.components.mom1mScore",
+      "momentum_json.components.mom1mScore",
+    ],
+    mom3mScore: [
+      "user_mom3m_score",
+      "mom_3m",
+      "mom3m",
+      "momentum.components.mom3mScore",
+      "momentum_json.components.mom3mScore",
+    ],
+    mom6mScore: [
+      "user_mom6m_score",
+      "mom_6m",
+      "mom6m",
+      "momentum.components.mom6mScore",
+      "momentum_json.components.mom6mScore",
+    ],
+    mom12mScore: [
+      "user_mom12m_score",
+      "mom_12m",
+      "mom12m",
+      "momentum.components.mom12mScore",
+      "momentum_json.components.mom12mScore",
+    ],
+    double_top_score: [
+      "user_double_top_score",
+      "double_top_score",
+      "momentum.components.doubleTop.score",
+      "momentum_json.components.doubleTop.score",
+    ],
+  };
+
+  const allowedFilterNames = new Set([
+    "growthProbability",
+    "growth_probability",
+    "growthMomentum",
+    "growth_momentum",
+    "growthRisk",
+    "growth_risk",
+    "growthMarket",
+    "growth_market",
+    "mom1m",
+    "mom_1m",
+    "mom3m",
+    "mom_3m",
+    "mom6m",
+    "mom_6m",
+    "mom12m",
+    "mom_12m",
+    "doubletopScore",
+    "double_top_score",
+    "momentum_score",
+    "momentumScore",
+    "momentum_score_short",
+    "momentumScoreShort",
+    "risk_score",
+    "riskScore",
+    "quality_score",
+    "qualityScore",
+    "valuation_score",
+    "valuationScore",
+    "total_score",
+    "totalScore",
+    "market_risk_score",
+    "marketRiskScore",
+    "market_score",
+    "marketScore",
+    "Momentum score",
+    "Momentum short score",
+    "Quality score",
+    "Risk score",
+    "Valuation score",
+    "Total score",
+    "Market risk score",
+    "Growth probability",
+  ]);
+
+  const getByPath = (obj, path) => {
+    if (!obj || typeof obj !== "object") return undefined;
+    const parts = path.split(".");
+    let cur = obj;
+    for (const p of parts) {
+      if (cur && typeof cur === "object" && p in cur) {
+        cur = cur[p];
+      } else {
+        return undefined;
+      }
+    }
+    return cur;
+  };
+
+  const getNumericField = (record, keys) => {
+    for (const k of keys) {
+      let v;
+      if (k.includes(".")) {
+        v = getByPath(record, k);
+      } else if (record && typeof record === "object" && k in record) {
+        v = record[k];
+      }
+      if (v === undefined) continue;
+      const num = typeof v === "string" ? Number(v) : v;
+      if (Number.isFinite(num)) return num;
+    }
+    return null;
+  };
+
+  const normalizeUserFilters = (rows) => {
+    const list = Array.isArray(rows) ? rows : [];
+    return list
+      .filter((r) => allowedFilterNames.has(r.filter_name || r.name))
+      .map((r) => ({
+        name: r.filter_name || r.name,
+        value: Number(r.value),
+        comparator: (r.comparator || r.comp || "GT").toUpperCase(),
+        enabled: r.enabled === 1 || r.enabled === true || r.enabled === "1",
+      }));
+  };
+
+  const applyUserFilters = (records, filters) => {
+    if (!Array.isArray(filters) || !filters.length) return records;
+    return records.filter((rec) => {
+      for (const f of filters) {
+        if (!f?.enabled) continue;
+        const targetKeys = FILTER_FIELD_MAP[f.name] || [];
+        if (!targetKeys.length) continue;
+        const recVal = getNumericField(rec, targetKeys);
+        if (recVal === null) return false;
+        const filterVal = Number(f.value);
+        if (!Number.isFinite(filterVal)) continue;
+        const cmp = (f.comparator || "GT").toUpperCase() === "LT" ? "LT" : "GT";
+        if (cmp === "GT" && !(recVal >= filterVal)) return false;
+        if (cmp === "LT" && !(recVal <= filterVal)) return false;
+      }
+      return true;
+    });
+  };
+
+  const normalizeUserOrder = (rows) => {
+    const list = Array.isArray(rows) ? rows : [];
+    return list
+      .map((r) => ({
+        field: r.field || r.order_field || r.name,
+        direction: (r.direction || r.dir || "DESC").toUpperCase() === "ASC" ? "ASC" : "DESC",
+        order_id: Number.isFinite(Number(r.order_id)) ? Number(r.order_id) : 1,
+      }))
+      .filter((r) => Boolean(r.field))
+      .sort((a, b) => (a.order_id || 0) - (b.order_id || 0));
+  };
+
+  const applyUserOrder = (records, orders) => {
+    if (!Array.isArray(orders) || !orders.length) return records;
+    const sorted = [...records];
+    sorted.sort((a, b) => {
+      for (const ord of orders) {
+        const mappedKeys = ORDER_FIELD_MAP[ord.field] || [ord.field];
+        const valA = getNumericField(a, mappedKeys);
+        const valB = getNumericField(b, mappedKeys);
+        const dir = ord.direction === "ASC" ? 1 : -1;
+        if (valA === null && valB === null) continue;
+        if (valA === null) return 1;
+        if (valB === null) return -1;
+        if (valA !== valB) return (valA - valB) * dir;
+      }
+      return 0;
+    });
+    return sorted;
+  };
+
+  const normalizeRecordForFilters = (record) => {
+    if (!record || typeof record !== "object") return record;
+    const next = { ...record };
+    const tryParse = (val) => {
+      if (typeof val !== "string") return val;
+      try {
+        return JSON.parse(val);
+      } catch {
+        return val;
+      }
+    };
+    const normalizeExchange = (value) => {
+      if (!value) return null;
+      const raw = String(value).trim();
+      if (!raw) return null;
+      const upper = raw.toUpperCase();
+      if (upper.includes("NASDAQ")) return "NASDAQ";
+      if (upper.includes("NEW YORK STOCK EXCHANGE") || upper === "NYSE") return "NYSE";
+      if (upper.includes("NYSE AMERICAN") || upper.includes("AMEX")) return "AMEX";
+      if (upper.includes("OTC")) return "OTC";
+      if (upper.includes("LONDON STOCK EXCHANGE") || upper === "LSE") return "LSE";
+      if (upper.includes("AUSTRALIAN SECURITIES EXCHANGE") || upper === "ASX") return "ASX";
+      if (upper.includes("TORONTO STOCK EXCHANGE") || upper === "TSX") return "TSX";
+      if (upper.includes("EURONEXT")) return "EURONEXT";
+      if (upper.includes("FRANKFURT") || upper === "FRA") return "FRA";
+      if (upper.includes("XETRA")) return "XETRA";
+      if (upper.includes("SWISS") || upper === "SIX") return "SIX";
+      if (upper.includes("HONG KONG") || upper === "HKEX") return "HKEX";
+      if (upper.includes("TOKYO") || upper === "TSE") return "TSE";
+      if (upper.includes("SHANGHAI") || upper === "SSE") return "SSE";
+      if (upper.includes("SHENZHEN") || upper === "SZSE") return "SZSE";
+      return raw;
+    };
+    if (typeof next.momentum_json === "string") {
+      next.momentum_json = tryParse(next.momentum_json);
+    }
+    if (typeof next.momentum === "string") {
+      next.momentum = tryParse(next.momentum);
+    }
+    if (!next.exchange && (next.exchange_full_name || next.exchangeFullName)) {
+      const full = next.exchange_full_name || next.exchangeFullName;
+      next.exchange = normalizeExchange(full);
+      next.exchange_short = next.exchange;
+    }
+    return next;
+  };
+
   const fetchUserId = async (req) => {
     // 1) header già forwardato da auth-service
     const headerUser = req?.headers?.["x-user-id"] ?? req?.headers?.["x-userid"];
@@ -2446,6 +2786,101 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       const errorStr = payload ? safeStringify(payload) : safeStringify(err?.message || String(err));
       logger.error(`${fn} error ${errorStr}`);
       return res.status(500).json({ ok: false, error: errorStr || "Errore lettura user_fundamentals" });
+    }
+  });
+
+  // GET /fundamentals/user-fundamentals-view/:pipeId
+  router.get("/user-fundamentals-view/:pipeId", async (req, res) => {
+    const fn = `${fnPrefix}.GET:/user-fundamentals-view/:pipeId`;
+    try {
+      const userId = await fetchUserId(req);
+      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const pipeId = req.params.pipeId;
+      if (!pipeId) return res.status(400).json({ ok: false, error: "pipeId mancante" });
+
+      const rawDate = req.query.date || req.query.asOfDate || req.query.scoreDate || null;
+      const asOfDate = rawDate ? String(rawDate).slice(0, 10) : new Date().toISOString().slice(0, 10);
+      logger.trace?.(`${fn} request ${safeStringify({ pipeId, asOfDate })}`);
+      const [filtersResp, orderResp, fundamentalsResp] = await Promise.all([
+        axios.get(`${dbmanagerUrl}/fundamentals/user-filters/${userId}?pipeId=${encodeURIComponent(pipeId)}`, {
+          timeout: 6000,
+        }),
+        axios.get(`${dbmanagerUrl}/fundamentals/user-order/${userId}?pipeId=${encodeURIComponent(pipeId)}`, {
+          timeout: 6000,
+        }),
+        axios.get(
+          `${dbmanagerUrl}/fundamentals/scores-daily/by-user?user_id=${encodeURIComponent(
+            userId
+          )}&pipe_id=${encodeURIComponent(pipeId)}&score_date=${encodeURIComponent(asOfDate)}`,
+          { timeout: 8000, transformResponse: (r) => r }
+        ),
+      ]);
+
+      const fundamentalsPayload = (() => {
+        try {
+          return typeof fundamentalsResp.data === "string"
+            ? JSON.parse(fundamentalsResp.data)
+            : fundamentalsResp.data;
+        } catch {
+          return fundamentalsResp.data;
+        }
+      })();
+
+      const fundamentalsList = Array.isArray(fundamentalsPayload?.data)
+        ? fundamentalsPayload.data
+        : Array.isArray(fundamentalsPayload)
+          ? fundamentalsPayload
+          : [];
+      logger.trace?.(
+        `${fn} counts ${safeStringify({
+          total: fundamentalsList.length,
+          filtered: fundamentalsList.length ? undefined : 0,
+        })}`
+      );
+      const normalizedList = fundamentalsList.map(normalizeRecordForFilters);
+
+      const filters = normalizeUserFilters(filtersResp?.data?.data || filtersResp?.data || []);
+      const orders = normalizeUserOrder(orderResp?.data?.data || orderResp?.data || []);
+      const filtered = applyUserFilters(normalizedList, filters);
+      const ordered = applyUserOrder(filtered, orders);
+
+      const appliedFilters = filters.filter((f) => f?.enabled);
+      if (fundamentalsPayload && typeof fundamentalsPayload === "object") {
+        const base = Array.isArray(fundamentalsPayload)
+          ? { ok: true, data: fundamentalsPayload }
+          : { ...fundamentalsPayload };
+        base.data = ordered;
+        base.meta = {
+          ...(base.meta || {}),
+          pipeId,
+          asOfDate,
+          total: fundamentalsList.length,
+          filtered: ordered.length,
+          appliedFilters: appliedFilters.length,
+          appliedOrder: orders.length,
+          filters: appliedFilters,
+          order: orders,
+        };
+        return res.json(base);
+      }
+
+      return res.json({
+        ok: true,
+        data: ordered,
+        meta: {
+          pipeId,
+          asOfDate,
+          total: fundamentalsList.length,
+          filtered: ordered.length,
+          appliedFilters: appliedFilters.length,
+          appliedOrder: orders.length,
+          filters: appliedFilters,
+          order: orders,
+        },
+      });
+    } catch (err) {
+      logger.error(`${fn} error`, { error: safeStringify(err?.response?.data || err?.message || err) });
+      return res.status(err?.response?.status || 500).json({ ok: false, error: "Errore pipeline fundamentals" });
     }
   });
 
