@@ -123,7 +123,31 @@ jobs:
           fi
         done
 
+    - name: Build IBKR API Gateway on server and push
+      run: |
+        if [[ "${{ github.ref_name }}" == "LIVE" ]]; then
+          echo "⚠️  Skip build: il branch LIVE deve solo eseguire il deploy di immagini già pubblicate."
+          exit 0
+        fi
 
+        IBKR_VERSION=$(jq -r .version IBKR_API_Gateway/release.json)
+        if [[ -z "$IBKR_VERSION" || "$IBKR_VERSION" == "null" ]]; then
+          echo "❌ Versione non trovata in IBKR_API_Gateway/release.json"
+          exit 1
+        fi
+
+        echo "📦 Copio IBKR_API_Gateway sul server..."
+        scp -o StrictHostKeyChecking=no -r IBKR_API_Gateway $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/
+
+        echo "🐳 Build e push su server: expovin/ibkr-clientportal:$IBKR_VERSION"
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME} DOCKERHUB_TOKEN=${DOCKERHUB_TOKEN} IBKR_VERSION=${IBKR_VERSION} bash -s" <<'EOF'
+          set -e
+          cd ~/deploy/IBKR_API_Gateway
+          echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+          docker build -t "$DOCKERHUB_USERNAME/ibkr-clientportal:$IBKR_VERSION" -t "$DOCKERHUB_USERNAME/ibkr-clientportal:latest" -f Dockerfile .
+          docker push "$DOCKERHUB_USERNAME/ibkr-clientportal:$IBKR_VERSION"
+          docker push "$DOCKERHUB_USERNAME/ibkr-clientportal:latest"
+        EOF
 
     - name: Setup SSH key
       uses: webfactory/ssh-agent@v0.8.0
@@ -208,6 +232,9 @@ jobs:
         echo "IBKRKEEPALIVE_URL=${{vars.IBKRKEEPALIVE_URL}}" >> .env
         echo "IBKRGW_URL=${{vars.IBKRGW_URL}}" >> .env
         echo "IBKRGW_VERSION=${{vars.IBKRGW_VERSION}}" >> .env
+        echo "IBKR_INSECURE_TLS=${{vars.IBKR_INSECURE_TLS}}" >> .env
+        echo "TICKLE_INTERVAL_MS=${{vars.TICKLE_INTERVAL_MS}}" >> .env
+        echo "AUTH_CHECK_INTERVAL_MS=${{vars.AUTH_CHECK_INTERVAL_MS}}" >> .env
         
  
     - name: Copy .env to server
