@@ -86,14 +86,10 @@ jobs:
           ibkr-bridge
           decision-engine
           ibkr-keepalive
-          IBKR_API_Gateway
         )
 
         for service in "${services[@]}"; do
           name=$(basename "$service" | tr '[:upper:]' '[:lower:]')
-          if [[ "$service" == "IBKR_API_Gateway" ]]; then
-            name="ibkr-clientportal"
-          fi
           RELEASE_FILE="$service/release.json"
 
           if [[ ! -f "$service/Dockerfile" ]]; then
