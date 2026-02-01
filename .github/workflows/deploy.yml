@@ -162,9 +162,19 @@ jobs:
           sudo mv /tmp/release.json /home/$USER/deploy/IBKR_API_Gateway/release.json
           sudo mv /tmp/conf.local.expopaper.yaml /home/$USER/deploy/IBKR_API_Gateway/conf.local.expopaper.yaml
           sudo chown -R $USER:$USER /home/$USER/deploy/IBKR_API_Gateway
+          if [ ! -f /home/$USER/deploy/IBKR_API_Gateway/SW/clientportal.gw.zip ]; then
+            echo "❌ File mancante: /home/$USER/deploy/IBKR_API_Gateway/SW/clientportal.gw.zip"
+            ls -la /home/$USER/deploy/IBKR_API_Gateway || true
+            ls -la /home/$USER/deploy/IBKR_API_Gateway/SW || true
+            exit 1
+          fi
+          echo "🔎 Debug build context"
+          pwd
+          ls -la /home/$USER/deploy/IBKR_API_Gateway
+          ls -la /home/$USER/deploy/IBKR_API_Gateway/SW
           cd /home/$USER/deploy/IBKR_API_Gateway
           echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
-          docker build -t "$DOCKERHUB_USERNAME/ibkr-clientportal:$IBKR_VERSION" -t "$DOCKERHUB_USERNAME/ibkr-clientportal:latest" -f Dockerfile .
+          docker build -t "$DOCKERHUB_USERNAME/ibkr-clientportal:$IBKR_VERSION" -t "$DOCKERHUB_USERNAME/ibkr-clientportal:latest" -f /home/$USER/deploy/IBKR_API_Gateway/Dockerfile /home/$USER/deploy/IBKR_API_Gateway
           docker push "$DOCKERHUB_USERNAME/ibkr-clientportal:$IBKR_VERSION"
           docker push "$DOCKERHUB_USERNAME/ibkr-clientportal:latest"
         EOF
