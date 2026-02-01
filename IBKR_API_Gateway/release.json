@@ -1,0 +1,9 @@
+{
+  "lastUpdate": "01/02/2026", 
+  "version": "1.0.0",
+  "microservice": "ibkr-clientgateway",
+
+  "note": [
+    "v.1.0.0 ibkr-clientgateway: Initial scaffolding generated from template."
+  ]
+}

@@ -119,7 +119,7 @@ services:
       - trading_net
 
   ibkrgw-paper:
-    image: ${IBKRGW_URL:-expovin/ibkr-clientportal}:${IBKRGW_VERSION:-latest}
+    image: expovin/ibkr-clientportal:${IBKRGW_VERSION}
     restart: unless-stopped
     networks:
       - trading_net
@@ -146,13 +146,13 @@ services:
       - "traefik.http.middlewares.ibkrgw-expopaper-headers.headers.customRequestHeaders.X-Real-IP=127.0.0.1"
 
   ibkr-keepalive:
-    image: ${IBKRKEEPALIVE_URL}:${IBKRKEEPALIVE_VERSION}
+    image: expovin/ibkr-keepalive:${IBKRKEEPALIVE_VERSION}
     container_name: ibkr-keepalive
     network_mode: "service:ibkrgw-paper"
     depends_on:
       - ibkrgw-paper
     environment:
-      - IBKR_BASE_URL=http://localhost:5000
+      - IBKRBASE_URL=${IBKRGW_URL}
       - KEEPALIVE_INTERVAL_MS=45000
       - REQUEST_TIMEOUT_MS=5000
     restart: unless-stopped
@@ -246,7 +246,7 @@ services:
       - "traefik.http.routers.cachemanager.middlewares=cachemanager-stripprefix,cors-default@docker,auth-forward@docker"
 
   decision-engine:
-    image: ${DECISIONENGINE_URL}:${DECISIONENGINE_VERSION}
+    image: expovin/decision-engine:${DECISIONENGINE_VERSION}
     restart: unless-stopped
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
@@ -287,13 +287,13 @@ services:
       - "traefik.http.routers.decision-engine-preflight.middlewares=decision-engine-stripprefix,cors-default@docker"
 
   ibkr-bridge:
-    image: ${IBKRBRIDGE_URL}:${IBKRBRIDGE_VERSION}
+    image: expovin/ibkr-bridge:${IBKRBRIDGE_VERSION}
     restart: unless-stopped
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
-      - IBKRGW_BASE_URL=${IBKR_BASE_URL}
+      - IBKRGW_BASE_URL=${IBKRGW_URL}
       - IBKR_INSECURE_TLS=${IBKR_INSECURE_TLS}
       - TICKLE_INTERVAL_MS=${TICKLE_INTERVAL_MS}
       - AUTH_CHECK_INTERVAL_MS=${AUTH_CHECK_INTERVAL_MS}
