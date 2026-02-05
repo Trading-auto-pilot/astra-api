@@ -86,6 +86,7 @@ jobs:
           ibkr-bridge
           decision-engine
           ibkr-keepalive
+          market-data-service
         )
 
         for service in "${services[@]}"; do
@@ -253,6 +254,8 @@ jobs:
         echo "IBKRKEEPALIVE_URL=${{vars.IBKRKEEPALIVE_URL}}" >> .env
         echo "IBKRGW_URL=${{vars.IBKRGW_URL}}" >> .env
         echo "IBKRGW_VERSION=${{vars.IBKRGW_VERSION}}" >> .env
+        echo "MARKETDATASERVICE_VERSION=${{vars.MARKETDATASERVICE_VERSION}}" >> .env
+        echo "IBKRGW_BASE_URL=${{vars.IBKRGW_BASE_URL}}" >> .env
         echo "IBKR_INSECURE_TLS=${{vars.IBKR_INSECURE_TLS}}" >> .env
         echo "TICKLE_INTERVAL_MS=${{vars.TICKLE_INTERVAL_MS}}" >> .env
         echo "AUTH_CHECK_INTERVAL_MS=${{vars.AUTH_CHECK_INTERVAL_MS}}" >> .env

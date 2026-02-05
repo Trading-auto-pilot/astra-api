@@ -24,9 +24,27 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
     process.env.DECISIONENGINE_URL ||
     "http://decision-engine:3018"
   ).replace(/\/+$/, "");
+  const marketdataserviceUrl = (
+    service?.marketdataserviceUrl ||
+    process.env.MARKETDATASERVICE_URL ||
+    "http://market-data-service:3020"
+  ).replace(/\/+$/, "");
   const cacheManagerTimeoutMs = Number(process.env.CACHEMANAGER_TIMEOUT_MS) || 60000;
   const tickerscannerTimeoutMs = Number(process.env.TICKERSCANNER_TIMEOUT_MS) || 20000;
   const asyncJobs = new Map();
+  const liveState = {
+    active: false,
+    pipeId: null,
+    asOfDate: null,
+    userId: null,
+    tickers: new Set(),
+    exchangeByTicker: new Map(),
+    query: {},
+    lastRunByTicker: new Map(),
+    runningByTicker: new Set(),
+    minIntervalMs: Number(process.env.LIVE_RECALC_INTERVAL_MS) || 60000,
+    authHeaders: {},
+  };
   const newJobId = () => `spot_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const getJob = (jobId) => asyncJobs.get(jobId);
   const updateJob = (jobId, patch) => {
@@ -144,6 +162,28 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
     return headers;
   };
 
+  const runSpotFinderForTickerWithHeaders = async (
+    ticker,
+    query,
+    headers,
+    exchangeOverride,
+    relaxed
+  ) => {
+    const params = { ...query, ticker };
+    if (exchangeOverride && !params.exchange) {
+      params.exchange = exchangeOverride;
+    }
+    if (relaxed) {
+      Object.assign(params, relaxedSpotFinderParams);
+    }
+    const resp = await axios.get(`${decisionengineUrl}/spot-finder`, {
+      params,
+      headers,
+      timeout: cacheManagerTimeoutMs,
+    });
+    return resp?.data;
+  };
+
   const fetchUserId = async (req) => {
     const headerUser = req?.headers?.["x-user-id"] ?? req?.headers?.["x-userid"];
     if (headerUser && Number.isFinite(Number(headerUser))) return Number(headerUser);
@@ -171,6 +211,239 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
 
   const buildSpotFinderRedisKey = (pipeId, userId, asOfDate) =>
     `spot-finder:${pipeId}:${userId}:${asOfDate}`;
+
+  const isTrendOk = (row) => {
+    const trend =
+      row?.fullResult?.signal?.pattern?.trendOk ??
+      row?.fullResult?.pattern?.trendOk ??
+      row?.signal?.pattern?.trendOk ??
+      row?.pattern?.trendOk ??
+      row?.trendOk ??
+      null;
+    return trend === true;
+  };
+
+  const loadSnapshotResults = async (pipeId, userId, dateParamRaw) => {
+    const bus = service?.bus;
+    if (!bus || typeof bus.get !== "function") {
+      throw new Error("redis not available");
+    }
+    const snapshotDate = resolveSnapshotDate(dateParamRaw);
+    const key = buildSpotFinderRedisKey(pipeId, userId, snapshotDate);
+    const payload = await bus.get(key);
+    if (!payload) {
+      return { snapshotDate, results: [] };
+    }
+    const results = Array.isArray(payload?.results) ? payload.results : [];
+    return { snapshotDate, results };
+  };
+
+  const updateSnapshotResult = async (pipeId, userId, asOfDate, nextResult) => {
+    const bus = service?.bus;
+    if (!bus || typeof bus.get !== "function" || typeof bus.set !== "function") return false;
+    const key = buildSpotFinderRedisKey(pipeId, userId, asOfDate);
+    try {
+      const payload = await bus.get(key);
+      const results = Array.isArray(payload?.results) ? payload.results : [];
+      const errors = Array.isArray(payload?.errors) ? payload.errors : [];
+      const ticker = String(nextResult?.ticker || nextResult?.symbol || "").toUpperCase();
+      if (!ticker) return false;
+      const nextResults = results.filter(
+        (row) => String(row?.ticker || row?.symbol || "").toUpperCase() !== ticker
+      );
+      nextResults.push(nextResult);
+      const updated = {
+        ...(payload && typeof payload === "object" ? payload : {}),
+        pipeId,
+        userId,
+        asOfDate,
+        results: nextResults,
+        errors,
+        stats: {
+          ...(payload?.stats || {}),
+          updatedAt: new Date().toISOString(),
+        },
+      };
+      await bus.set(key, updated, { EX: 60 * 60 * 12 });
+      return true;
+    } catch (err) {
+      logger?.warning?.(
+        `[decision-engine] live snapshot update failed ${err?.message || String(err)}`
+      );
+      return false;
+    }
+  };
+
+  const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts) => {
+    const bus = service?.bus;
+    if (!bus || typeof bus.get !== "function" || typeof bus.set !== "function") return false;
+    if (!liveState.pipeId || !liveState.userId || !liveState.asOfDate) return false;
+
+    const key = buildSpotFinderRedisKey(liveState.pipeId, liveState.userId, liveState.asOfDate);
+    const payload = await bus.get(key);
+    if (!payload || !Array.isArray(payload?.results)) return false;
+
+    const results = payload.results;
+    const idx = results.findIndex(
+      (row) => String(row?.ticker || row?.symbol || "").toUpperCase() === ticker
+    );
+    if (idx === -1) return false;
+
+    const current = results[idx] || {};
+    const patternRoot = current?.signal?.pattern ? "signal" : current?.pattern ? "pattern" : null;
+    const basePattern =
+      patternRoot === "signal" ? current.signal.pattern : patternRoot === "pattern" ? current.pattern : null;
+    if (!basePattern) return false;
+
+    const breakLevel = asNumber(
+      basePattern?.breakLevel ?? basePattern?.breakoutEntry?.breakLevel,
+      null
+    );
+    const buffer = asNumber(basePattern?.breakoutEntry?.buffer, 0);
+    const volumeThreshold = asNumber(basePattern?.breakoutEntry?.volumeThreshold, null);
+    const priceOk =
+      Number.isFinite(price) && Number.isFinite(breakLevel)
+        ? price > breakLevel + buffer
+        : false;
+    const volumeOk = Number.isFinite(volumeThreshold)
+      ? Number.isFinite(volume) && volume >= volumeThreshold
+      : true;
+    const breakoutOk = priceOk && volumeOk;
+    const pullbackOk =
+      Number.isFinite(price) && Number.isFinite(breakLevel)
+        ? price >= breakLevel && price <= breakLevel + buffer
+        : false;
+
+    const trendOk = basePattern?.trendOk ?? null;
+    const flagOk = basePattern?.flagOk ?? null;
+    const actionableBreakout = Boolean(trendOk && flagOk && breakoutOk);
+    const actionablePullback = Boolean(trendOk && flagOk && pullbackOk);
+
+    const nextPattern = {
+      ...basePattern,
+      breakoutOk,
+      pullbackOk,
+      entryBreakoutSuggested:
+        basePattern?.breakoutEntry?.entryTriggerPrice && volumeOk
+          ? basePattern.breakoutEntry.entryTriggerPrice
+          : null,
+      breakoutEntry: basePattern?.breakoutEntry
+        ? {
+            ...basePattern.breakoutEntry,
+            volumeObserved: Number.isFinite(volume) ? volume : null,
+            volumeOk,
+            entrySuggestion: volumeOk
+              ? basePattern.breakoutEntry.entryTriggerPrice
+              : null,
+            note: volumeOk ? "volume ok (snapshot)" : "attendi conferma volumi",
+          }
+        : basePattern?.breakoutEntry,
+      lastSnapshot: {
+        ts: ts ?? Date.now(),
+        price: Number.isFinite(price) ? price : null,
+        volume: Number.isFinite(volume) ? volume : null,
+        dataMode: dataMode || "snapshot",
+      },
+    };
+
+    const next = { ...current };
+    if (patternRoot === "signal") {
+      next.signal = { ...(current.signal || {}), pattern: nextPattern };
+    } else {
+      next.pattern = nextPattern;
+    }
+
+    if (next?.levels?.breakout) {
+      next.levels = {
+        ...next.levels,
+        breakout: {
+          ...next.levels.breakout,
+          actionable: actionableBreakout,
+          reason: actionableBreakout ? null : "snapshot conditions not met",
+        },
+        retracement: next.levels.retracement
+          ? {
+              ...next.levels.retracement,
+              actionable: actionablePullback,
+              reason: actionablePullback ? null : "snapshot conditions not met",
+            }
+          : next.levels.retracement,
+      };
+    }
+
+    const nextResults = results.slice();
+    nextResults[idx] = next;
+    const updated = {
+      ...(payload && typeof payload === "object" ? payload : {}),
+      results: nextResults,
+      stats: {
+        ...(payload?.stats || {}),
+        updatedAt: new Date().toISOString(),
+      },
+    };
+    await bus.set(key, updated, { EX: 60 * 60 * 12 });
+    return true;
+  };
+
+  if (service?.addMarketDataHandler && !service.__liveMarketHandlerAttached) {
+    const handler = async (parsed, raw) => {
+      if (!liveState.active) return;
+      let payload =
+        parsed && typeof parsed === "object" ? parsed : null;
+      if (!payload && typeof raw === "string") {
+        try {
+          payload = JSON.parse(raw);
+        } catch {
+          payload = null;
+        }
+      }
+      if (!payload) return;
+      const dataMode = String(payload?.dataMode || payload?.mode || "").toLowerCase();
+      if (dataMode !== "snapshot") return;
+
+      const ticker = String(payload?.ticker || payload?.symbol || "").toUpperCase();
+      if (!ticker || !liveState.tickers.has(ticker)) return;
+
+      const now = Date.now();
+      const last = liveState.lastRunByTicker.get(ticker) || 0;
+      if (now - last < liveState.minIntervalMs) return;
+      if (liveState.runningByTicker.has(ticker)) return;
+
+      const marketPayload = payload?.payload || payload?.data || {};
+      const price = asNumber(marketPayload?.[31] ?? marketPayload?.["31"], null);
+      let volume = asNumber(marketPayload?.[7762] ?? marketPayload?.["7762"], null);
+      if (!Number.isFinite(volume)) {
+        volume = asNumber(marketPayload?.[87] ?? marketPayload?.["87"], null);
+      }
+      if (!Number.isFinite(price)) return;
+
+      liveState.lastRunByTicker.set(ticker, now);
+      liveState.runningByTicker.add(ticker);
+
+      try {
+        const updated = await updateSnapshotFlagsFromLive(
+          ticker,
+          price,
+          volume,
+          dataMode,
+          payload?.ts
+        );
+        if (updated) {
+          logger?.trace?.(
+            `[live] ${ticker} snapshot price=${price} volume=${Number.isFinite(volume) ? volume : "-"}`
+          );
+        }
+      } catch (err) {
+        logger?.warning?.(
+          `[live] ${ticker} snapshot update failed: ${err?.message || String(err)}`
+        );
+      } finally {
+        liveState.runningByTicker.delete(ticker);
+      }
+    };
+    service.addMarketDataHandler(handler);
+    service.__liveMarketHandlerAttached = true;
+  }
 
   const persistSpotFinderSnapshot = async (pipeId, userId, job, asOfDate) => {
     const bus = service?.bus;
@@ -1208,6 +1481,231 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
         error: "redis snapshot read failed",
       });
     }
+  });
+
+  router.post("/live/:pipeId", async (req, res) => {
+    const pipeIdRaw = String(req.params.pipeId || "").trim();
+    const pipeId = Number(pipeIdRaw);
+    if (!Number.isFinite(pipeId)) {
+      return res.status(400).json({ ok: false, error: "pipeId must be a number" });
+    }
+    const userId = await fetchUserId(req);
+    if (!userId) {
+      return res.status(401).json({ ok: false, error: "userId not available" });
+    }
+
+    const enable =
+      asBool(req?.body?.enabled, undefined) ??
+      asBool(req?.body?.active, undefined) ??
+      asBool(req?.query?.enabled, true);
+
+    if (!enable) {
+      liveState.active = false;
+      liveState.pipeId = null;
+      liveState.asOfDate = null;
+      liveState.userId = null;
+      liveState.tickers = new Set();
+      liveState.exchangeByTicker = new Map();
+      liveState.lastRunByTicker.clear();
+      liveState.runningByTicker.clear();
+      return res.json({ ok: true, active: false });
+    }
+
+    try {
+      const dateParamRaw = req.query?.date || req.query?.asOfDate || req.query?.scoreDate || null;
+      const { snapshotDate, results } = await loadSnapshotResults(pipeId, userId, dateParamRaw);
+      const exchangeByTicker = new Map();
+      const trendTickers = results
+        .filter((row) => isTrendOk(row))
+        .map((row) => {
+          const ticker = String(row?.ticker || row?.symbol || "").trim().toUpperCase();
+          const exchange =
+            row?.exchange ||
+            row?.exchange_short ||
+            row?.exchange_short_name ||
+            row?.exchangeShortName ||
+            row?.exchangeShort ||
+            row?.exchangeName ||
+            null;
+          if (ticker && exchange) exchangeByTicker.set(ticker, String(exchange).trim());
+          return ticker;
+        })
+        .filter(Boolean);
+
+      const headers = pickAuthHeaders(req);
+      await axios.post(
+        `${marketdataserviceUrl}/subscriptions`,
+        { tickers: Array.from(new Set(trendTickers)) },
+        { headers, timeout: 10000 }
+      );
+
+      liveState.active = true;
+      liveState.pipeId = pipeId;
+      liveState.asOfDate = snapshotDate;
+      liveState.userId = userId;
+      liveState.tickers = new Set(trendTickers);
+      liveState.exchangeByTicker = exchangeByTicker;
+      liveState.query = { ...req.query };
+      liveState.authHeaders = headers;
+      liveState.lastRunByTicker.clear();
+      liveState.runningByTicker.clear();
+
+      return res.json({
+        ok: true,
+        active: true,
+        pipeId,
+        asOfDate: snapshotDate,
+        subscribed: trendTickers,
+        total: trendTickers.length,
+      });
+    } catch (err) {
+      logger?.warning?.(
+        `[decision-engine] live enable failed ${err?.message || String(err)}`
+      );
+      return res.status(502).json({
+        ok: false,
+        error: "live enable failed",
+      });
+    }
+  });
+
+  router.get("/live/:pipeId", async (req, res) => {
+    const pipeIdRaw = String(req.params.pipeId || "").trim();
+    const pipeId = Number(pipeIdRaw);
+    if (!Number.isFinite(pipeId)) {
+      return res.status(400).json({ ok: false, error: "pipeId must be a number" });
+    }
+    const userId = await fetchUserId(req);
+    if (!userId) {
+      return res.status(401).json({ ok: false, error: "userId not available" });
+    }
+    const bus = service?.bus;
+    if (!bus || typeof bus.get !== "function") {
+      return res.status(503).json({ ok: false, error: "redis not available" });
+    }
+    try {
+      const dateParamRaw =
+        req.query?.date || req.query?.asOfDate || req.query?.scoreDate || null;
+      const snapshotDate = resolveSnapshotDate(dateParamRaw);
+      const key = buildSpotFinderRedisKey(pipeId, userId, snapshotDate);
+      const payload = await bus.get(key);
+      if (!payload) {
+        return res.status(404).json({ ok: false, error: "snapshot not found" });
+      }
+      const results = Array.isArray(payload?.results) ? payload.results : [];
+      logger?.trace?.(
+        `[decision-engine] live start snapshot key=${key} date=${snapshotDate} results=${results.length}`
+      );
+      const exchangeByTicker = new Map();
+      const trendTickers = results
+        .filter((row) => isTrendOk(row))
+        .map((row) => {
+          const ticker = String(row?.ticker || row?.symbol || "").trim().toUpperCase();
+          const exchange =
+            row?.exchange ||
+            row?.exchange_short ||
+            row?.exchange_short_name ||
+            row?.exchangeShortName ||
+            row?.exchangeShort ||
+            row?.exchangeName ||
+            null;
+          if (ticker && exchange) exchangeByTicker.set(ticker, String(exchange).trim());
+          return ticker;
+        })
+        .filter(Boolean);
+      logger?.trace?.(
+        `[decision-engine] live start trend tickers=${trendTickers.length}`
+      );
+
+      const headers = pickAuthHeaders(req);
+      if (trendTickers.length > 0) {
+        await axios.post(
+          `${marketdataserviceUrl}/subscriptions`,
+          { tickers: Array.from(new Set(trendTickers)) },
+          { headers, timeout: 10000 }
+        );
+      }
+
+      liveState.active = true;
+      liveState.pipeId = pipeId;
+      liveState.asOfDate = snapshotDate;
+      liveState.userId = userId;
+      liveState.tickers = new Set(trendTickers);
+      liveState.exchangeByTicker = exchangeByTicker;
+      liveState.query = { ...req.query };
+      liveState.authHeaders = headers;
+      liveState.lastRunByTicker.clear();
+      liveState.runningByTicker.clear();
+
+      return res.json({
+        ok: true,
+        active: true,
+        pipeId,
+        asOfDate: snapshotDate,
+        subscribed: trendTickers,
+        totalResults: results.length,
+        trendTotal: trendTickers.length,
+        total: trendTickers.length,
+      });
+    } catch (err) {
+      logger?.warning?.(
+        `[decision-engine] live enable failed ${err?.message || String(err)}`
+      );
+      return res.status(502).json({
+        ok: false,
+        error: "live enable failed",
+      });
+    }
+  });
+
+  router.get("/live/:pipeId/status", async (req, res) => {
+    const pipeIdRaw = String(req.params.pipeId || "").trim();
+    const pipeId = Number(pipeIdRaw);
+    if (!Number.isFinite(pipeId)) {
+      return res.status(400).json({ ok: false, error: "pipeId must be a number" });
+    }
+    return res.json({
+      ok: true,
+      active: liveState.active && liveState.pipeId === pipeId,
+      pipeId: liveState.pipeId,
+      asOfDate: liveState.asOfDate,
+      total: liveState.tickers.size,
+      tickers: Array.from(liveState.tickers),
+      minIntervalMs: liveState.minIntervalMs,
+      updatedAt: new Date().toISOString(),
+    });
+  });
+
+  router.delete("/live/:pipeId", async (req, res) => {
+    const pipeIdRaw = String(req.params.pipeId || "").trim();
+    const pipeId = Number(pipeIdRaw);
+    if (!Number.isFinite(pipeId)) {
+      return res.status(400).json({ ok: false, error: "pipeId must be a number" });
+    }
+    if (liveState.pipeId && liveState.pipeId !== pipeId) {
+      return res.status(409).json({ ok: false, error: "live process bound to another pipeId" });
+    }
+    try {
+      const headers = pickAuthHeaders(req);
+      await axios.post(
+        `${marketdataserviceUrl}/subscriptions`,
+        { tickers: [] },
+        { headers, timeout: 10000 }
+      );
+    } catch (err) {
+      logger?.warning?.(
+        `[decision-engine] live stop unsubscribe failed ${err?.message || String(err)}`
+      );
+    }
+    liveState.active = false;
+    liveState.pipeId = null;
+    liveState.asOfDate = null;
+    liveState.userId = null;
+    liveState.tickers = new Set();
+    liveState.exchangeByTicker = new Map();
+    liveState.lastRunByTicker.clear();
+    liveState.runningByTicker.clear();
+    return res.json({ ok: true, active: false });
   });
 
   router.get("/:pipeId", async (req, res) => {

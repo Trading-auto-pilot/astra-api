@@ -1,0 +1,9 @@
+{
+  "lastUpdate": "02/02/2026", 
+  "version": "1.0.0",
+  "microservice": "market-data-service",
+
+  "note": [
+    "v.1.0.0 market-data-service: Initial scaffolding generated from template."
+  ]
+}

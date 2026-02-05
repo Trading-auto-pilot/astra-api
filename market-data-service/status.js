@@ -164,7 +164,7 @@ module.exports = function buildStatusRouter({ service, logger, moduleName }) {
       service && typeof service.getLogLevel === "function"
         ? service.getLogLevel()
         : null;
-    res.status(200).json({ decisionEngine: current });
+    res.status(200).json({ marketDataService: current });
   });
 
   router.put("/logLevel", (req, res) => {
@@ -179,7 +179,7 @@ module.exports = function buildStatusRouter({ service, logger, moduleName }) {
       service && typeof service.getLogLevel === "function"
         ? service.getLogLevel()
         : logLevel;
-    res.status(200).json({ success: true, decisionEngine: current });
+    res.status(200).json({ success: true, marketDataService: current });
   });
 
   return router;
