@@ -21,7 +21,6 @@ const MODULE_VERSION = '1.0';
 // -------------------------------------------------------
 // CORS: singola origin o lista separata da virgole
 // -------------------------------------------------------
-/*
 const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
   .split(",")
   .map((s) => s.trim())
@@ -33,17 +32,6 @@ app.use(
       if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
       return cb(new Error("Not allowed by CORS"));
     },
-    credentials: true,
-  })
-);
-*/
-
-// -------------------------------------------------------
-// CORS: Gestione con Treafik davanti 
-// -------------------------------------------------------
-app.use(
-  cors({
-    origin: true,        // accetta l'origin, deciderà Traefik se restituire gli header
     credentials: true,
   })
 );
@@ -62,6 +50,10 @@ app.use(
       }
   );
   cfg['logger']=logger;
+  logger.info('[bridge] allowedOrigins', {
+    raw: process.env.CORS_ORIGIN || null,
+    parsed: allowedOrigins
+  });
 
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws' });
@@ -109,6 +101,72 @@ app.use(
     hub,
     bus
   }));
+
+  /**
+   * GET /dbLogger
+   * Restituisce lo stato del logging su DB, se supportato dal logger.
+   */
+  app.get("/dbLogger", async (_req, res) => {
+    if (!logger?.getDbLogStatus) {
+      return res.status(501).json({
+        ok: false,
+        error: "getDbLogStatus() not implemented in this microservice",
+      });
+    }
+
+    try {
+      const data = await logger.getDbLogStatus();
+      res.json({ ok: true, data });
+    } catch (e) {
+      logger.error(
+        `[GET /dbLogger] Error: ${e?.message || String(e)}`
+      );
+      res.status(500).json({ ok: false, error: e?.message || String(e) });
+    }
+  });
+
+  /**
+   * PUT /dbLogger/:status
+   * Abilita/disabilita il logging su DB (on/off), se supportato.
+   */
+  app.put("/dbLogger/:status", async (req, res) => {
+    if (!logger?.setDbLogStatus) {
+      return res.status(501).json({
+        ok: false,
+        error: "setDbLogStatus() not implemented in this microservice",
+      });
+    }
+
+    const raw = String(req.params.status ?? "").trim();
+    const normalized = raw.toLowerCase();
+
+    let enable;
+    if (normalized === "on") enable = true;
+    else if (normalized === "off") enable = false;
+    else {
+      return res.status(400).json({
+        ok: false,
+        error: "Invalid status. Use 'on' or 'off'.",
+        received: raw,
+        allowed: ["on", "off"],
+      });
+    }
+
+    try {
+      const data = await logger.setDbLogStatus(enable);
+      if (data == null) {
+        return res.status(404).json({ ok: false, error: "not found" });
+      }
+      return res.json({ ok: true, status: enable ? "on" : "off", data });
+    } catch (e) {
+      logger.error(
+        `[PUT /dbLogger/:status] Error: ${e?.message || String(e)}`
+      );
+      return res
+        .status(500)
+        .json({ ok: false, error: e?.message || String(e) });
+    }
+  });
 
   // bind WS
   wss.on('connection', (socket, req) => hub.addClient(socket, req));

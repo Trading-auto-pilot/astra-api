@@ -12,11 +12,11 @@ const { asBool, asInt } = require("../../shared/helpers");
 // =========================================================
 // PLACEHOLDER da sostituire via script di scaffolding
 // =========================================================
-const MICROSERVICE    = "decision-engine";
+const MICROSERVICE    = "market-data-service";
 const MODULE_NAME     = "main";
 const MODULE_VERSION  = "0.1.0";    // e.g. "0.1.0"
 
-class DecisionEngine {
+class MarketDataService {
   constructor() {
     // =====================================================
     // URL DI TUTTI I MICROSERVIZI STANDARD DEL SISTEMA
@@ -40,6 +40,8 @@ class DecisionEngine {
     this.servicecontrolplaneUrl = process.env.SERVICECONTROLPLANE_URL || "http://servicecontrolplane:3016";
     this.ibkrbridgeUrl = process.env.IBKRBRIDGE_URL || "http://ibkr-bridge:3017";
     this.decisionengineUrl = process.env.DECISIONENGINE_URL || "http://decision-engine:3018";
+    this.ibkrkeepaliveUrl = process.env.IBKRKEEPALIVE_URL || "http://ibkr-keepalive:3019";
+    this.marketdataserviceUrl = process.env.MARKETDATASERVICE_URL || "http://market-data-service:3020";
 
 
     // =====================================================
@@ -54,9 +56,6 @@ class DecisionEngine {
     this.redisStatusChannel   = `${this.env}.${MICROSERVICE}.status`;
     this.redisDataChannel     = `${this.env}.${MICROSERVICE}.data`;
     this.redisLogsChannel     = `${this.env}.${MICROSERVICE}.logs`;
-    this.redisMarketDataChannel = `${this.env}.market-data-service.data`;
-    this._marketDataSubscribed = false;
-    this._marketDataHandlers = new Set();
 
     // Stato del modulo
     this._status       = "STARTING";
@@ -112,7 +111,6 @@ class DecisionEngine {
     // 1) CONNECT REDIS BUS
     await this.bus.connect();
     this.logger.attachBus(this.bus);
-    await this._maybeSubscribeMarketData();
 
     // STATUS: STARTING
     await this.bus.publish(this.redisStatusChannel, {
@@ -287,8 +285,6 @@ class DecisionEngine {
       `[channels] telemetry=${cfg.telemetry.on} metrics=${cfg.metrics.on} data=${cfg.data.on} logs=${cfg.logs.on}`
     );
 
-    await this._maybeSubscribeMarketData();
-
     return { ok: true, channels: cfg };
   }
 
@@ -327,50 +323,6 @@ class DecisionEngine {
 
     this._status = "STOPPED";
     return this._status;
-  }
-
-  addMarketDataHandler(handler) {
-    if (typeof handler !== "function") return () => {};
-    this._marketDataHandlers.add(handler);
-    return () => this._marketDataHandlers.delete(handler);
-  }
-
-  _handleMarketDataMessage(parsed, raw) {
-    if (!this.communicationChannels?.data?.on) return;
-    const payload =
-      parsed && typeof parsed === "object"
-        ? parsed
-        : typeof raw === "string"
-          ? raw
-          : String(raw);
-    const printable =
-      typeof payload === "string" ? payload : JSON.stringify(payload);
-    this.logger.trace(`[marketData][${this.redisMarketDataChannel}] ${printable}`);
-    for (const handler of this._marketDataHandlers) {
-      try {
-        handler(parsed, raw);
-      } catch (err) {
-        this.logger.warning(
-          `[marketData] handler failed: ${err?.message || String(err)}`
-        );
-      }
-    }
-  }
-
-  async _maybeSubscribeMarketData() {
-    const dataOn = this.communicationChannels?.data?.on;
-    if (!dataOn || this._marketDataSubscribed) return;
-    try {
-      await this.bus.subscribe(this.redisMarketDataChannel, (parsed, raw) => {
-        this._handleMarketDataMessage(parsed, raw);
-      });
-      this._marketDataSubscribed = true;
-      this.logger.info(`[marketData] subscribed to ${this.redisMarketDataChannel}`);
-    } catch (e) {
-      this.logger.warning(
-        `[marketData] subscribe failed: ${e?.message || String(e)}`
-      );
-    }
   }
 
   // =========================================================
@@ -419,4 +371,4 @@ class DecisionEngine {
   get status() { return this._status; }
 }
 
-module.exports = DecisionEngine;
+module.exports = MarketDataService;

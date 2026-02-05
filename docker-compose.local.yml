@@ -164,6 +164,7 @@ services:
       - ibkrgw-paper
     environment:
       - IBKR_BASE_URL=http://localhost:5000
+      - CORS_ORIGIN=${CORS_ORIGIN}
       - KEEPALIVE_INTERVAL_MS=45000
       - REQUEST_TIMEOUT_MS=5000
     restart: unless-stopped
@@ -499,6 +500,7 @@ services:
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
       - CACHEMANAGER_URL=http://cachemanager:3006
+      - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
       - TZ=Asia/Dubai
@@ -532,6 +534,96 @@ services:
       - "traefik.http.routers.decision-engine-preflight.service=decision-engine"
       - "traefik.http.routers.decision-engine-preflight.middlewares=decision-engine-stripprefix,cors-default@docker"
 
+  market-data-service:
+    image: local/market-data-service:${MARKET_DATA_SERVICE_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: market-data-service/Dockerfile
+    restart: unless-stopped
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - IBKRGW_BASE_URL=${IBKRGW_BASE_URL}
+      - IBKR_INSECURE_TLS=${IBKR_INSECURE_TLS}
+      - IBKR_BRIDGE_URL=${IBKR_BRIDGE_URL}
+      - TZ=Asia/Dubai
+    depends_on:
+      dbmanager:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    profiles: ["market-data-service"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3020/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.market-data-service.rule=Host(`localhost`) && PathPrefix(`/market-data-service`)"
+      - "traefik.http.routers.market-data-service.entrypoints=web"
+      - "traefik.http.services.market-data-service.loadbalancer.server.port=3020"
+      - "traefik.http.middlewares.market-data-service-stripprefix.stripPrefix.prefixes=/market-data-service"
+      - "traefik.http.routers.market-data-service.middlewares=market-data-service-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.market-data-service-preflight.rule=Host(`localhost`) && PathPrefix(`/market-data-service`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.market-data-service-preflight.entrypoints=web"
+      - "traefik.http.routers.market-data-service-preflight.priority=10000"
+      - "traefik.http.routers.market-data-service-preflight.service=market-data-service"
+      - "traefik.http.routers.market-data-service-preflight.middlewares=market-data-service-stripprefix,cors-default@docker"
+
+  redis-ws-bridge:
+    image: local/redis-ws-bridge:${REDISWSBRIDGE_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: redisWsBridge/Dockerfile
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - REDIS_PATTERNS=${REDIS_PATTERNS}
+      - TZ=Asia/Dubai
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    profiles: ["redis-ws-bridge"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3030/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.redis-ws-bridge.rule=Host(`localhost`) && PathPrefix(`/redis-ws-bridge`)"
+      - "traefik.http.routers.redis-ws-bridge.entrypoints=web"
+      - "traefik.http.services.redis-ws-bridge.loadbalancer.server.port=3030"
+      - "traefik.http.middlewares.redis-ws-bridge-stripprefix.stripPrefix.prefixes=/redis-ws-bridge"
+      - "traefik.http.routers.redis-ws-bridge.middlewares=redis-ws-bridge-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.redis-ws-bridge-preflight.rule=Host(`localhost`) && PathPrefix(`/redis-ws-bridge`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.redis-ws-bridge-preflight.entrypoints=web"
+      - "traefik.http.routers.redis-ws-bridge-preflight.priority=10000"
+      - "traefik.http.routers.redis-ws-bridge-preflight.service=redis-ws-bridge"
+      - "traefik.http.routers.redis-ws-bridge-preflight.middlewares=redis-ws-bridge-stripprefix,cors-default@docker"
+      - "traefik.http.routers.redis-ws-bridge-ws.rule=Host(`localhost`) && PathPrefix(`/redis-ws-bridge/ws`)"
+      - "traefik.http.routers.redis-ws-bridge-ws.entrypoints=web"
+      - "traefik.http.routers.redis-ws-bridge-ws.priority=10001"
+      - "traefik.http.routers.redis-ws-bridge-ws.service=redis-ws-bridge"
+      - "traefik.http.routers.redis-ws-bridge-ws.middlewares=redis-ws-bridge-stripprefix,cors-default@docker"
+
   ibkr-bridge:
     image: local/ibkr-bridge:${IBKRBRIDGE_VERSION:-latest}
     build:
@@ -542,7 +634,7 @@ services:
       - DBMANAGER_URL=http://dbmanager:3002
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
-      - IBKRGW_BASE_URL=${IBKR_BASE_URL}
+      - IBKRGW_BASE_URL=${IBKRGW_BASE_URL}
       - IBKR_INSECURE_TLS=${IBKR_INSECURE_TLS}
       - TICKLE_INTERVAL_MS=${TICKLE_INTERVAL_MS}
       - AUTH_CHECK_INTERVAL_MS=${AUTH_CHECK_INTERVAL_MS}

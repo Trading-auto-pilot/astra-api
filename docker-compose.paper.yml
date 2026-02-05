@@ -152,19 +152,23 @@ services:
     depends_on:
       - ibkrgw-paper
     environment:
-      - IBKRBASE_URL=${IBKRGW_URL}
+      - IBKRGW_BASE_URL=http://localhost:5000
+      - IBKRGW_SSO_URL=http://localhost:5000/sso/Dispatcher?hardware_info=eyJpZCI6IjNjYzU0NWJmIiwibWFjIjoiMTY6RUY6QUY6NkQ6QzY6OUEifQ%3D%3D
+      - CORS_ORIGIN=${CORS_ORIGIN}
       - KEEPALIVE_INTERVAL_MS=45000
       - REQUEST_TIMEOUT_MS=5000
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.ibkr-keepalive.rule=Host(`localhost`) && PathPrefix(`/ibkr-keepalive`)"
-      - "traefik.http.routers.ibkr-keepalive.entrypoints=web"
+      - "traefik.http.routers.ibkr-keepalive.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/ibkr-keepalive`)"
+      - "traefik.http.routers.ibkr-keepalive.entrypoints=websecure"
+      - "traefik.http.routers.ibkr-keepalive.tls.certresolver=le"
       - "traefik.http.services.ibkr-keepalive.loadbalancer.server.port=3019"
       - "traefik.http.middlewares.ibkr-keepalive-stripprefix.stripPrefix.prefixes=/ibkr-keepalive"
       - "traefik.http.routers.ibkr-keepalive.middlewares=ibkr-keepalive-stripprefix,cors-default@docker,auth-forward@docker"
-      - "traefik.http.routers.ibkr-keepalive-preflight.rule=Host(`localhost`) && PathPrefix(`/ibkr-keepalive`) && Method(`OPTIONS`)"
-      - "traefik.http.routers.ibkr-keepalive-preflight.entrypoints=web"
+      - "traefik.http.routers.ibkr-keepalive-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/ibkr-keepalive`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.ibkr-keepalive-preflight.entrypoints=websecure"
+      - "traefik.http.routers.ibkr-keepalive-preflight.tls.certresolver=le"
       - "traefik.http.routers.ibkr-keepalive-preflight.priority=10000"
       - "traefik.http.routers.ibkr-keepalive-preflight.service=ibkr-keepalive"
       - "traefik.http.routers.ibkr-keepalive-preflight.middlewares=ibkr-keepalive-stripprefix,cors-default@docker"
@@ -253,6 +257,7 @@ services:
       - CACHEMANAGER_URL=http://cachemanager:3006
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
+      - CORS_ORIGIN=${CORS_ORIGIN}
       - TZ=Asia/Dubai
     depends_on:
       dbmanager:
@@ -286,6 +291,89 @@ services:
       - "traefik.http.routers.decision-engine-preflight.service=decision-engine"
       - "traefik.http.routers.decision-engine-preflight.middlewares=decision-engine-stripprefix,cors-default@docker"
 
+  market-data-service:
+    image: expovin/market-data-service:${MARKET_DATA-SERVICE_VERSION}
+    restart: unless-stopped
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - IBKRGW_BASE_URL=${IBKRGW_URL}
+      - IBKR_INSECURE_TLS=${IBKR_INSECURE_TLS}
+      - IBKR_BRIDGE_URL=${IBKRBRIDGE_URL}
+      - TZ=Asia/Dubai
+    depends_on:
+      dbmanager:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    profiles: ["market-data-service"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3020/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.market-data-service.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/market-data-service`)"
+      - "traefik.http.routers.market-data-service.entrypoints=websecure"
+      - "traefik.http.routers.market-data-service.tls.certresolver=le"
+      - "traefik.http.services.market-data-service.loadbalancer.server.port=3020"
+      - "traefik.http.middlewares.market-data-service-stripprefix.stripPrefix.prefixes=/market-data-service"
+      - "traefik.http.routers.market-data-service.middlewares=market-data-service-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.market-data-service-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/market-data-service`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.market-data-service-preflight.entrypoints=websecure"
+      - "traefik.http.routers.market-data-service-preflight.tls.certresolver=le"
+      - "traefik.http.routers.market-data-service-preflight.priority=10000"
+      - "traefik.http.routers.market-data-service-preflight.service=market-data-service"
+      - "traefik.http.routers.market-data-service-preflight.middlewares=market-data-service-stripprefix,cors-default@docker"
+
+  redis-ws-bridge:
+    image: expovin/redis-ws-bridge:${REDISWSBRIDGE_VERSION}
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - REDIS_PATTERNS=${REDIS_PATTERNS}
+      - TZ=Asia/Dubai
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    profiles: ["redis-ws-bridge"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3030/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.redis-ws-bridge.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/redis-ws-bridge`)"
+      - "traefik.http.routers.redis-ws-bridge.entrypoints=websecure"
+      - "traefik.http.routers.redis-ws-bridge.tls.certresolver=le"
+      - "traefik.http.services.redis-ws-bridge.loadbalancer.server.port=3030"
+      - "traefik.http.middlewares.redis-ws-bridge-stripprefix.stripPrefix.prefixes=/redis-ws-bridge"
+      - "traefik.http.routers.redis-ws-bridge.middlewares=redis-ws-bridge-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.redis-ws-bridge-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/redis-ws-bridge`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.redis-ws-bridge-preflight.entrypoints=websecure"
+      - "traefik.http.routers.redis-ws-bridge-preflight.tls.certresolver=le"
+      - "traefik.http.routers.redis-ws-bridge-preflight.priority=10000"
+      - "traefik.http.routers.redis-ws-bridge-preflight.service=redis-ws-bridge"
+      - "traefik.http.routers.redis-ws-bridge-preflight.middlewares=redis-ws-bridge-stripprefix,cors-default@docker"
+
   ibkr-bridge:
     image: expovin/ibkr-bridge:${IBKRBRIDGE_VERSION}
     restart: unless-stopped
@@ -295,6 +383,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL}
       - IBKRGW_BASE_URL=${IBKRGW_URL}
       - IBKR_INSECURE_TLS=${IBKR_INSECURE_TLS}
+      - CORS_ORIGIN=${CORS_ORIGIN}
       - TICKLE_INTERVAL_MS=${TICKLE_INTERVAL_MS}
       - AUTH_CHECK_INTERVAL_MS=${AUTH_CHECK_INTERVAL_MS}
       - TZ=Asia/Dubai

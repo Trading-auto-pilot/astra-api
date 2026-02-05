@@ -18,5 +18,6 @@
     "servicecontrolplane": 3016,
     "ibkr-bridge": 3017,
     "decision-engine": 3018,
-    "ibkr-keepalive": 3019
+    "ibkr-keepalive": 3019,
+    "market-data-service": 3020
 }
