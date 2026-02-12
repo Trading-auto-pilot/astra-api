@@ -677,6 +677,13 @@ services:
       - "traefik.http.routers.auth-public.tls.certresolver=le"
       - "traefik.http.routers.auth-public.service=auth-svc"
       - "traefik.http.routers.auth-public.middlewares=cors-default@docker"
+      # Preflight (CORS) for public auth endpoints
+      - "traefik.http.routers.auth-public-preflight.rule=Host(`api.trading.expovin.it`) && (PathPrefix(`/auth/login`) || PathPrefix(`/auth/validate`)) && Method(`OPTIONS`)"
+      - "traefik.http.routers.auth-public-preflight.entrypoints=websecure"
+      - "traefik.http.routers.auth-public-preflight.tls.certresolver=le"
+      - "traefik.http.routers.auth-public-preflight.priority=10000"
+      - "traefik.http.routers.auth-public-preflight.service=auth-svc"
+      - "traefik.http.routers.auth-public-preflight.middlewares=cors-default@docker"
 
       # 🔐 router ADMIN:
       # /auth/admin/... → protetto da JWT/API_KEY via forwardAuth
@@ -685,6 +692,13 @@ services:
       - "traefik.http.routers.auth-admin.tls.certresolver=le"
       - "traefik.http.routers.auth-admin.middlewares=cors-default@docker,auth-forward@docker"
       - "traefik.http.routers.auth-admin.service=auth-svc"
+      # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
+      - "traefik.http.routers.auth-admin-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/auth/admin`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.auth-admin-preflight.entrypoints=websecure"
+      - "traefik.http.routers.auth-admin-preflight.tls.certresolver=le"
+      - "traefik.http.routers.auth-admin-preflight.priority=10000"
+      - "traefik.http.routers.auth-admin-preflight.service=auth-svc"
+      - "traefik.http.routers.auth-admin-preflight.middlewares=cors-default@docker"
 
       # service condiviso che punta alla porta interna 3015
       - "traefik.http.services.auth-svc.loadbalancer.server.port=3015"
