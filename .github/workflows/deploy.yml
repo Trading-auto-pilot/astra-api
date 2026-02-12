@@ -271,7 +271,10 @@ jobs:
         echo "IBKR_INSECURE_TLS=${{vars.IBKR_INSECURE_TLS}}" >> .env
         echo "TICKLE_INTERVAL_MS=${{vars.TICKLE_INTERVAL_MS}}" >> .env
         echo "AUTH_CHECK_INTERVAL_MS=${{vars.AUTH_CHECK_INTERVAL_MS}}" >> .env
-         echo "REDISWSBRIDGE_VERSION=${{vars.REDISWSBRIDGE_VERSION}}" >> .env
+        echo "REDISWSBRIDGE_VERSION=${{vars.REDISWSBRIDGE_VERSION}}" >> .env
+        echo "INTERNAL_JWT_PRIVATE_KEY=${{vars.INTERNAL_JWT_PRIVATE_KEY}}" >> .env
+        echo "INTERNAL_JWT_PUBLIC_KEY=${{vars.INTERNAL_JWT_PUBLIC_KEY}}" >> .env
+
         
  
     - name: Copy .env to server
