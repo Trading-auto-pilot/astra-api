@@ -10,3 +10,5 @@ logs/
 
 # DB dump versions
 db/versions/
+
+.env.*
