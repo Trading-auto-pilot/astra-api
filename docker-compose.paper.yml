@@ -53,9 +53,9 @@ services:
       - "traefik.http.middlewares.auth-forward.forwardauth.authResponseHeaders=X-User-Id,X-Auth-Subject-Type,X-Api-Key-Id"
 
       # CORS Configuration
-      - "traefik.http.middlewares.cors-default.headers.accessControlAllowOriginList=https://trading.expovin.it,http://localhost:5173,http://localhost:8080"
+      - "traefik.http.middlewares.cors-default.headers.accessControlAllowOriginList=https://trading.expovin.it,https://api.trading.expovin.it,http://localhost:5173,http://localhost:8080"
       - "traefik.http.middlewares.cors-default.headers.accessControlAllowMethods=GET,OPTIONS,PUT,POST,DELETE"
-      - "traefik.http.middlewares.cors-default.headers.accessControlAllowHeaders=Content-Type,Authorization,X-Requested-With"
+      - "traefik.http.middlewares.cors-default.headers.accessControlAllowHeaders=Content-Type,Authorization,X-Requested-With,X-Api-Key"
       - "traefik.http.middlewares.cors-default.headers.accessControlAllowCredentials=true"
 
   # ======================

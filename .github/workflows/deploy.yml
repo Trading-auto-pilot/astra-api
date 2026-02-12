@@ -69,15 +69,7 @@ jobs:
         services=(
           DBManager
           cacheManager
-          capitalManager
           alertingService
-          strategyUtils
-          LiveMarketListener
-          orderListner
-          orderSimulator
-          MarketSimulator
-          strategies/sma
-          strategies/sltp
           scheduler
           tickerScanner
           authService
@@ -87,6 +79,7 @@ jobs:
           decision-engine
           ibkr-keepalive
           market-data-service
+          redisWsBridge
         )
 
         for service in "${services[@]}"; do
