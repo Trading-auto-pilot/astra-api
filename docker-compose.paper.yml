@@ -405,6 +405,12 @@ services:
       - "traefik.http.routers.redis-ws-bridge-preflight.priority=10000"
       - "traefik.http.routers.redis-ws-bridge-preflight.service=redis-ws-bridge"
       - "traefik.http.routers.redis-ws-bridge-preflight.middlewares=redis-ws-bridge-stripprefix,cors-default@docker"
+      - "traefik.http.routers.redis-ws-bridge-ws.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/redis-ws-bridge/ws`)"
+      - "traefik.http.routers.redis-ws-bridge-ws.entrypoints=websecure"
+      - "traefik.http.routers.redis-ws-bridge-ws.tls.certresolver=le"
+      - "traefik.http.routers.redis-ws-bridge-ws.priority=10001"
+      - "traefik.http.routers.redis-ws-bridge-ws.service=redis-ws-bridge"
+      - "traefik.http.routers.redis-ws-bridge-ws.middlewares=redis-ws-bridge-stripprefix,cors-default@docker"
 
   ibkr-bridge:
     image: expovin/ibkr-bridge:${IBKRBRIDGE_VERSION}
@@ -462,6 +468,30 @@ services:
     networks:
       - trading_net
     profiles: ["alertingservice"]
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+      - LOG_LEVEL=${LOG_LEVEL}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - PORT=3008
+      - ENV=${ENV}
+      - MAX_RETRY_DELAY=${MAX_RETRY_DELAY}
+      - REDIS_URL=redis://redis:6379
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_CONTENT_SID=${TWILIO_CONTENT_SID}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM=${SMTP_FROM}
+      - ALERTING_LOGS_PATTERN=${ALERTING_LOGS_PATTERN}
+      - ALERTING_WINDOW_SECONDS=${ALERTING_WINDOW_SECONDS}
+      - ALERTING_MAX_PER_WINDOW=${ALERTING_MAX_PER_WINDOW}
+      - ALERTING_DEDUP_SECONDS=${ALERTING_DEDUP_SECONDS}
+      - ALERTING_DEFAULT_EMAIL_TO=${ALERTING_DEFAULT_EMAIL_TO}
+      - TZ=Asia/Dubai
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.alertingservice.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/alertingservice`)"

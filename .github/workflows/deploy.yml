@@ -84,6 +84,9 @@ jobs:
 
         for service in "${services[@]}"; do
           name=$(basename "$service" | tr '[:upper:]' '[:lower:]')
+          if [[ "$service" == "redisWsBridge" ]]; then
+            name="redis-ws-bridge"
+          fi
           RELEASE_FILE="$service/release.json"
 
           if [[ ! -f "$service/Dockerfile" ]]; then
