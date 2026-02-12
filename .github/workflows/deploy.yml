@@ -256,6 +256,7 @@ jobs:
         echo "TICKERSCANNER_URL=${{vars.TICKERSCANNER_URL}}" >> .env
         echo "AUTHSERVICE_URL=${{vars.AUTHSERVICE_URL}}" >> .env  
         echo "ASTRAAI_VERSION=${{vars.ASTRAAI_VERSION}}" >> .env
+        echo "ALERTINGSERVICE_VERSION=${{vars.ALERTINGSERVICE_VERSION}}" >> .env
         echo "CORS_ORIGIN=${{vars.CORS_ORIGIN}}" >> .env
         echo "SERVICECONTROLPLANE_VERSION=${{vars.SERVICECONTROLPLANE_VERSION}}" >> .env
         echo "DECISIONENGINE_VERSION=${{vars.DECISIONENGINE_VERSION}}" >> .env
@@ -272,8 +273,9 @@ jobs:
         echo "TICKLE_INTERVAL_MS=${{vars.TICKLE_INTERVAL_MS}}" >> .env
         echo "AUTH_CHECK_INTERVAL_MS=${{vars.AUTH_CHECK_INTERVAL_MS}}" >> .env
         echo "REDISWSBRIDGE_VERSION=${{vars.REDISWSBRIDGE_VERSION}}" >> .env
-        echo "INTERNAL_JWT_PRIVATE_KEY=${{vars.INTERNAL_JWT_PRIVATE_KEY}}" >> .env
+        echo "INTERNAL_JWT_PRIVATE_KEY=${{secrets.INTERNAL_JWT_PRIVATE_KEY}}" >> .env
         echo "INTERNAL_JWT_PUBLIC_KEY=${{vars.INTERNAL_JWT_PUBLIC_KEY}}" >> .env
+        echo "COMPOSE_PROFILES=${{vars.COMPOSE_PROFILES}}" >> .env
 
         
  
