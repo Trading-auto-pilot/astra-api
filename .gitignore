@@ -11,4 +11,11 @@ logs/
 # DB dump versions
 db/versions/
 
+# env files (secrets)
+.env
 .env.*
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
