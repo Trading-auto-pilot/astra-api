@@ -5,7 +5,13 @@ const path = require("path");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 const fs = require("fs/promises");
 const createLogger = require("../../shared/logger");
-const { initializeSettings, getSetting, reloadSettings } = require("../../shared/loadSettings");
+const {
+  initializeSettings,
+  getSetting,
+  getAllSettings,
+  reloadSettings,
+  setSetting,
+} = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
 const { asBool, asInt } = require("../../shared/helpers");
 
@@ -341,8 +347,19 @@ class MarketDataService {
     if (typeof this.logger.setDbLogStatus === "function") {
       return this.logger.setDbLogStatus(status);
     }
-    this.logger.warn("[setDbLogStatus] Not supported by this logger", { status });
+    this.logger.warning("[setDbLogStatus] Not supported by this logger", { status });
     return { dbLogEnabled: false };
+  }
+
+  // =========================================================
+  // Settings passthrough (usata da /settings nel server.js)
+  // =========================================================
+  getAllSettings() {
+    return getAllSettings();
+  }
+
+  setSetting(key, value) {
+    return setSetting(key, value);
   }
 
   // =========================================================
@@ -361,7 +378,7 @@ class MarketDataService {
       this.logger.setLevel(level);
       return { level };
     }
-    this.logger.warn("[setLogLevel] Not supported by this logger", { level });
+    this.logger.warning("[setLogLevel] Not supported by this logger", { level });
     return { level: process.env.LOG_LEVEL || null };
   }
 

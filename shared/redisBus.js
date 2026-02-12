@@ -10,7 +10,7 @@ class RedisBus {
     this.logger = opts.logger || console;
     this.json   = opts.json !== false;
     this.name   = opts.name || "redisBus";
-    this.env    = opts.env || process.env.APP_ENV || 'dev'; 
+    this.env    = opts.env || process.env.ENV || process.env.APP_ENV || 'DEV';
 
     this.channelsCfg = opts.channels || {};
     this.defaultIntervalMs = Number.isFinite(opts.defaultIntervalMs) ? opts.defaultIntervalMs : 500;
@@ -34,7 +34,7 @@ class RedisBus {
       .toLowerCase();
     return [this.env, ...parts.map(norm)].filter(Boolean).join(':');
   }
-  setEnv(env) { this.env = env || 'dev'; return this; }
+  setEnv(env) { this.env = env || process.env.ENV || 'DEV'; return this; }
 
   // ---------- KV helpers (cache) ----------
   async get(key) {

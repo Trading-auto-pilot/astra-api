@@ -1,6 +1,10 @@
 {
-    "lastUpdate" : "20/05/2025",
-    "note" : ["v.1.1 Variabile ambiente BACKTESTMODE per skippare invio email durante backtest che puo essere cambiata via REST con PUT /backTestMode",
-                "v.1.2 Integrazione di redis per rilettura centralizzata parametri"
-            ]
+  "lastUpdate": "12/02/2026", 
+  "version": "2.0.0",
+  "microservice": "alertingService",
+
+  "note": [
+    "v.0.1.0 alertingService: Initial scaffolding generated from template.",
+    "v.2.0.0 Refactoring completo creato da zero. Aggiunto invio Whatsapp e Rule Engine "
+  ]
 }

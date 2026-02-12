@@ -6,9 +6,12 @@ const https = require("https");
 const { asBool, asInt } = require("../../shared/helpers");
 
 class IbkrConnectivity {
-  constructor({ logger, getSetting }) {
+  constructor({ logger, getSetting, publishTelemetry, getEnv, getStatus }) {
     this.logger = logger;
     this.getSetting = getSetting;
+    this.publishTelemetry = publishTelemetry;
+    this.getEnv = getEnv;
+    this.getStatus = getStatus;
     this._timer = null;
     this._running = false;
     this._lastIntervalMs = null;
@@ -24,13 +27,95 @@ class IbkrConnectivity {
       connected: false,
       authStatusCode: null,
       authError: null,
+      lastAuthPayload: null,
       lastAuthAt: null,
       lastTickleAt: null,
       lastTickleStatus: null,
       lastTickleError: null,
       lastTicklePayload: null,
       lastCheckAt: null,
+      lastSsodhInitAt: null,
+      lastSsodhInitStatus: null,
+      lastSsodhInitOk: null,
+      lastSsodhInitError: null,
+      lastSsodhInitPayload: null,
     };
+  }
+
+  async _emitAuth401Telemetry() {
+    if (typeof this.publishTelemetry !== "function") return;
+    const payload = {
+      type: "keepalive",
+      ts: Date.now(),
+      env: typeof this.getEnv === "function" ? this.getEnv() : process.env.ENV || "DEV",
+      status: typeof this.getStatus === "function" ? this.getStatus() : null,
+      lastAuthStatus: this.state.authStatusCode ?? 401,
+      lastTickleStatus: this.state.lastTickleStatus,
+      lastTickleAt: this.state.lastTickleAt,
+      __source: "ibkr-bridge",
+    };
+    try {
+      await this.publishTelemetry(payload);
+      this.logger.trace?.("[connectivity] telemetry published (401)");
+    } catch (err) {
+      this.logger.warning?.(
+        `[connectivity] telemetry publish failed: ${err?.message || String(err)}`
+      );
+    }
+  }
+
+  async _emitSsodhTelemetry(result) {
+    if (typeof this.publishTelemetry !== "function") return;
+    const payload = {
+      type: "ssodhInit",
+      ts: Date.now(),
+      env: typeof this.getEnv === "function" ? this.getEnv() : process.env.ENV || "DEV",
+      status: typeof this.getStatus === "function" ? this.getStatus() : null,
+      ssodhInit: result || null,
+      lastSsodhInitAt: this.state.lastSsodhInitAt,
+      __source: "ibkr-bridge",
+    };
+    try {
+      await this.publishTelemetry(payload);
+      this.logger.trace?.("[connectivity] telemetry published (ssodh)");
+    } catch (err) {
+      this.logger.warning?.(
+        `[connectivity] telemetry publish failed (ssodh): ${err?.message || String(err)}`
+      );
+    }
+  }
+
+  async _emitCombinedTelemetry() {
+    if (typeof this.publishTelemetry !== "function") return;
+    const payload = {
+      type: "telemetry",
+      ts: Date.now(),
+      env: typeof this.getEnv === "function" ? this.getEnv() : process.env.ENV || "DEV",
+      status: typeof this.getStatus === "function" ? this.getStatus() : null,
+      authStatus: {
+        status: this.state.authStatusCode,
+        data: this.state.lastAuthPayload,
+        error: this.state.authError,
+        at: this.state.lastAuthAt,
+      },
+      tickle: {
+        status: this.state.lastTickleStatus,
+        data: this.state.lastTicklePayload,
+        error: this.state.lastTickleError,
+        at: this.state.lastTickleAt,
+      },
+      ssodhInit: this.state.lastSsodhInitPayload,
+      lastSsodhInitAt: this.state.lastSsodhInitAt,
+      __source: "ibkr-bridge",
+    };
+    try {
+      await this.publishTelemetry(payload);
+      this.logger.trace?.("[connectivity] telemetry published (combined)");
+    } catch (err) {
+      this.logger.warning?.(
+        `[connectivity] telemetry publish failed (combined): ${err?.message || String(err)}`
+      );
+    }
   }
 
   _readSettings() {
@@ -56,13 +141,29 @@ class IbkrConnectivity {
       this.getSetting?.("AUTH_CHECK_INTERVAL_MS") ?? process.env.AUTH_CHECK_INTERVAL_MS,
       15000
     );
-    return { baseUrl, insecureTls, tickleIntervalMs, authCheckIntervalMs, ssoDispatcherUrl };
+    const requestTimeoutMs = asInt(
+      this.getSetting?.("IBKR_REQUEST_TIMEOUT_MS") ?? process.env.IBKR_REQUEST_TIMEOUT_MS,
+      20000
+    );
+    const ssodhInitIntervalMs = asInt(
+      this.getSetting?.("IBKR_SSODH_INIT_INTERVAL_MS") ?? process.env.IBKR_SSODH_INIT_INTERVAL_MS,
+      60000
+    );
+    return {
+      baseUrl,
+      insecureTls,
+      tickleIntervalMs,
+      authCheckIntervalMs,
+      ssoDispatcherUrl,
+      requestTimeoutMs,
+      ssodhInitIntervalMs,
+    };
   }
 
-  _buildClient(baseUrl, insecureTls) {
+  _buildClient(baseUrl, insecureTls, requestTimeoutMs) {
     const config = {
       baseURL: baseUrl,
-      timeout: 8000,
+      timeout: requestTimeoutMs,
       validateStatus: () => true,
     };
     if (baseUrl.startsWith("https://")) {
@@ -75,16 +176,22 @@ class IbkrConnectivity {
   }
 
   _syncClient(settings) {
-    const { baseUrl, insecureTls } = settings;
+    const { baseUrl, insecureTls, requestTimeoutMs } = settings;
     if (!baseUrl) {
       this._client = null;
       return;
     }
-    if (this.state.baseUrl !== baseUrl || this.state.insecureTls !== insecureTls || !this._client) {
-      this._client = this._buildClient(baseUrl, insecureTls);
+    if (
+      this.state.baseUrl !== baseUrl ||
+      this.state.insecureTls !== insecureTls ||
+      this.state.requestTimeoutMs !== requestTimeoutMs ||
+      !this._client
+    ) {
+      this._client = this._buildClient(baseUrl, insecureTls, requestTimeoutMs);
     }
     this.state.baseUrl = baseUrl;
     this.state.insecureTls = insecureTls;
+    this.state.requestTimeoutMs = requestTimeoutMs;
   }
 
   async _ensureReauth(settings) {
@@ -92,13 +199,13 @@ class IbkrConnectivity {
       await this._reauthInFlight;
       return;
     }
-    const { ssoDispatcherUrl } = settings || this._readSettings();
+    const { ssoDispatcherUrl, requestTimeoutMs } = settings || this._readSettings();
     if (!ssoDispatcherUrl) return;
     this._reauthInFlight = (async () => {
       try {
         this.logger.info(`[connectivity] sso reauth url=${ssoDispatcherUrl}`);
         const resp = await axios.get(ssoDispatcherUrl, {
-          timeout: 8000,
+          timeout: requestTimeoutMs,
           validateStatus: () => true,
         });
         if (resp.status === 200) {
@@ -195,6 +302,8 @@ class IbkrConnectivity {
       await this._checkGateway();
       await this._checkAuth();
       await this._tickleIfDue(settings.tickleIntervalMs);
+      await this._ssodhInitIfDue(settings.ssodhInitIntervalMs);
+      await this._emitCombinedTelemetry();
     } catch (err) {
       this.logger.error(
         `[connectivity] tick error: ${err?.message || String(err)}`
@@ -219,24 +328,10 @@ class IbkrConnectivity {
   }
 
   async _checkGateway() {
-    try {
-      const resp = await this._requestWithReauth({ method: "GET", url: "/" });
-      this.state.gwStatusCode = resp.status;
-      this.state.gwError = null;
-      if (resp.status === 200) {
-        this.state.gwStatus = "GW_UP";
-      } else {
-        this.state.gwStatus = "GW_UP_BUT_ERROR";
-      }
-    } catch (err) {
-      this.state.gwStatusCode = null;
-      if (this._isNetworkDownError(err)) {
-        this.state.gwStatus = "GW_DOWN";
-      } else {
-        this.state.gwStatus = "GW_UP_BUT_ERROR";
-      }
-      this.state.gwError = err?.message || String(err);
-    }
+    // No GET / check: consider gateway up if baseUrl is configured.
+    this.state.gwStatusCode = 200;
+    this.state.gwStatus = "GW_UP";
+    this.state.gwError = null;
   }
 
   async _checkAuth() {
@@ -250,15 +345,18 @@ class IbkrConnectivity {
       if (resp.status === 200 && resp.data) {
         this.state.authenticated = !!resp.data.authenticated;
         this.state.connected = !!resp.data.connected;
+        this.state.lastAuthPayload = resp.data ?? null;
       } else {
         this.state.authenticated = false;
         this.state.connected = false;
+        this.state.lastAuthPayload = resp.data ?? null;
       }
     } catch (err) {
       this.state.authStatusCode = null;
       this.state.authError = err?.message || String(err);
       this.state.authenticated = false;
       this.state.connected = false;
+      this.state.lastAuthPayload = null;
     }
 
     if (
@@ -551,6 +649,12 @@ class IbkrConnectivity {
       this.state.lastTickleStatus = resp.status;
       this.state.lastTicklePayload = resp.data ?? null;
       this.state.lastTickleError = null;
+      if (this.state.gwStatus === "GW_UP") {
+        const hmdsAuth = resp?.data?.hmds?.authStatus;
+        if (hmdsAuth?.authenticated === true && hmdsAuth?.connected === true) {
+          this.state.gwStatus = "GW_BRIDGE_OK";
+        }
+      }
       this.logger.trace?.(
         `[connectivity] tickle ok status=${resp.status} latencyMs=${elapsedMs} at=${new Date().toISOString()}`
       );
@@ -568,6 +672,87 @@ class IbkrConnectivity {
       );
     }
     this.state.lastTickleAt = new Date().toISOString();
+  }
+
+  async _ssodhInitIfDue(intervalMs) {
+    if (!intervalMs || intervalMs <= 0) return;
+    const now = Date.now();
+    const last = this.state.lastSsodhInitAt
+      ? new Date(this.state.lastSsodhInitAt).getTime()
+      : 0;
+    if (now - last < intervalMs) return;
+    let result = null;
+    try {
+      const statusResp = await this._requestWithReauth({
+        method: "GET",
+        url: "/v1/api/iserver/auth/status",
+      });
+      const statusOk = statusResp.status >= 200 && statusResp.status < 300;
+
+      const initResp = await this._requestWithReauth({
+        method: "POST",
+        url: "/v1/api/iserver/auth/ssodh/init",
+      });
+      const initOk = initResp.status >= 200 && initResp.status < 300;
+
+      this.state.lastSsodhInitStatus = initResp.status;
+      this.state.lastSsodhInitOk = initOk;
+      this.state.lastSsodhInitError = initOk ? null : "IBKR ssodh init failed";
+
+      result = {
+        authStatus: {
+          ok: statusOk,
+          status: statusResp.status,
+          data: statusResp.data ?? null,
+          error: statusOk ? null : "IBKR auth status failed",
+        },
+        ssodhInit: {
+          ok: initOk,
+          status: initResp.status,
+          data: initResp.data ?? null,
+          error: initOk ? null : "IBKR ssodh init failed",
+        },
+      };
+
+      if (!statusOk) {
+        this.logger.warning(
+          `[connectivity] ssodh status warning status=${statusResp.status} payload=${JSON.stringify(statusResp.data ?? null)}`
+        );
+      }
+      if (!initOk) {
+        this.logger.warning(
+          `[connectivity] ssodh init warning status=${initResp.status} payload=${JSON.stringify(initResp.data ?? null)}`
+        );
+      } else {
+        this.logger.trace?.(
+          `[connectivity] ssodh init ok status=${initResp.status}`
+        );
+      }
+    } catch (err) {
+      this.state.lastSsodhInitStatus = null;
+      this.state.lastSsodhInitOk = false;
+      this.state.lastSsodhInitError = err?.message || String(err);
+      result = {
+        authStatus: {
+          ok: false,
+          status: null,
+          data: null,
+          error: err?.message || String(err),
+        },
+        ssodhInit: {
+          ok: false,
+          status: null,
+          data: null,
+          error: err?.message || String(err),
+        },
+      };
+      this.logger.warning(
+        `[connectivity] ssodh init error: ${err?.message || String(err)}`
+      );
+    }
+    this.state.lastSsodhInitAt = new Date().toISOString();
+    this.state.lastSsodhInitPayload = result;
+    // Combined telemetry is emitted once per tick in _tick().
   }
 }
 

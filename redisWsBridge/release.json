@@ -1,0 +1,10 @@
+{
+  "lastUpdate": "02/02/2026", 
+  "version": "1.0.1",
+  "microservice": "redis-ws-bridge",
+
+  "note": [
+    "v.1.0.0 redis-ws-bridge: Initial scaffolding generated from template.",
+    "v.1.0.1 Fix general setting logs"
+  ]
+}

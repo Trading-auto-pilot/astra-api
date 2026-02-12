@@ -5,6 +5,7 @@ module.exports = async function createApp({ bus, logger }) {
   const fs = require('fs');
   const path = require('path');
   const { mountRoutesFrom } = require("../shared/routes-loader");
+  const buildStatusRouter = require("./status");
   require('dotenv').config({ path: '../.env' });
 
   const log = logger.forModule(__filename);
@@ -15,6 +16,68 @@ module.exports = async function createApp({ bus, logger }) {
   const dbManager = require('./modules');
     const app = express();
     const port = process.env.PORT || 3002;
+
+    const maxInterval = parseInt(process.env.MAX_RETRY_DELAY, 10) || 60000;
+
+    // ── Communication channels (stato locale + bridge verso bus) ──
+    const communicationChannels = {
+      telemetry: { on: true, params: { intervalsMs: 1000 } },
+      metrics:   { on: true, params: { intervalsMs: 1000 } },
+      data:      { on: true, params: { intervalsMs: 0    } },
+      logs:      { on: true, params: { intervalsMs: 0    } },
+    };
+
+    function normalizeChannels(inCfg = {}, prev = {}) {
+      const ms = (v, d = 500) => Number(v ?? d) || d;
+      const norm = (k) => ({
+        on: !!(inCfg?.[k]?.on ?? prev?.[k]?.on ?? true),
+        params: {
+          intervalsMs: ms(
+            inCfg?.[k]?.params?.intervalsMs ??
+            prev?.[k]?.params?.intervalsMs ??
+            500
+          ),
+        },
+      });
+      return {
+        telemetry: norm("telemetry"),
+        metrics:   norm("metrics"),
+        data:      norm("data"),
+        logs:      norm("logs"),
+      };
+    }
+
+    // Service adapter: wrappa il flat dbManager + aggiunge communication channels
+    const service = Object.create(dbManager);
+    service.communicationChannels = communicationChannels;
+
+    service.getInfo = function () {
+      return {
+        MICROSERVICE,
+        MODULE_NAME,
+        MODULE_VERSION,
+        ENV: process.env.ENV || process.env.APP_ENV || 'DEV',
+        communicationChannels: this.communicationChannels,
+      };
+    };
+
+    service.updateCommunicationChannel = async function (newConf) {
+      const cfg = normalizeChannels(newConf, this.communicationChannels);
+      this.communicationChannels = cfg;
+
+      if (typeof bus.setChannelConfig === "function") {
+        bus.setChannelConfig("telemetry", cfg.telemetry);
+        bus.setChannelConfig("metrics",   cfg.metrics);
+        bus.setChannelConfig("data",      cfg.data);
+        bus.setChannelConfig("logs",      cfg.logs);
+      }
+
+      log.info(
+        `[channels] telemetry=${cfg.telemetry.on} metrics=${cfg.metrics.on} data=${cfg.data.on} logs=${cfg.logs.on}`
+      );
+
+      return { ok: true, channels: cfg };
+    };
 
 
     // 🌍 Costanti di modulo
@@ -94,6 +157,57 @@ module.exports = async function createApp({ bus, logger }) {
         next()
       }
     }
+
+    // ── /status/* (health, logLevel, communicationChannels) ──
+    app.use(
+      "/status",
+      buildStatusRouter({
+        service,
+        logger: log,
+        moduleName: MODULE_NAME,
+      })
+    );
+
+    // ── /dbLogger (GET status, PUT on/off) ──
+    app.get("/dbLogger", async (_req, res) => {
+      try {
+        const data = await dbManager.getDbLogStatus();
+        res.json({ ok: true, data });
+      } catch (e) {
+        log.error(`[GET /dbLogger] Error: ${e?.message || String(e)}`);
+        res.status(500).json({ ok: false, error: e?.message || String(e) });
+      }
+    });
+
+    app.put("/dbLogger/:status", async (req, res) => {
+      const raw = String(req.params.status ?? "").trim();
+      const normalized = raw.toLowerCase();
+
+      let enable;
+      if (normalized === "on") enable = true;
+      else if (normalized === "off") enable = false;
+      else {
+        return res.status(400).json({
+          ok: false,
+          error: "Invalid status. Use 'on' or 'off'.",
+          received: raw,
+          allowed: ["on", "off"],
+        });
+      }
+
+      try {
+        const data = await dbManager.setDbLogStatus(enable);
+        if (data == null) {
+          return res.status(404).json({ ok: false, error: "not found" });
+        }
+        return res.json({ ok: true, status: enable ? "on" : "off", data });
+      } catch (e) {
+        log.error(`[PUT /dbLogger/:status] Error: ${e?.message || String(e)}`);
+        return res
+          .status(500)
+          .json({ ok: false, error: e?.message || String(e) });
+      }
+    });
 
     app.use("/api", withTimeout(8000))
 

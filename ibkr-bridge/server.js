@@ -99,6 +99,45 @@ app.get("/release", async (req, res) => {
   }
 });
 
+// GET /settings → ritorna i settings caricati
+app.get("/settings", requireReady, (req, res) => {
+  try {
+    const data = serviceInstance.getAllSettings?.() || null;
+    if (!data) return res.status(404).json({ error: "Settings non disponibili" });
+    return res.json({ ok: true, data });
+  } catch (err) {
+    logger.error("[GET /settings] Errore:", err.message);
+    return res.status(500).json({ error: "Impossibile leggere i settings" });
+  }
+});
+
+// PUT /settings → aggiorna un setting in cache (non persistente)
+app.put("/settings", requireReady, (req, res) => {
+  const body = req.body || {};
+  // supporta sia { setting, value } sia { SOME_KEY: "value" }
+  let setting = body.setting;
+  let value = body.value;
+  if (!setting) {
+    const keys = Object.keys(body);
+    if (keys.length === 1) {
+      setting = keys[0];
+      value = body[setting];
+    }
+  }
+
+  if (typeof setting !== "string" || setting.trim() === "") {
+    return res.status(400).json({ ok: false, error: "Parametro 'setting' obbligatorio" });
+  }
+
+  try {
+    const next = serviceInstance.setSetting(setting, value);
+    return res.json({ ok: true, data: next });
+  } catch (err) {
+    logger.error("[PUT /settings] Errore:", err.message);
+    return res.status(500).json({ ok: false, error: "Impossibile aggiornare il setting" });
+  }
+});
+
 /**
  * PUT /connect
  * Route generica per avviare una connessione "live" (es. websocket/market).

@@ -2,8 +2,8 @@
 const { getDbConnection, formatDateForMySQL, safe } = require('./core');
 
 
-// Prende le ultime `limit` righe ordinate per `timestamp` (DESC) con offset opzionale e filtro microservice opzionale.
-async function getAllLogs(limit = 100, offset = 0, microservice = null) {
+// Prende le ultime `limit` righe ordinate per `timestamp` (DESC) con offset opzionale e filtri.
+async function getAllLogs(limit = 100, offset = 0, filtersOrMs = null) {
   const conn = await getDbConnection();
 
   // valida/clampa il limite
@@ -11,18 +11,54 @@ async function getAllLogs(limit = 100, offset = 0, microservice = null) {
   const safeLimit = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 1000) : 100;
   const o = Number(offset);
   const safeOffset = Number.isFinite(o) && o >= 0 ? Math.floor(o) : 0;
-  const ms = microservice ? String(microservice).trim() : null;
+  const filters =
+    typeof filtersOrMs === "string"
+      ? { microservice: filtersOrMs }
+      : filtersOrMs || {};
+  const ms = filters.microservice ? String(filters.microservice).trim() : null;
+  const moduleName = filters.moduleName ? String(filters.moduleName).trim() : null;
+  const functionName = filters.functionName ? String(filters.functionName).trim() : null;
+  const levels = Array.isArray(filters.levels)
+    ? filters.levels.map((lvl) => String(lvl).trim()).filter(Boolean)
+    : null;
+  const startDate = filters.startDate ? formatDateForMySQL(filters.startDate) : null;
+  const endDate = filters.endDate ? formatDateForMySQL(filters.endDate) : null;
 
   try {
+    const where = ["`timestamp` IS NOT NULL"];
+    const params = [];
+    if (ms) {
+      where.push("microservice = ?");
+      params.push(ms);
+    }
+    if (levels && levels.length > 0) {
+      where.push(`level IN (${levels.map(() => "?").join(", ")})`);
+      params.push(...levels);
+    }
+    if (moduleName) {
+      where.push("moduleName = ?");
+      params.push(moduleName);
+    }
+    if (functionName) {
+      where.push("functionName = ?");
+      params.push(functionName);
+    }
+    if (startDate) {
+      where.push("`timestamp` >= ?");
+      params.push(startDate);
+    }
+    if (endDate) {
+      where.push("`timestamp` <= ?");
+      params.push(endDate);
+    }
+
     const sql = `
       SELECT *
       FROM \`logs\`
-      WHERE \`timestamp\` IS NOT NULL
-      ${ms ? "AND microservice = ?" : ""}
+      WHERE ${where.join(" AND ")}
       ORDER BY \`timestamp\` DESC, \`id\` DESC
       LIMIT ${safeLimit} OFFSET ${safeOffset} -- inietto interi validati
     `;
-    const params = ms ? [ms] : [];
     const [rows] = await conn.query(sql, params);
     return rows;
   } catch (error) {
@@ -56,7 +92,9 @@ async function insertLogs(logs) {
     safe(log.level),
     safe(log.functionName),
     safe(log.message),
-    log.jsonDetails ? safe(log.jsonDetails) : null,
+    log.jsonDetails
+      ? safe(typeof log.jsonDetails === 'string' ? log.jsonDetails : JSON.stringify(log.jsonDetails))
+      : null,
     safe(log.microservice),
     safe(log.moduleName),
     safe(log.moduleVersion)

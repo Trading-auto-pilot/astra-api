@@ -1,7 +1,7 @@
 // modules/scheduler.js
 "use strict";
 
-const { getDbConnection } = require("./core");
+const { getDbConnection, formatDateForMySQL } = require("./core");
 const createLogger = require("../../shared/logger");
 
 const MICROSERVICE = "DBManager";
@@ -310,16 +310,18 @@ async function updateSchedulerJobLastRun(jobId, payload) {
   const conn = await getDbConnection();
   try {
     const { last_run_at, last_status } = payload || {};
+    const isNumericId = typeof jobId === "number" || /^\d+$/.test(String(jobId || ""));
+    const whereField = isNumericId ? "id" : "job_key";
     const [res] = await conn.query(
       `
       UPDATE scheduler_jobs
       SET last_run_at = ?, last_status = ?
-      WHERE id = ?
+      WHERE ${whereField} = ?
       `,
-      [last_run_at || null, last_status || null, jobId]
+      [formatDateForMySQL(last_run_at) || null, last_status || null, jobId]
     );
     logger.info(
-      `[updateSchedulerJobLastRun] jobId=${jobId} affectedRows=${res.affectedRows}`
+      `[updateSchedulerJobLastRun] jobId=${jobId} field=${whereField} affectedRows=${res.affectedRows}`
     );
     return { ok: true, updated: res.affectedRows };
   } catch (err) {

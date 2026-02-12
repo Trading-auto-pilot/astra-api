@@ -1,6 +1,8 @@
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
+const path = require('path');
+const fs = require('fs/promises');
 const { WebSocketServer } = require('ws');
 const createLogger = require('../shared/logger');
 
@@ -8,6 +10,11 @@ const { RedisBus } = require('../shared/redisBus');   // <— riuso libreria
 const buildStatusRouter = require('./status');
 const { makeWsHub } = require('./wsHub');
 const { loadConfig } = require('./config');
+const {
+  initializeSettings,
+  getAllSettings,
+  setSetting,
+} = require('../shared/loadSettings');
 
 const MICROSERVICE = 'redisWsBridge';
 const MODULE_NAME = 'RESTServer';
@@ -15,6 +22,37 @@ const MODULE_VERSION = '1.0';
 
 (async () => {
   const cfg = loadConfig();
+  const dbmanagerUrl = process.env.DBMANAGER_URL || 'http://dbmanager:3002';
+  let settingsReady = false;
+
+  async function getReleaseInfo() {
+    const candidates = Array.from(
+      new Set(
+        [
+          path.resolve(__dirname, 'release.json'),
+          path.resolve(__dirname, '..', 'release.json'),
+          path.resolve(process.cwd(), 'release.json'),
+        ].filter(Boolean)
+      )
+    );
+    for (const filePath of candidates) {
+      try {
+        await fs.access(filePath);
+        const raw = await fs.readFile(filePath, 'utf8');
+        logger.info('[getReleaseInfo] lettura release.json', { filePath });
+        return JSON.parse(raw);
+      } catch {
+        // prova il prossimo percorso
+      }
+    }
+    logger.warning('[getReleaseInfo] release.json non trovato', { candidates });
+    return {
+      lastUpdate: null,
+      version: 'unknown',
+      microservice: 'redisWsBridge',
+      note: ['release.json non trovato'],
+    };
+  }
 
   const app = express();
   app.use(express.json());
@@ -44,7 +82,7 @@ app.use(
       logLevel,
       {
           bus: null,                          // <--- FIX: non _bus
-          busTopicPrefix: this.env || 'DEV',
+          busTopicPrefix: cfg.env || process.env.ENV || 'DEV',
           console: true,
           enqueueDb: true,
       }
@@ -54,6 +92,20 @@ app.use(
     raw: process.env.CORS_ORIGIN || null,
     parsed: allowedOrigins
   });
+
+  try {
+    settingsReady = await initializeSettings(dbmanagerUrl);
+    if (!settingsReady) {
+      logger.warning('[bridge] settings init failed, DB unreachable', {
+        dbmanagerUrl,
+      });
+    }
+  } catch (e) {
+    logger.warning('[bridge] settings init error', {
+      error: e?.message || String(e),
+      dbmanagerUrl,
+    });
+  }
 
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws' });
@@ -66,6 +118,7 @@ app.use(
     url: cfg.redisUrl,
     name: 'redis-ws-bridge',
     logger: logger,
+    env: cfg.env || process.env.ENV || 'DEV',
     channels: {
       // opzionale: telemetria del bridge (controllata dal key "telemetry")
       telemetry: { on: true, params: { intervalsMs: 2000 } }
@@ -101,6 +154,62 @@ app.use(
     hub,
     bus
   }));
+
+  // GET /release → ritorna release.json
+  app.get('/release', async (_req, res) => {
+    try {
+      const data = await getReleaseInfo();
+      return res.json(data);
+    } catch (err) {
+      logger.error('[GET /release] Errore:', err.message);
+      return res.status(500).json({ error: 'Impossibile leggere release.json' });
+    }
+  });
+
+  // GET /settings → ritorna i settings caricati
+  app.get('/settings', (_req, res) => {
+    try {
+      if (!settingsReady) {
+        return res.status(404).json({ error: 'Settings non disponibili' });
+      }
+      const data = getAllSettings?.() || null;
+      if (!data) return res.status(404).json({ error: 'Settings non disponibili' });
+      return res.json({ ok: true, data });
+    } catch (err) {
+      logger.error('[GET /settings] Errore:', err.message);
+      return res.status(500).json({ error: 'Impossibile leggere i settings' });
+    }
+  });
+
+  // PUT /settings → aggiorna un setting in cache (non persistente)
+  app.put('/settings', (req, res) => {
+    const body = req.body || {};
+    // supporta sia { setting, value } sia { SOME_KEY: "value" }
+    let setting = body.setting;
+    let value = body.value;
+    if (!setting) {
+      const keys = Object.keys(body);
+      if (keys.length === 1) {
+        setting = keys[0];
+        value = body[setting];
+      }
+    }
+
+    if (typeof setting !== 'string' || setting.trim() === '') {
+      return res.status(400).json({ ok: false, error: "Parametro 'setting' obbligatorio" });
+    }
+
+    try {
+      if (!settingsReady) {
+        return res.status(404).json({ ok: false, error: 'Settings non disponibili' });
+      }
+      const next = setSetting(setting, value);
+      return res.json({ ok: true, data: next });
+    } catch (err) {
+      logger.error('[PUT /settings] Errore:', err.message);
+      return res.status(500).json({ ok: false, error: 'Impossibile aggiornare il setting' });
+    }
+  });
 
   /**
    * GET /dbLogger

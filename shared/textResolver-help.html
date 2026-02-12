@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>textResolver - Guida</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface2: #334155;
+      --border: #475569;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent2: #818cf8;
+      --green: #4ade80;
+      --orange: #fb923c;
+      --pink: #f472b6;
+      --code-bg: #0d1117;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+    header {
+      text-align: center;
+      padding: 2.5rem 0 2rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 2.5rem;
+    }
+    header h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: .4rem;
+    }
+    header p { color: var(--text-muted); font-size: 1.05rem; }
+    h2 {
+      font-size: 1.35rem;
+      color: var(--accent);
+      margin: 2.2rem 0 1rem;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+    h2 .icon { font-size: 1.1rem; }
+    h3 {
+      font-size: 1.05rem;
+      color: var(--accent2);
+      margin: 1.4rem 0 .6rem;
+    }
+    p { margin-bottom: .8rem; color: var(--text-muted); }
+    code {
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      background: var(--code-bg);
+      padding: .15em .4em;
+      border-radius: 4px;
+      font-size: .9em;
+      color: var(--green);
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--surface2);
+      border-radius: 8px;
+      padding: 1.2rem 1.4rem;
+      overflow-x: auto;
+      margin: .8rem 0 1.2rem;
+      font-size: .88rem;
+      line-height: 1.7;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      color: var(--text);
+    }
+    .kw { color: var(--accent2); }
+    .str { color: var(--green); }
+    .cmt { color: var(--text-muted); font-style: italic; }
+    .fn { color: var(--accent); }
+    .num { color: var(--orange); }
+    .res { color: var(--pink); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: .8rem 0 1.2rem;
+      font-size: .92rem;
+    }
+    th {
+      text-align: left;
+      padding: .7rem 1rem;
+      background: var(--surface2);
+      color: var(--accent);
+      font-weight: 600;
+      border-bottom: 2px solid var(--border);
+    }
+    td {
+      padding: .6rem 1rem;
+      border-bottom: 1px solid var(--surface2);
+      color: var(--text-muted);
+    }
+    td code { font-size: .85em; }
+    tr:hover td { background: var(--surface); }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--surface2);
+      border-radius: 10px;
+      padding: 1.4rem 1.6rem;
+      margin: 1rem 0;
+    }
+    .badge {
+      display: inline-block;
+      padding: .2em .6em;
+      border-radius: 4px;
+      font-size: .78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+    .badge-blue { background: rgba(56,189,248,.15); color: var(--accent); }
+    .badge-purple { background: rgba(129,140,248,.15); color: var(--accent2); }
+    .badge-green { background: rgba(74,222,128,.15); color: var(--green); }
+    .badge-orange { background: rgba(251,146,60,.15); color: var(--orange); }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 650px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .arrow { color: var(--text-muted); margin: 0 .3em; }
+
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--surface2);
+      text-align: center;
+      color: var(--text-muted);
+      font-size: .85rem;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>textResolver.js</h1>
+    <p>Libreria shared per la risoluzione di placeholder dinamici nei testi</p>
+  </header>
+
+  <!-- IMPORT -->
+  <h2><span class="icon">1.</span> Import</h2>
+  <pre><code><span class="kw">const</span> { <span class="fn">resolveText</span>, <span class="fn">formatDate</span> } = <span class="fn">require</span>(<span class="str">'../shared/textResolver'</span>);</code></pre>
+
+  <!-- FUNZIONI -->
+  <h2><span class="icon">2.</span> Funzioni esportate</h2>
+
+  <div class="grid-2">
+    <div class="card">
+      <h3><code>resolveText(text, vars?, opts?)</code></h3>
+      <p>Sostituisce tutti i <code>[[...]]</code> nel testo con i valori calcolati.</p>
+      <table>
+        <tr><td><code>text</code></td><td>Stringa con placeholder</td></tr>
+        <tr><td><code>vars</code></td><td>Oggetto chiave-valore per variabili custom</td></tr>
+        <tr><td><code>opts.now</code></td><td>Date iniettabile (per test)</td></tr>
+      </table>
+      <p><span class="badge badge-blue">return</span> Stringa con placeholder risolti</p>
+    </div>
+    <div class="card">
+      <h3><code>formatDate(date, format?)</code></h3>
+      <p>Formatta una <code>Date</code> nativa secondo un pattern di token.</p>
+      <table>
+        <tr><td><code>date</code></td><td>Oggetto Date</td></tr>
+        <tr><td><code>format</code></td><td>Pattern (default <code>YYYY-MM-DD</code>)</td></tr>
+      </table>
+      <p><span class="badge badge-blue">return</span> Stringa formattata</p>
+    </div>
+  </div>
+
+  <!-- SINTASSI -->
+  <h2><span class="icon">3.</span> Sintassi dei placeholder</h2>
+  <p>Ogni placeholder ha la forma: <code>[[keyword+offset,FORMAT]]</code></p>
+  <p>Offset e formato sono opzionali.</p>
+
+  <h3>Keyword date</h3>
+  <p>Supportano offset (<code>+N</code> / <code>-N</code>) e formato opzionale dopo la virgola.</p>
+  <table>
+    <thead><tr><th>Keyword</th><th>Significato</th><th>Formato default</th></tr></thead>
+    <tbody>
+      <tr><td><code>today</code></td><td>Data odierna</td><td><code>YYYY-MM-DD</code></td></tr>
+      <tr><td><code>yesterday</code></td><td>Alias per <code>today-1</code></td><td><code>YYYY-MM-DD</code></td></tr>
+      <tr><td><code>tomorrow</code></td><td>Alias per <code>today+1</code></td><td><code>YYYY-MM-DD</code></td></tr>
+      <tr><td><code>now</code></td><td>Datetime corrente</td><td>ISO 8601</td></tr>
+      <tr><td><code>lastBusinessDay</code></td><td>Ultimo giorno lavorativo (lun-ven). L'offset conta in <strong>business day</strong>, non giorni di calendario.</td><td><code>YYYY-MM-DD</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Keyword speciali</h3>
+  <table>
+    <thead><tr><th>Keyword</th><th>Significato</th><th>Esempio output</th></tr></thead>
+    <tbody>
+      <tr><td><code>timestamp</code></td><td>Unix epoch in secondi</td><td><code>1738950000</code></td></tr>
+      <tr><td><code>uuid</code></td><td>Identificativo univoco UUID v4</td><td><code>a3f1b2c4-d5e6-4f7a-...</code></td></tr>
+      <tr><td><code>env:NOME_VAR</code></td><td>Valore di <code>process.env.NOME_VAR</code></td><td>(valore della variabile o stringa vuota)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Token di formato</h3>
+  <table>
+    <thead><tr><th>Token</th><th>Descrizione</th><th>Esempio</th></tr></thead>
+    <tbody>
+      <tr><td><code>YYYY</code></td><td>Anno 4 cifre</td><td>2026</td></tr>
+      <tr><td><code>MM</code></td><td>Mese 2 cifre</td><td>02</td></tr>
+      <tr><td><code>DD</code></td><td>Giorno 2 cifre</td><td>07</td></tr>
+      <tr><td><code>HH</code></td><td>Ore 24h</td><td>14</td></tr>
+      <tr><td><code>mm</code></td><td>Minuti</td><td>30</td></tr>
+      <tr><td><code>ss</code></td><td>Secondi</td><td>05</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ESEMPI -->
+  <h2><span class="icon">4.</span> Esempi</h2>
+
+  <h3>Data base</h3>
+  <pre><code><span class="fn">resolveText</span>(<span class="str">'Oggi: [[today]]'</span>)
+<span class="cmt">// => "Oggi: 2026-02-07"</span>
+
+<span class="fn">resolveText</span>(<span class="str">'Ieri: [[yesterday]]  Domani: [[tomorrow]]'</span>)
+<span class="cmt">// => "Ieri: 2026-02-06  Domani: 2026-02-08"</span></code></pre>
+
+  <h3>Formato custom</h3>
+  <pre><code><span class="fn">resolveText</span>(<span class="str">'Scadenza: [[today,DD/MM/YYYY]]'</span>)
+<span class="cmt">// => "Scadenza: 07/02/2026"</span>
+
+<span class="fn">resolveText</span>(<span class="str">'[[now,YYYY-MM-DD HH:mm:ss]]'</span>)
+<span class="cmt">// => "2026-02-07 14:30:00"</span></code></pre>
+
+  <h3>Offset giorni</h3>
+  <pre><code><span class="fn">resolveText</span>(<span class="str">'Tra 30 giorni: [[today+30,DD/MM/YYYY]]'</span>)
+<span class="cmt">// => "Tra 30 giorni: 09/03/2026"</span>
+
+<span class="fn">resolveText</span>(<span class="str">'Una settimana fa: [[today-7]]'</span>)
+<span class="cmt">// => "Una settimana fa: 2026-01-31"</span>
+
+<span class="fn">resolveText</span>(<span class="str">'3 giorni prima di ieri: [[yesterday-3]]'</span>)
+<span class="cmt">// => "3 giorni prima di ieri: 2026-02-03"</span></code></pre>
+
+  <h3>Variabili custom</h3>
+  <pre><code><span class="fn">resolveText</span>(
+  <span class="str">'Report [[symbol]] dal [[today-7]] al [[today]]'</span>,
+  { <span class="str">symbol</span>: <span class="str">'AAPL'</span> }
+)
+<span class="cmt">// => "Report AAPL dal 2026-01-31 al 2026-02-07"</span></code></pre>
+
+  <h3>Data iniettata (per test)</h3>
+  <pre><code><span class="fn">resolveText</span>(
+  <span class="str">'[[today]] [[yesterday]]'</span>,
+  {},
+  { <span class="str">now</span>: <span class="kw">new</span> <span class="fn">Date</span>(<span class="str">'2025-12-25'</span>) }
+)
+<span class="cmt">// => "2025-12-25 2025-12-24"</span></code></pre>
+
+  <h3>lastBusinessDay</h3>
+  <pre><code><span class="fn">resolveText</span>(<span class="str">'Ultimo close: [[lastBusinessDay]]'</span>)
+<span class="cmt">// => "Ultimo close: 2026-02-06"  (se oggi e' sabato/domenica, arretra a venerdi)</span>
+
+<span class="fn">resolveText</span>(<span class="str">'5 sedute fa: [[lastBusinessDay-5,DD/MM/YYYY]]'</span>)
+<span class="cmt">// => "5 sedute fa: 30/01/2026"  (offset in business day, salta weekend)</span></code></pre>
+
+  <h3>timestamp e uuid</h3>
+  <pre><code><span class="fn">resolveText</span>(<span class="str">'Epoch: [[timestamp]]'</span>)
+<span class="cmt">// => "Epoch: 1738950000"</span>
+
+<span class="fn">resolveText</span>(<span class="str">'Job ID: [[uuid]]'</span>)
+<span class="cmt">// => "Job ID: a3f1b2c4-d5e6-4f7a-8b9c-0d1e2f3a4b5c"</span></code></pre>
+
+  <h3>Variabili d'ambiente</h3>
+  <pre><code><span class="fn">resolveText</span>(<span class="str">'Host: [[env:DBMANAGER_URL]]'</span>)
+<span class="cmt">// => "Host: http://dbmanager:3002"</span>
+
+<span class="fn">resolveText</span>(<span class="str">'Env: [[env:NODE_ENV]]'</span>)
+<span class="cmt">// => "Env: production"</span></code></pre>
+
+  <h3>Esempio completo</h3>
+  <pre><code><span class="fn">resolveText</span>(
+  <span class="str">'Job [[uuid]] avviato il [[now,YYYY-MM-DD HH:mm:ss]] - dati dal [[lastBusinessDay-5]] al [[lastBusinessDay]] per [[symbol]]'</span>,
+  { <span class="str">symbol</span>: <span class="str">'MSFT'</span> }
+)
+<span class="cmt">// => "Job a3f1...5c avviato il 2026-02-07 14:30:00 - dati dal 2026-01-31 al 2026-02-06 per MSFT"</span></code></pre>
+
+  <h3>formatDate standalone</h3>
+  <pre><code><span class="fn">formatDate</span>(<span class="kw">new</span> <span class="fn">Date</span>(), <span class="str">'DD/MM/YYYY HH:mm'</span>)
+<span class="cmt">// => "07/02/2026 14:30"</span></code></pre>
+
+  <!-- COMPORTAMENTO -->
+  <h2><span class="icon">5.</span> Comportamento</h2>
+
+  <div class="grid-2">
+    <div class="card">
+      <p><span class="badge badge-green">safe</span></p>
+      <h3>Placeholder non riconosciuti</h3>
+      <p>Restano invariati nel testo. Non viene lanciato nessun errore.</p>
+      <pre><code><span class="fn">resolveText</span>(<span class="str">'[[foo]]'</span>)
+<span class="cmt">// => "[[foo]]"</span></code></pre>
+    </div>
+    <div class="card">
+      <p><span class="badge badge-green">safe</span></p>
+      <h3>Input non stringa</h3>
+      <p>Viene restituito invariato senza errori.</p>
+      <pre><code><span class="fn">resolveText</span>(<span class="num">null</span>)  <span class="cmt">// => null</span>
+<span class="fn">resolveText</span>(<span class="num">42</span>)    <span class="cmt">// => 42</span></code></pre>
+    </div>
+    <div class="card">
+      <p><span class="badge badge-orange">nota</span></p>
+      <h3>Formato vuoto</h3>
+      <p><code>[[today,]]</code> con virgola ma formato vuoto usa il default <code>YYYY-MM-DD</code>.</p>
+    </div>
+    <div class="card">
+      <p><span class="badge badge-purple">offset composti</span></p>
+      <h3>yesterday/tomorrow + offset</h3>
+      <p>Gli offset si sommano all'alias.</p>
+      <pre><code><span class="str">[[yesterday-2]]</span>  <span class="cmt">// today - 3</span>
+<span class="str">[[tomorrow+5]]</span>   <span class="cmt">// today + 6</span></code></pre>
+    </div>
+  </div>
+
+  <!-- QUICK REFERENCE -->
+  <h2><span class="icon">6.</span> Quick reference</h2>
+  <table>
+    <thead><tr><th>Placeholder</th><th>Risultato (ipotizzando oggi = sab 2026-02-07)</th></tr></thead>
+    <tbody>
+      <tr><td><code>[[today]]</code></td><td>2026-02-07</td></tr>
+      <tr><td><code>[[today,DD/MM/YYYY]]</code></td><td>07/02/2026</td></tr>
+      <tr><td><code>[[today+3]]</code></td><td>2026-02-10</td></tr>
+      <tr><td><code>[[today-7,DD-MM-YYYY]]</code></td><td>31-01-2026</td></tr>
+      <tr><td><code>[[yesterday]]</code></td><td>2026-02-06</td></tr>
+      <tr><td><code>[[tomorrow]]</code></td><td>2026-02-08</td></tr>
+      <tr><td><code>[[now]]</code></td><td>2026-02-07T14:30:00.000Z</td></tr>
+      <tr><td><code>[[now,YYYY-MM-DD HH:mm:ss]]</code></td><td>2026-02-07 14:30:00</td></tr>
+      <tr><td><code>[[lastBusinessDay]]</code></td><td>2026-02-06 (venerdi)</td></tr>
+      <tr><td><code>[[lastBusinessDay-3]]</code></td><td>2026-02-03 (3 business day fa)</td></tr>
+      <tr><td><code>[[lastBusinessDay,DD/MM/YYYY]]</code></td><td>06/02/2026</td></tr>
+      <tr><td><code>[[timestamp]]</code></td><td>1738950000</td></tr>
+      <tr><td><code>[[uuid]]</code></td><td>a3f1b2c4-d5e6-4f7a-8b9c-...</td></tr>
+      <tr><td><code>[[env:NODE_ENV]]</code></td><td>production</td></tr>
+    </tbody>
+  </table>
+
+  <footer>
+    shared/textResolver.js &mdash; dipendenza: solo <code>crypto</code> (built-in Node.js), CommonJS
+  </footer>
+
+</div>
+</body>
+</html>

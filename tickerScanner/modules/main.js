@@ -374,7 +374,7 @@ class TickerScanner {
       this.logger.setLevel(level);
       return { level };
     }
-    this.logger.warn("[setLogLevel] Not supported by this logger", { level });
+    this.logger.warning("[setLogLevel] Not supported by this logger | ", { level });
     return { level: process.env.LOG_LEVEL || null };
   }
 

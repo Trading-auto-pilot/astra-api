@@ -1,23 +1,25 @@
-# Base image with Node.js
+# Base image
 FROM node:20
 
-# Set working directory
+# Working directory root
 WORKDIR /app
 
+# (opzionale, ma utile se ti serve curl anche negli altri servizi)
 RUN apt-get update && apt-get install -y curl
 
-# Copia la cartella LiveMarketListener e share dal context (la root del progetto)
+# =========================
+# Codice condiviso + servizio
+# =========================
 COPY alertingService/ ./alertingService/
 COPY shared/ ./shared/
+
+# Usa il package.json del microservizio ma installa in /app/node_modules
 COPY alertingService/package.json .
 
-# Installa le dipendenze
+RUN npm install --omit=dev
 
-RUN npm install
+# Porta esposta (placeholder)
+EXPOSE 3008
 
-
-# Expose application port
-EXPOSE 3000
-
-# Start the service
-CMD [ "node", "alertingService/server.js" ]
+# Start the server
+CMD ["node", "alertingService/server.js"]

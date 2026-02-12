@@ -19,4 +19,5 @@ module.exports = {
   ...require('./auth'),
   ...require('./serviceFlags'),
   ...require('./users'),
+  ...require('./alertingRules'),
 };

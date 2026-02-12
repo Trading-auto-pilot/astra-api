@@ -1,6 +1,6 @@
 {
-  "lastUpdate": "17/01/2026 20:14", 
-  "version": "1.4.4",
+  "lastUpdate": "12/02/2026", 
+  "version": "1.4.5",
   "microservice": "scheduler",
 
   "note": [
@@ -12,6 +12,7 @@
     "v.1.4.0 Fix varie per adattamento esposizione in Frontend",
     "v.1.4.2 Aggiunto info microservice su user agent, Flag isMarketopen per aggiornare solo quando mercato aperto",
     "v.1.4.3 Fix errore visualizzazione Job disabilitati",
-    "v.1.4.4 Fix avvio solo Job abilitati and handling connessione Redis e DBManager"
+    "v.1.4.4 Fix avvio solo Job abilitati and handling connessione Redis e DBManager",
+    "v.1.4.5 Fix Last status, Manual Run, Execution details"
   ]
 }

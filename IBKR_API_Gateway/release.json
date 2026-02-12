@@ -1,9 +1,10 @@
 {
-  "lastUpdate": "01/02/2026", 
-  "version": "1.0.0",
+  "lastUpdate": "12/02/2026", 
+  "version": "1.1.0",
   "microservice": "ibkr-clientgateway",
 
   "note": [
-    "v.1.0.0 ibkr-clientgateway: Initial scaffolding generated from template."
+    "v.1.0.0 ibkr-clientgateway: Initial scaffolding generated from template.",
+    "v.1.1.0 loop check connessione con invio su BUS Redis"
   ]
 }

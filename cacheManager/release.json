@@ -1,6 +1,6 @@
 {
-  "lastUpdate": "26/01/2026", 
-  "version": "2.3.0",
+  "lastUpdate": "12/02/2026", 
+  "version": "2.4.0",
   "microservice": "cacheManager",
 
   "note": [
@@ -9,6 +9,7 @@
     "2.1.0 Supporto a multiple TAB in frontend. Cache L2 e L3",
     "2.1.1 Aggiunto info microservizio in user-agent",
     "2.2.0 Aggiunta del provider IBKR per dati storici",
-    "2.3.0 Lettura contenuto file in cache L2, Hygiene sui file"
+    "2.3.0 Lettura contenuto file in cache L2, Hygiene sui file",
+    "2.4.0 Refactoring completo fatto con Claud.ai, taglio su sole candele richieste"
   ]
 }

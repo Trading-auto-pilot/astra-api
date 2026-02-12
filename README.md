@@ -21,6 +21,18 @@ docker-compose up --build
 
 Questo comando costruirà e avvierà tutti i servizi definiti nel file `docker-compose.yml`.
 
+## 🔐 Internal Auth (service-to-service)
+
+Per le chiamate interne firmate JWT (EdDSA/Ed25519):
+
+- **Scheduler**:
+  - `INTERNAL_JWT_PRIVATE_KEY` (PEM, PKCS8)
+  - `INTERNAL_JWT_PUBLIC_KEY` (PEM, SPKI) — opzionale lato scheduler
+- **TickerScanner**:
+  - `INTERNAL_JWT_PUBLIC_KEY` (PEM, SPKI)
+
+Endpoint interno: `POST /internal/fundamentals/user-daily-scores` con header `X-Internal-Token`.
+
 ## 🐳 docker-compose.yml
 
 Il file `docker-compose.yml` definisce i servizi, le loro dipendenze e le configurazioni necessarie per l'orchestrazione dell'intero sistema. Ecco una panoramica dei servizi definiti:

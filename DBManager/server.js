@@ -13,7 +13,7 @@ const MODULE_VERSION = '2.0';
     autoModule: true, // opzionale: rileva automaticamente il modulo chiamante
   });
 
-  const bus = new RedisBus({ env: process.env.APP_ENV || 'dev', name: 'api-cache', logger });
+  const bus = new RedisBus({ env: process.env.ENV || process.env.APP_ENV || 'DEV', name: 'api-cache', logger });
   await bus.connect();
   const app = await createApp({ bus, logger });
 

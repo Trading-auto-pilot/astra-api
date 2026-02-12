@@ -117,6 +117,23 @@ function requireReady(req, res, next) {
 app.get("/release", async (req, res) => {
   try {
     const data = await serviceInstance.getReleaseInfo();
+    // Normalize jsonDetails -> json_details for frontend compatibility
+    const addJsonDetails = (row) => {
+      if (!row || typeof row !== "object") return row;
+      if (row.json_details === undefined && row.jsonDetails !== undefined) {
+        return { ...row, json_details: row.jsonDetails };
+      }
+      return row;
+    };
+    if (Array.isArray(data)) {
+      return res.json(data.map(addJsonDetails));
+    }
+    if (Array.isArray(data?.items)) {
+      return res.json({ ...data, items: data.items.map(addJsonDetails) });
+    }
+    if (Array.isArray(data?.logs)) {
+      return res.json({ ...data, logs: data.logs.map(addJsonDetails) });
+    }
     return res.json(data);
   } catch (err) {
     logger.error("[GET /release] Errore:", err.message);

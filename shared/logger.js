@@ -39,10 +39,39 @@ let logQueue = [];
 setInterval(async () => {
   if (!enableDbLog || logQueue.length === 0) return;
 
-  const batch = logQueue;
+  let batch = logQueue;
   logQueue = [];
 
   try {
+    // Evita payload troppo grandi: tronca il batch se supera 50MB
+    const maxBytesRaw = Number(process.env.LOG_BATCH_MAX_BYTES);
+    const maxBytes =
+      Number.isFinite(maxBytesRaw) && maxBytesRaw > 0
+        ? Math.floor(maxBytesRaw)
+        : 50 * 1024 * 1024;
+    const payloadSize = Buffer.byteLength(JSON.stringify(batch));
+    if (payloadSize > maxBytes) {
+      let left = 0;
+      let right = batch.length;
+      let best = 0;
+      // binary search su numero di elementi
+      while (left <= right) {
+        const mid = Math.floor((left + right) / 2);
+        const size = Buffer.byteLength(JSON.stringify(batch.slice(0, mid)));
+        if (size <= maxBytes) {
+          best = mid;
+          left = mid + 1;
+        } else {
+          right = mid - 1;
+        }
+      }
+      if (best < batch.length) {
+        const dropped = batch.length - best;
+        batch = batch.slice(0, best);
+        console.warn(`[logger] Batch too large (${payloadSize} bytes). Dropping ${dropped} logs to fit ${maxBytes} bytes`);
+      }
+    }
+
     await axios.post(`${dbManagerUrl}/logs`, batch, {
       headers: {
         "User-Agent": `${process.env.MICROSERVICE_NAME || "service"}/${serviceRelease || "unknown"}`,
@@ -164,29 +193,59 @@ function createLogger(
       else console.log(output);
     }
 
-    // 2) Parsing funzione e JSON in coda (pipe '|')
+    // 2) Parsing funzione e JSON
     const funcMatch = fullMessage.match(/^\s*\[([^\]]+)\]\s*/);
     const functionName = funcMatch ? funcMatch[1] : null;
     let message = fullMessage.replace(/^\[[^\]]+\]\s*/, '');
 
     let jsonDetails = null;
+
+    // 2a) Prova pipe-separated JSON: "testo | {json}"
     const pipeIndex = message.lastIndexOf('|');
     if (pipeIndex !== -1) {
       const maybeJson = message.slice(pipeIndex + 1).trim();
-      message = message.slice(0, pipeIndex).trim();
       try {
         jsonDetails = JSON.parse(maybeJson);
-      } catch (_) { /* ignore */ }
+        message = message.slice(0, pipeIndex).trim();
+      } catch (_) { /* pipe trovato ma non è JSON valido, continua */ }
+    }
+
+    // 2b) Fallback: JSON embedded nel messaggio (es. "testo {json}" o "testo [{json}]")
+    if (jsonDetails === null) {
+      const trimmed = message.trimEnd();
+      const endCh = trimmed[trimmed.length - 1];
+      if (endCh === '}' || endCh === ']') {
+        const startCh = endCh === '}' ? '{' : '[';
+        let idx = trimmed.lastIndexOf(startCh);
+        let attempts = 0;
+        while (idx >= 0 && attempts < 5) {
+          try {
+            const candidate = trimmed.slice(idx);
+            jsonDetails = JSON.parse(candidate);
+            message = trimmed.slice(0, idx).trim();
+            break;
+          } catch (_) {
+            idx = trimmed.lastIndexOf(startCh, idx - 1);
+            attempts++;
+          }
+        }
+      }
     }
 
     // 3) Enqueue verso DB (se abilitato)
+    //    jsonDetails va stringificato per evitare che mysql2 riceva un Object
+    //    (causerebbe il fallimento dell'intero batch INSERT)
     if (enqueueDb) {
+      let jsonDetailsStr = null;
+      if (jsonDetails !== null && jsonDetails !== undefined) {
+        jsonDetailsStr = typeof jsonDetails === 'string' ? jsonDetails : JSON.stringify(jsonDetails);
+      }
       logQueue.push({
         timestamp,
         level: levelKey,
         functionName,
         message,
-        jsonDetails,
+        jsonDetails: jsonDetailsStr,
         microservice,
         moduleName: _moduleName,
         moduleVersion

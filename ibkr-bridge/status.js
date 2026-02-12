@@ -162,5 +162,46 @@ module.exports = function buildStatusRouter({ service, logger, moduleName }) {
     }
   });
 
+  // ---------- Log level ----------
+  router.get("/logLevel", (_req, res) => {
+    const current =
+      service && typeof service.getLogLevel === "function"
+        ? service.getLogLevel()
+        : null;
+    res.status(200).json({ decisionEngine: current });
+  });
+
+  router.put("/logLevel", (req, res) => {
+    const { logLevel } = req.body || {};
+    const hasLogLevel = Boolean(logLevel);
+    const hasService = Boolean(service);
+    const hasSetter = Boolean(service && typeof service.setLogLevel === "function");
+    if (!hasLogLevel || !hasService || !hasSetter) {
+      logger.warning?.(
+        `[${moduleName}] [PUT] /logLevel invalid ` +
+          `logLevel=${hasLogLevel} service=${hasService} setter=${hasSetter}`
+      );
+      logger.warning?.(
+        `[${moduleName}] [PUT] /logLevel missing logLevel or setter not available`
+      );
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error: "Missing logLevel or setter not available",
+          details: { logLevel: hasLogLevel, service: hasService, setter: hasSetter },
+        });
+    }
+    service.setLogLevel(logLevel);
+    const current =
+      service && typeof service.getLogLevel === "function"
+        ? service.getLogLevel()
+        : logLevel;
+    logger.info?.(
+      `[${moduleName}] [PUT] /logLevel updated to ${current}`
+    );
+    res.status(200).json({ success: true, decisionEngine: current });
+  });
+
   return router;
 };

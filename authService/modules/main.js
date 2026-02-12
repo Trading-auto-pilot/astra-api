@@ -311,7 +311,7 @@ class Auth {
     if (typeof this.logger.setDbLogStatus === "function") {
       return this.logger.setDbLogStatus(status);
     }
-    this.logger.warn("[setDbLogStatus] Not supported by this logger", { status });
+    this.logger.warning("[setDbLogStatus] Not supported by this logger | ", { status });
     return { dbLogEnabled: false };
   }
 

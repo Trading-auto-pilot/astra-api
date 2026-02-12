@@ -2,6 +2,8 @@
 
 const cron = require("node-cron");
 const axios = require("axios");
+const { resolveText } = require("../../shared/textResolver");
+const { signInternalToken } = require("../../shared/internalAuth");
 
 // Mapping giorno-settimana → formati cron
 const DOW_MAP = {
@@ -21,13 +23,69 @@ class SchedulerEngine {
    * @param {string} opts.defaultTimezone
    * @param {string} opts.dbmanagerUrl
    * @param {function} [opts.getSetting]
+   * @param {object}   [opts.bus]   - istanza RedisBus per hook asincroni
+   * @param {string}   [opts.env]   - ambiente (DEV, PROD, ...)
    */
-  constructor({ logger, defaultTimezone = "UTC", dbmanagerUrl, getSetting } = {}) {
+  constructor({ logger, defaultTimezone = "UTC", dbmanagerUrl, getSetting, bus, env } = {}) {
     this.logger = logger || console;
     this.defaultTimezone = defaultTimezone;
     this.dbmanagerUrl = dbmanagerUrl;
     this.getSetting = getSetting;
+    this.bus = bus || null;
+    this.env = env || process.env.ENV || "DEV";
     this.tasks = [];
+
+    // Map<jobId, { job, startedAt, timeout }> per job asincroni in attesa di hook
+    this.pendingAsyncJobs = new Map();
+    this._hookSubscribed = false;
+  }
+
+  /**
+   * Sottoscrive il pattern <ENV>.*.status.HOOK per ricevere
+   * notifiche di completamento dai task asincroni.
+   */
+  async subscribeToHooks() {
+    if (!this.bus || this._hookSubscribed) return;
+    const pattern = `${this.env}.*.status.HOOK`;
+    try {
+      await this.bus.psubscribe(pattern, (parsed) => {
+        this._handleHookMessage(parsed);
+      });
+      this._hookSubscribed = true;
+      this.logger.info(`[subscribeToHooks] Sottoscritto a pattern=${pattern}`);
+    } catch (err) {
+      this.logger.error(`[subscribeToHooks] Errore subscribe ${pattern}: ${err?.message || err}`);
+    }
+  }
+
+  /**
+   * Gestisce un messaggio hook ricevuto da un task asincrono.
+   */
+  _handleHookMessage(parsed) {
+    if (!parsed || parsed.type !== "job.done") return;
+    const { jobId, status } = parsed;
+    if (!jobId) return;
+
+    const pending = this.pendingAsyncJobs.get(String(jobId));
+    if (!pending) return; // non lanciato dallo scheduler, ignora
+
+    // Cancella il timeout di sicurezza
+    if (pending.timeout) clearTimeout(pending.timeout);
+    this.pendingAsyncJobs.delete(String(jobId));
+
+    const norm = (status || "COMPLETED").toLowerCase();
+    const finalStatus = norm === "failed" ? "error"
+      : norm === "cancelled" ? "skipped"
+      : "completed";
+
+    this.logger.info(
+      `[_handleHookMessage] job=${pending.job.jobKey} jobId=${jobId} status=${status} finalStatus=${finalStatus}`
+    );
+
+    this._updateLastRun(pending.job, finalStatus, {
+      summary: parsed.summary,
+      error: parsed.error,
+    });
   }
 
   _logInfo(fn, msg, extra) {
@@ -181,26 +239,126 @@ class SchedulerEngine {
       }
     }
 
+    // Risolvi placeholder [[today]], [[yesterday]], ecc. a runtime
+    const resolvedUrl = resolveText(url || "");
+    const resolvedHeaders = headers
+      ? JSON.parse(resolveText(JSON.stringify(headers)))
+      : {};
+    // Inject jobKey header for downstream services if not already provided
+    if (job?.jobKey && !("x-job-key" in resolvedHeaders) && !("X-Job-Key" in resolvedHeaders)) {
+      resolvedHeaders["x-job-key"] = job.jobKey;
+    }
+    const resolvedBody = body
+      ? JSON.parse(resolveText(JSON.stringify(body)))
+      : undefined;
+
     try {
-        this.logger.info(
-        `[_runJob] job=${job.jobKey} attempt=${attempt} → ${method} ${url}`
-        );
+      let isInternal = false;
+      try {
+        const parsed = new URL(resolvedUrl);
+        isInternal = parsed.pathname.startsWith("/internal/");
+      } catch {
+        isInternal = String(resolvedUrl || "").includes("/internal/");
+      }
+
+      if (isInternal) {
+        try {
+          this.logger.info(
+            `[_runJob] job=${job?.jobKey} internal endpoint detected, signing token`
+          );
+          let internalScope = "internal:generic";
+          let internalAud = "internal";
+          try {
+            const parsed = new URL(resolvedUrl);
+            const path = parsed.pathname || "";
+            if (path.startsWith("/internal/fundamentals/user-daily-scores")) {
+              internalScope = "fundamentals:update-user-daily-scores";
+              internalAud = "tickerscanner";
+            } else if (path.startsWith("/internal/spot-finder/")) {
+              internalScope = "decision-engine:spot-finder";
+              internalAud = "decision-engine";
+            }
+          } catch {}
+          const token = await signInternalToken(
+            { scp: internalScope, svc: "scheduler", jobKey: job?.jobKey },
+            {
+              issuer: "astraai-internal",
+              audience: internalAud,
+              ttlSeconds: 60,
+              privateKey: process.env.INTERNAL_JWT_PRIVATE_KEY,
+            }
+          );
+          resolvedHeaders["x-internal-token"] = token;
+        } catch (err) {
+          this.logger.error(
+            `[_runJob] job=${job?.jobKey} internal token error: ${err?.message || err}`
+          );
+        }
+      }
+      const safeHeaders = { ...(resolvedHeaders || {}) };
+      if (safeHeaders["x-internal-token"]) safeHeaders["x-internal-token"] = "***";
+      if (safeHeaders["X-Internal-Token"]) safeHeaders["X-Internal-Token"] = "***";
+      this.logger.trace?.(
+        `[_runJob] job=${job.jobKey} attempt=${attempt} → ${method} ${resolvedUrl} | ${JSON.stringify({
+          headers: safeHeaders,
+          body: resolvedBody ?? null,
+        })}`
+      );
 
       const resp = await axios({
         method: (method || "GET").toUpperCase(),
-        url,
+        url: resolvedUrl,
         timeout: timeoutMs || 15000,
-        headers: headers || {},
-        data: body || undefined
+        headers: resolvedHeaders,
+        data: resolvedBody
       });
 
+      const data = resp.data || {};
+
+      // Task asincrono: registra in pendingAsyncJobs e attendi hook via Redis
+      if (data.type === "async") {
+        const asyncJobId = String(data.jobId || "");
+        if (!asyncJobId) {
+          this.logger.warning(
+            `[_runJob] job=${job.jobKey} type=async ma manca jobId nella risposta`
+          );
+          await this._updateLastRun(job, "error");
+          return;
+        }
+
+        const asyncTimeoutMs = job.asyncTimeoutMs || 10 * 60 * 1000; // 10 min default
+        const timeout = setTimeout(() => {
+          if (this.pendingAsyncJobs.has(asyncJobId)) {
+            this.pendingAsyncJobs.delete(asyncJobId);
+            this.logger.warning(
+              `[_runJob] job=${job.jobKey} jobId=${asyncJobId} async timeout dopo ${asyncTimeoutMs}ms`
+            );
+            this._updateLastRun(job, "error");
+          }
+        }, asyncTimeoutMs);
+
+        this.pendingAsyncJobs.set(asyncJobId, { job, startedAt: new Date(), timeout });
         this.logger.info(
-        `[_runJob] job=${job.jobKey} completato, status=${resp.status}`
+          `[_runJob] job=${job.jobKey} jobId=${asyncJobId} type=async, in attesa di hook`
         );
-      await this._updateLastRun(job, "success");
+        await this._updateLastRun(job, "started");
+        return;
+      }
+
+      // Task sincrono: completamento immediato
+      this.logger.info(
+        `[_runJob] job=${job.jobKey} completato, status=${resp.status}`
+      );
+      await this._updateLastRun(job, "completed");
     } catch (err) {
+      const errData = err?.response?.data;
+      const errStatus = err?.response?.status;
+      const errInfo = {
+        status: errStatus,
+        data: errData ?? null,
+      };
         this.logger.error(
-        `[_runJob] job=${job.jobKey} errore attempt=${attempt}: ${err.message || err}`
+        `[_runJob] job=${job.jobKey} errore attempt=${attempt}: ${err.message || err} | ${JSON.stringify(errInfo)}`
         );
       await this._updateLastRun(job, "error");
 
@@ -210,9 +368,7 @@ class SchedulerEngine {
     }
   }
 
-  async _updateLastRun(job, status) {
-    if (!this.dbmanagerUrl || !job?.id) return;
-
+  async _updateLastRun(job, status, extra = {}) {
     const now = new Date();
     const date = [
       now.getFullYear(),
@@ -224,15 +380,37 @@ class SchedulerEngine {
       String(now.getMinutes()).padStart(2, "0"),
       String(now.getSeconds()).padStart(2, "0"),
     ].join(":");
+    const lastRunAt = `${date} ${time}`;
 
+    // Salva in Redis KV (senza TTL) per lettura dal frontend
+    if (this.bus && job?.jobKey) {
+      const redisKey = this.bus.key("scheduler", "lastrun", job.jobKey);
+      const data = {
+        jobKey: job.jobKey,
+        status,
+        last_run_at: lastRunAt,
+        ...(extra.summary ? { summary: extra.summary } : {}),
+        ...(extra.error ? { error: extra.error } : {}),
+      };
+      try {
+        await this.bus.set(redisKey, data);
+      } catch (err) {
+        this.logger.warning(
+          `[_updateLastRun] Redis SET failed key=${redisKey}: ${err?.message || err}`
+        );
+      }
+    }
+
+    // Aggiorna su DB via dbManager
+    if (!this.dbmanagerUrl || !job?.id) return;
     try {
       await axios.put(
         `${this.dbmanagerUrl}/scheduler/jobs/${job.id}/last-run`,
-        { last_run_at: `${date} ${time}`, last_status: status },
+        { last_run_at: lastRunAt, last_status: status },
         { timeout: 8000 }
       );
     } catch (err) {
-      this.logger.warn(
+      this.logger.warning(
         `[_updateLastRun] job=${job.jobKey} update failed: ${err.message || err}`
       );
     }

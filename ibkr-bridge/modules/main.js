@@ -5,7 +5,13 @@ const path = require("path");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 const fs = require("fs/promises");
 const createLogger = require("../../shared/logger");
-const { initializeSettings, getSetting, reloadSettings } = require("../../shared/loadSettings");
+const {
+  initializeSettings,
+  getSetting,
+  getAllSettings,
+  reloadSettings,
+  setSetting,
+} = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
 const { asBool, asInt } = require("../../shared/helpers");
 const IbkrConnectivity = require("./connectivity");
@@ -103,6 +109,10 @@ class IbkrBridge {
     this.connectivity = new IbkrConnectivity({
       logger: this.logger,
       getSetting,
+      publishTelemetry: async (payload) =>
+        this.bus.publish(this.redisTelemetyChannel, payload),
+      getEnv: () => this.env,
+      getStatus: () => this._status,
     });
   }
 
@@ -163,9 +173,8 @@ class IbkrBridge {
   // Hook custom per ogni microservizio (override)
   // =========================================================
   async afterInit() {
-    this.logger.info(
-      "[afterInit] IBKR keepalive loop moved to ibkr-keepalive; skipping connectivity start."
-    );
+    this.logger.info("[afterInit] Starting connectivity loop.");
+    this.connectivity.start();
   }
 
 
@@ -360,8 +369,37 @@ class IbkrBridge {
     if (typeof this.logger.setDbLogStatus === "function") {
       return this.logger.setDbLogStatus(status);
     }
-    this.logger.warn("[setDbLogStatus] Not supported by this logger", { status });
+    this.logger.warning("[setDbLogStatus] Not supported by this logger", { status });
     return { dbLogEnabled: false };
+  }
+
+  // =========================================================
+  // Settings passthrough (usata da /settings nel server.js)
+  // =========================================================
+  getAllSettings() {
+    return getAllSettings();
+  }
+
+  setSetting(key, value) {
+    return setSetting(key, value);
+  }
+
+  // =========================================================
+  // Log level helpers (usata da /status/logLevel)
+  // =========================================================
+  getLogLevel() {
+    if (typeof this.logger.getLogLevel === "function") {
+      return this.logger.getLogLevel();
+    }
+    return process.env.LOG_LEVEL || "info";
+  }
+
+  setLogLevel(level) {
+    if (typeof this.logger.setLogLevel === "function") {
+      this.logger.setLogLevel(level);
+      return;
+    }
+    this.logger.warning("[setLogLevel] Not supported by this logger", { level });
   }
 
   // Accesso diretto

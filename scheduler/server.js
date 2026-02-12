@@ -413,6 +413,31 @@ app.put("/jobs/:id", async (req, res) => {
   }
 });
 
+// Aggiorna last_run / last_status (pass-through verso dbManager)
+app.put("/jobs/:id/last-run", async (req, res) => {
+  try {
+    const core = serviceInstance.getSchedulerCore();
+    if (!core) {
+      return res.status(500).json({ ok: false, error: "SchedulerCore non inizializzato" });
+    }
+
+    const { id } = req.params;
+    const url = `${serviceInstance.dbmanagerUrl}/scheduler/jobs/${id}/last-run`;
+    const resp = await axios.put(url, req.body, { timeout: 15000 });
+
+    await core.reloadJobs();
+
+    return res.json(resp.data);
+  } catch (e) {
+    serviceInstance.getLogger().error("[PUT /scheduler/jobs/:id/last-run] errore", e.message || e);
+    return res.status(500).json({
+      ok: false,
+      error: e.message || String(e),
+      module: "[PUT /scheduler/jobs/:id/last-run]"
+    });
+  }
+});
+
 // Cancella un job nello scheduler (pass-through verso dbManager)
 app.delete("/job/:id", async (req, res) => {
   try {
@@ -437,6 +462,57 @@ app.delete("/job/:id", async (req, res) => {
     });
   }
 });
+
+// Leggi ultima esecuzione di un job da Redis KV
+app.get("/jobs/:jobKey/last-run", async (req, res) => {
+  try {
+    const bus = serviceInstance.getBus();
+    if (!bus) {
+      return res.status(500).json({ ok: false, error: "Bus non disponibile" });
+    }
+    const redisKey = bus.key("scheduler", "lastrun", req.params.jobKey);
+    const data = await bus.get(redisKey);
+    if (!data) {
+      return res.status(404).json({ ok: false, error: "Nessun dato trovato" });
+    }
+    return res.json({ ok: true, data });
+  } catch (e) {
+    serviceInstance.getLogger().error("[GET /jobs/:jobKey/last-run] errore", e.message || e);
+    return res.status(500).json({ ok: false, error: e.message || String(e) });
+  }
+});
+
+// Esecuzione manuale di un job per jobKey
+app.post("/jobs/:jobKey/run", async (req, res) => {
+  try {
+    const core = serviceInstance.getSchedulerCore();
+    if (!core) {
+      return res.status(500).json({ ok: false, error: "SchedulerCore non inizializzato" });
+    }
+
+    const { jobKey } = req.params;
+    const overrides = {};
+    if (req.body?.headers && typeof req.body.headers === "object") {
+      overrides.headers = req.body.headers;
+    }
+    if (req.body?.body !== undefined && req.body?.body !== null) {
+      overrides.body = req.body.body;
+    }
+    const result = await core.runJobByKey(jobKey, overrides);
+    if (!result.ok) {
+      return res.status(404).json(result);
+    }
+    return res.json(result);
+  } catch (e) {
+    serviceInstance.getLogger().error("[POST /jobs/:jobKey/run] errore", e.message || e);
+    return res.status(500).json({
+      ok: false,
+      error: e.message || String(e),
+      module: "[POST /jobs/:jobKey/run]"
+    });
+  }
+});
+
 /* --------------------------- ROUTES: STATUS ---------------------------- */
 /**
  * Router generico /status/*

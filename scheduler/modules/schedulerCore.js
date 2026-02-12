@@ -19,6 +19,8 @@ class SchedulerCore {
       defaultTimezone: this.defaultTimezone,
       dbmanagerUrl: this.dbmanagerUrl,
       getSetting: this.main.getSetting || null,
+      bus: this.main.bus || null,
+      env: this.main.env || process.env.ENV || "DEV",
     });
 
     this.jobsCache = [];
@@ -26,6 +28,7 @@ class SchedulerCore {
 
   async init() {
     this.logger.info("[SchedulerCore.init] Avvio scheduler...");
+    await this.engine.subscribeToHooks();
     await this.reloadJobs();
   }
 
@@ -65,6 +68,28 @@ class SchedulerCore {
 
   getJobsSnapshot() {
     return this.jobsCache;
+  }
+
+  /**
+   * Esegue manualmente un job cercandolo per jobKey nella cache.
+   * @param {string} jobKey
+   * @param {object} [overrides] - override opzionali { headers, body }
+   * @returns {{ ok: boolean, jobKey: string, message?: string, error?: string }}
+   */
+  async runJobByKey(jobKey, overrides = {}) {
+    const job = this.jobsCache.find(
+      (j) => j.jobKey === jobKey || j.job_key === jobKey
+    );
+    if (!job) {
+      return { ok: false, jobKey, error: `Job "${jobKey}" non trovato nella cache` };
+    }
+    // Merge overrides nel job (senza mutare l'originale)
+    const runJob = (overrides.headers || overrides.body !== undefined)
+      ? { ...job, ...overrides }
+      : job;
+    this.logger.info(`[SchedulerCore.runJobByKey] Lancio manuale job=${jobKey}`);
+    setImmediate(() => this.engine._runJob(runJob));
+    return { ok: true, jobKey, message: `Job "${jobKey}" avviato manualmente` };
   }
 
   stop() {

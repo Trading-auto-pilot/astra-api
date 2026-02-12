@@ -1,10 +1,11 @@
 {
-  "lastUpdate": "01/02/2026", 
-  "version": "1.0.1",
+  "lastUpdate": "12/02/2026", 
+  "version": "1.1.0",
   "microservice": "decision-engine",
 
   "note": [
     "v.1.0.0 decision-engine: Initial scaffolding generated from template.",
-    "v.1.0.1 Fix API setLogLevel"
+    "v.1.0.1 Fix API setLogLevel",
+    "v.1.1.0 Fix generl settings, Call API asincrone"
   ]
 }

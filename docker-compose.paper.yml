@@ -1,4 +1,4 @@
-name: "${ENV_NAME}"
+name: "${ENV}"
 
 services:
 
@@ -152,8 +152,7 @@ services:
     depends_on:
       - ibkrgw-paper
     environment:
-      - IBKRGW_BASE_URL=http://localhost:5000
-      - IBKRGW_SSO_URL=http://localhost:5000/sso/Dispatcher?hardware_info=eyJpZCI6IjNjYzU0NWJmIiwibWFjIjoiMTY6RUY6QUY6NkQ6QzY6OUEifQ%3D%3D
+      - IBKR_BASE_URL=http://localhost:5000
       - CORS_ORIGIN=${CORS_ORIGIN}
       - KEEPALIVE_INTERVAL_MS=45000
       - REQUEST_TIMEOUT_MS=5000
@@ -183,6 +182,9 @@ services:
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - REDIS_URL=redis://redis:6379
       - TZ=Asia/Dubai
     depends_on:
@@ -201,6 +203,24 @@ services:
       retries: 5
     networks:
       - trading_net
+    labels:
+      - "traefik.enable=true"
+      # Router: https://api.trading.expovin.it/dbmanager/...
+      - "traefik.http.routers.dbmanager.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/dbmanager`)"
+      - "traefik.http.routers.dbmanager.entrypoints=websecure"
+      - "traefik.http.routers.dbmanager.tls.certresolver=le"
+      # Service: porta interna del container
+      - "traefik.http.services.dbmanager.loadbalancer.server.port=3002"
+      - "traefik.http.middlewares.dbmanager-stripprefix.stripPrefix.prefixes=/dbmanager"
+      # 🔐 protetto via forwardAuth → /auth/validate
+      - "traefik.http.routers.dbmanager.middlewares=dbmanager-stripprefix,cors-default@docker,auth-forward@docker"
+      # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
+      - "traefik.http.routers.dbmanager-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/dbmanager`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.dbmanager-preflight.entrypoints=websecure"
+      - "traefik.http.routers.dbmanager-preflight.tls.certresolver=le"
+      - "traefik.http.routers.dbmanager-preflight.priority=10000"
+      - "traefik.http.routers.dbmanager-preflight.service=dbmanager"
+      - "traefik.http.routers.dbmanager-preflight.middlewares=dbmanager-stripprefix,cors-default@docker"
 
   # ======================
   # MICROSERVIZI ABILITABILI (via profiles)
@@ -212,6 +232,9 @@ services:
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - REDIS_URL=redis://redis:6379
       - APCA_API_KEY_ID=${APCA_API_KEY_ID}
       - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
@@ -257,6 +280,9 @@ services:
       - CACHEMANAGER_URL=http://cachemanager:3006
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - TZ=Asia/Dubai
     depends_on:
@@ -292,12 +318,15 @@ services:
       - "traefik.http.routers.decision-engine-preflight.middlewares=decision-engine-stripprefix,cors-default@docker"
 
   market-data-service:
-    image: expovin/market-data-service:${MARKET_DATA-SERVICE_VERSION}
+    image: expovin/market-data-service:${MARKETDATASERVICE_VERSION}
     restart: unless-stopped
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - IBKRGW_BASE_URL=${IBKRGW_URL}
       - IBKR_INSECURE_TLS=${IBKR_INSECURE_TLS}
@@ -341,6 +370,9 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - REDIS_PATTERNS=${REDIS_PATTERNS}
       - TZ=Asia/Dubai
@@ -381,7 +413,10 @@ services:
       - DBMANAGER_URL=http://dbmanager:3002
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
-      - IBKRGW_BASE_URL=${IBKRGW_URL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - IBKRGW_BASE_URL=${IBKRGW_BASE_URL}
       - IBKR_INSECURE_TLS=${IBKR_INSECURE_TLS}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - TICKLE_INTERVAL_MS=${TICKLE_INTERVAL_MS}
@@ -419,15 +454,6 @@ services:
       - "traefik.http.routers.ibkr-bridge-preflight.service=ibkr-bridge"
       - "traefik.http.routers.ibkr-bridge-preflight.middlewares=ibkr-bridge-stripprefix,cors-default@docker"
 
-  capitalmanager:
-    image: expovin/capitalmanager:${CAPITALMANAGER_VERSION}
-    restart: unless-stopped
-    depends_on:
-      - dbmanager
-    networks:
-      - trading_net
-    profiles: ["capitalmanager"]
-
   alertingservice:
     image: expovin/alertingservice:${ALERTINGSERVICE_VERSION}
     restart: unless-stopped
@@ -436,69 +462,20 @@ services:
     networks:
       - trading_net
     profiles: ["alertingservice"]
-
-  livemarketlistener:
-    image: expovin/livemarketlistener:${LIVEMARKETLISTENER_VERSION}
-    restart: unless-stopped
-    depends_on:
-      - dbmanager
-    networks:
-      - trading_net
-    profiles: ["livemarketlistener"]
-
-  orderlistner:
-    image: expovin/orderlistner:${ORDERLISTNER_VERSION}
-    restart: unless-stopped
-    depends_on:
-      - dbmanager
-    networks:
-      - trading_net
-    profiles: ["orderlistner"]
-
-  ordersimulator:
-    image: expovin/ordersimulator:${ORDERSIMULATOR_VERSION}
-    restart: unless-stopped
-    depends_on:
-      - dbmanager
-    networks:
-      - trading_net
-    profiles: ["simulator"]
-
-  marketsimulator:
-    image: expovin/marketsimulator:${MARKETSIMULATOR_VERSION}
-    restart: unless-stopped
-    depends_on:
-      - dbmanager
-    networks:
-      - trading_net
-    profiles: ["simulator"]
-
-  strategyutils:
-    image: expovin/strategyutils:${STRATEGYUTILS_VERSION}
-    restart: unless-stopped
-    depends_on:
-      - dbmanager
-    networks:
-      - trading_net
-    profiles: ["strategyutils"]
-
-  sma:
-    image: expovin/sma:${SMA_VERSION}
-    restart: unless-stopped
-    depends_on:
-      - dbmanager
-    networks:
-      - trading_net
-    profiles: ["sma"]
-
-  sltp:
-    image: expovin/sltp:${SLTP_VERSION}
-    restart: unless-stopped
-    depends_on:
-      - dbmanager
-    networks:
-      - trading_net
-    profiles: ["sltp"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.alertingservice.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/alertingservice`)"
+      - "traefik.http.routers.alertingservice.entrypoints=websecure"
+      - "traefik.http.routers.alertingservice.tls.certresolver=le"
+      - "traefik.http.services.alertingservice.loadbalancer.server.port=3008"
+      - "traefik.http.middlewares.alertingservice-stripprefix.stripPrefix.prefixes=/alertingservice"
+      - "traefik.http.routers.alertingservice.middlewares=alertingservice-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.alertingservice-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/alertingservice`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.alertingservice-preflight.entrypoints=websecure"
+      - "traefik.http.routers.alertingservice-preflight.tls.certresolver=le"
+      - "traefik.http.routers.alertingservice-preflight.priority=10000"
+      - "traefik.http.routers.alertingservice-preflight.service=alertingservice"
+      - "traefik.http.routers.alertingservice-preflight.middlewares=alertingservice-stripprefix,cors-default@docker"
 
   scheduler:
     image: expovin/scheduler:${SCHEDULER_VERSION}
@@ -515,6 +492,9 @@ services:
       - ALERTINGSERVICE_URL=http://alertingservice:3008
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - TZ=Asia/Dubai
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -547,6 +527,9 @@ services:
       - ALERTINGSERVICE_URL=http://alertingservice:3008
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - FMP_API_KEY=${FMP_API_KEY}
       - TZ=Asia/Dubai
     depends_on:
@@ -580,6 +563,9 @@ services:
     profiles: ["servicecontrolplane"]
     environment:
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - MYSQL_HOST=mysql
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
@@ -587,16 +573,8 @@ services:
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - REDIS_URL=redis://redis:6379
       - DBMANAGER_URL=http://dbmanager:3002
-      - MARKETSIMULATOR_URL=http://marketsimulator:3003
-      - ORDERSIMULATOR_URL=http://ordersimulator:3004
-      - ORDERLISTNER_URL=http://orderlistner:3005
       - CACHEMANAGER_URL=http://cachemanager:3006
-      - STRATEGYUTILS_URL=http://strategyUtils:3007
       - ALERTINGSERVICE_URL=http://alertingservice:3008
-      - CAPITALMANAGER_URL=http://capitalmanager:3009
-      - SMA_URL=http://sma:3010
-      - SLTP_URL=http://sltp:3011
-      - LIVEMARKETLISTNER_URL=http://livemarketlistner:3012
       - TICKERSCANNER_URL=http://tickerscanner:3013
       - SCHEDULER_URL=http://scheduler:3014
       - AUTHSERVICE_URL=http://authService:3015
@@ -642,6 +620,9 @@ services:
     restart: unless-stopped
     environment:
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - DBMANAGER_URL=http://dbmanager:3002
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}

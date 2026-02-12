@@ -7,7 +7,13 @@ const fs = require("fs/promises");
 const axios = require("axios");
 const https = require("https");
 const createLogger = require("../../shared/logger");
-const { initializeSettings, getSetting, reloadSettings } = require("../../shared/loadSettings");
+const {
+  initializeSettings,
+  getSetting,
+  reloadSettings,
+  getAllSettings,
+  setSetting,
+} = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
 const { asBool, asInt } = require("../../shared/helpers");
 
@@ -199,6 +205,37 @@ class IbkrKeepalive {
     return { baseUrl, ssoDispatcherUrl, insecureTls, tickleIntervalMs, authCheckIntervalMs };
   }
 
+  // =========================================================
+  // Settings API
+  // =========================================================
+  getAllSettings() {
+    return getAllSettings();
+  }
+
+  setSetting(key, value) {
+    return setSetting(key, value);
+  }
+
+  // =========================================================
+  // Log level API (usata da /status/logLevel)
+  // =========================================================
+  getLogLevel() {
+    if (typeof this.logger.getLevel === "function") {
+      const lvl = this.logger.getLevel();
+      return lvl || process.env.LOG_LEVEL;
+    }
+    return process.env.LOG_LEVEL;
+  }
+
+  setLogLevel(level) {
+    if (typeof this.logger.setLevel === "function") {
+      this.logger.setLevel(level);
+      return { level };
+    }
+    this.logger.warning("[setLogLevel] Not supported by this logger | ", { level });
+    return { level: process.env.LOG_LEVEL || null };
+  }
+
   _buildClient(baseUrl, insecureTls) {
     const config = {
       baseURL: baseUrl,
@@ -362,6 +399,7 @@ class IbkrKeepalive {
       this._syncClient(settings);
       await this._checkAuth();
       await this._tickleIfDue(settings.tickleIntervalMs);
+      await this._publishTelemetry();
     } catch (err) {
       this.logger.error(
         `[keepalive] tick error: ${err?.message || String(err)}`
@@ -372,6 +410,30 @@ class IbkrKeepalive {
         `[keepalive] tick done elapsedMs=${elapsedMs}`
       );
       this._running = false;
+    }
+  }
+
+  async _publishTelemetry() {
+    if (!this.bus || typeof this.bus.publish !== "function") {
+      this.logger.warning?.("[keepalive] telemetry publish skipped: bus not available");
+      return;
+    }
+    const payload = {
+      type: "keepalive",
+      ts: Date.now(),
+      env: this.env,
+      status: this._status,
+      lastAuthStatus: this._lastAuthStatus,
+      lastTickleStatus: this._lastTickleStatus,
+      lastTickleAt: this._lastTickleAt,
+    };
+    try {
+      await this.bus.publish(this.redisTelemetyChannel, payload);
+      this.logger.trace?.("[keepalive] telemetry published");
+    } catch (err) {
+      this.logger.warning?.(
+        `[keepalive] telemetry publish failed: ${err?.message || String(err)}`
+      );
     }
   }
 
@@ -565,7 +627,7 @@ class IbkrKeepalive {
     if (typeof this.logger.setDbLogStatus === "function") {
       return this.logger.setDbLogStatus(status);
     }
-    this.logger.warn("[setDbLogStatus] Not supported by this logger", { status });
+    this.logger.warning("[setDbLogStatus] Not supported by this logger | ", { status });
     return { dbLogEnabled: false };
   }
 

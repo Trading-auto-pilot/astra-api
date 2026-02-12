@@ -1,4 +1,4 @@
-name: "${ENV_NAME}"
+name: "${ENV}"
 
 services:
 
@@ -125,8 +125,8 @@ services:
   ibkrgw-paper:
     image: local/ibkr-clientportal:1.0
     build:
-      context: .
-      dockerfile: IBKR_API_Gateway/Dockerfile
+      context: ./IBKR_API_Gateway
+      dockerfile: Dockerfile
     restart: unless-stopped
     networks:
       - trading_net
@@ -168,6 +168,11 @@ services:
       - KEEPALIVE_INTERVAL_MS=45000
       - REQUEST_TIMEOUT_MS=5000
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3019/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.ibkr-keepalive.rule=Host(`localhost`) && PathPrefix(`/ibkr-keepalive`)"
@@ -184,8 +189,8 @@ services:
   ibkrgw-live:
     image: local/ibkr-clientportal:1.0
     build:
-      context: .
-      dockerfile: IBKR_API_Gateway/Dockerfile
+      context: ./IBKR_API_Gateway
+      dockerfile: Dockerfile
     restart: unless-stopped
     networks:
       - trading_net
@@ -227,6 +232,9 @@ services:
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - REDIS_URL=redis://redis:6379
       - TZ=Asia/Dubai
     depends_on:
@@ -245,6 +253,20 @@ services:
       retries: 5
     networks:
       - trading_net
+    labels:
+      - "traefik.enable=true"
+      # Router: http://localhost:8080/dbmanager/...
+      - "traefik.http.routers.dbmanager.rule=Host(`localhost`) && PathPrefix(`/dbmanager`)"
+      - "traefik.http.routers.dbmanager.entrypoints=web"
+      - "traefik.http.services.dbmanager.loadbalancer.server.port=3002"
+      - "traefik.http.middlewares.dbmanager-stripprefix.stripPrefix.prefixes=/dbmanager"
+      - "traefik.http.routers.dbmanager.middlewares=dbmanager-stripprefix,cors-default@docker,auth-forward@docker"
+      # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
+      - "traefik.http.routers.dbmanager-preflight.rule=Host(`localhost`) && PathPrefix(`/dbmanager`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.dbmanager-preflight.entrypoints=web"
+      - "traefik.http.routers.dbmanager-preflight.priority=10000"
+      - "traefik.http.routers.dbmanager-preflight.service=dbmanager"
+      - "traefik.http.routers.dbmanager-preflight.middlewares=dbmanager-stripprefix,cors-default@docker"
 
   # ======================
   # MICROSERVIZI ABILITABILI (via profiles)
@@ -261,6 +283,9 @@ services:
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - REDIS_URL=redis://redis:6379
       - APCA_API_KEY_ID=${APCA_API_KEY_ID}
       - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
@@ -303,18 +328,6 @@ services:
       - "traefik.http.routers.cachemanager-preflight.service=cachemanager"
       - "traefik.http.routers.cachemanager-preflight.middlewares=cachemanager-stripprefix,cors-default@docker"
 
-  capitalmanager:
-    image: local/capitalmanager:${CAPITALMANAGER_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: capitalManager/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      - dbmanager
-    networks:
-      - trading_net
-    profiles: ["capitalmanager"]
-
   alertingservice:
     image: local/alertingservice:${ALERTINGSERVICE_VERSION:-latest}
     build:
@@ -326,78 +339,48 @@ services:
     networks:
       - trading_net
     profiles: ["alertingservice"]
-
-  livemarketlistener:
-    image: local/livemarketlistener:${LIVEMARKETLISTENER_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: LiveMarketListener/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      - dbmanager
-    networks:
-      - trading_net
-    profiles: ["livemarketlistener"]
-
-  orderlistner:
-    image: local/orderlistner:${ORDERLISTNER_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: orderListner/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      - dbmanager
-    networks:
-      - trading_net
-    profiles: ["orderlistner"]
-
-  ordersimulator:
-    image: local/ordersimulator:${ORDERSIMULATOR_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: orderSimulator/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      - dbmanager
-    networks:
-      - trading_net
-    profiles: ["simulator"]
-
-  marketsimulator:
-    image: local/marketsimulator:${MARKETSIMULATOR_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: MarketSimulator/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      - dbmanager
-    networks:
-      - trading_net
-    profiles: ["simulator"]
-
-  sma:
-    image: local/sma:${SMA_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: strategies/sma/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      - dbmanager
-    networks:
-      - trading_net
-    profiles: ["sma"]
-
-  sltp:
-    image: local/sltp:${SLTP_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: strategies/sltp/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      - dbmanager
-    networks:
-      - trading_net
-    profiles: ["sltp"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3008/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    environment:
+      - DBMANAGER_URL=http://dbmanager:3002
+      - LOG_LEVEL=${LOG_LEVEL}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - PORT=3008
+      - ENV=${ENV}
+      - MAX_RETRY_DELAY=${MAX_RETRY_DELAY}
+      - REDIS_URL=redis://redis:6379
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_CONTENT_SID=${TWILIO_CONTENT_SID}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM=${SMTP_FROM}
+      - ALERTING_LOGS_PATTERN=${ALERTING_LOGS_PATTERN}
+      - ALERTING_WINDOW_SECONDS=${ALERTING_WINDOW_SECONDS}
+      - ALERTING_MAX_PER_WINDOW=${ALERTING_MAX_PER_WINDOW}
+      - ALERTING_DEDUP_SECONDS=${ALERTING_DEDUP_SECONDS}
+      - ALERTING_DEFAULT_EMAIL_TO=${ALERTING_DEFAULT_EMAIL_TO}
+      - TZ=Asia/Dubai
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.alertingservice.rule=Host(`localhost`) && PathPrefix(`/alertingservice`)"
+      - "traefik.http.routers.alertingservice.entrypoints=web"
+      - "traefik.http.services.alertingservice.loadbalancer.server.port=3008"
+      - "traefik.http.middlewares.alertingservice-stripprefix.stripPrefix.prefixes=/alertingservice"
+      - "traefik.http.routers.alertingservice.middlewares=alertingservice-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.alertingservice-preflight.rule=Host(`localhost`) && PathPrefix(`/alertingservice`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.alertingservice-preflight.entrypoints=web"
+      - "traefik.http.routers.alertingservice-preflight.priority=10000"
+      - "traefik.http.routers.alertingservice-preflight.service=alertingservice"
+      - "traefik.http.routers.alertingservice-preflight.middlewares=alertingservice-stripprefix,cors-default@docker"
 
   scheduler:
     image: local/scheduler:${SCHEDULER_VERSION:-latest}
@@ -417,6 +400,13 @@ services:
       - ALERTINGSERVICE_URL=http://alertingservice:3008
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - INTERNAL_JWT_PRIVATE_KEY=${INTERNAL_JWT_PRIVATE_KEY}
+      - INTERNAL_JWT_PUBLIC_KEY=${INTERNAL_JWT_PUBLIC_KEY}
+      - INTERNAL_JWT_ISS=${INTERNAL_JWT_ISS}
+      - INTERNAL_JWT_EXP_SECONDS=${INTERNAL_JWT_EXP_SECONDS}
       - TZ=Asia/Dubai
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -454,7 +444,11 @@ services:
       - ALERTINGSERVICE_URL=http://alertingservice:3008
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - FMP_API_KEY=${FMP_API_KEY}
+      - INTERNAL_JWT_PUBLIC_KEY=${INTERNAL_JWT_PUBLIC_KEY}
       - TZ=Asia/Dubai
     depends_on:
       dbmanager:
@@ -503,6 +497,10 @@ services:
       - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - INTERNAL_JWT_PUBLIC_KEY=${INTERNAL_JWT_PUBLIC_KEY}
       - TZ=Asia/Dubai
     depends_on:
       dbmanager:
@@ -544,8 +542,12 @@ services:
       - DBMANAGER_URL=http://dbmanager:3002
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - IBKRGW_BASE_URL=${IBKRGW_BASE_URL}
+      - IBKR_REQUEST_TIMEOUT_MS=${IBKR_REQUEST_TIMEOUT_MS}
       - IBKR_INSECURE_TLS=${IBKR_INSECURE_TLS}
       - IBKR_BRIDGE_URL=${IBKR_BRIDGE_URL}
       - TZ=Asia/Dubai
@@ -587,7 +589,11 @@ services:
     restart: unless-stopped
     environment:
       - REDIS_URL=redis://redis:6379
+      - DBMANAGER_URL=http://dbmanager:3002
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - REDIS_PATTERNS=${REDIS_PATTERNS}
       - TZ=Asia/Dubai
@@ -634,10 +640,14 @@ services:
       - DBMANAGER_URL=http://dbmanager:3002
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - IBKRGW_BASE_URL=${IBKRGW_BASE_URL}
       - IBKR_INSECURE_TLS=${IBKR_INSECURE_TLS}
       - TICKLE_INTERVAL_MS=${TICKLE_INTERVAL_MS}
       - AUTH_CHECK_INTERVAL_MS=${AUTH_CHECK_INTERVAL_MS}
+      - IBKR_SSODH_INIT_INTERVAL_MS=${IBKR_SSODH_INIT_INTERVAL_MS}
       - TZ=Asia/Dubai
     depends_on:
       dbmanager:
@@ -677,6 +687,9 @@ services:
     restart: unless-stopped
     environment:
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - MYSQL_HOST=mysql
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
@@ -684,16 +697,8 @@ services:
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - REDIS_URL=redis://redis:6379
       - DBMANAGER_URL=http://dbmanager:3002
-      - MARKETSIMULATOR_URL=http://marketsimulator:3003
-      - ORDERSIMULATOR_URL=http://ordersimulator:3004
-      - ORDERLISTNER_URL=http://orderlistner:3005
       - CACHEMANAGER_URL=http://cachemanager:3006
-      - STRATEGYUTILS_URL=http://strategyUtils:3007
       - ALERTINGSERVICE_URL=http://alertingservice:3008
-      - CAPITALMANAGER_URL=http://capitalmanager:3009
-      - SMA_URL=http://sma:3010
-      - SLTP_URL=http://sltp:3011
-      - LIVEMARKETLISTNER_URL=http://livemarketlistner:3012
       - TICKERSCANNER_URL=http://tickerscanner:3013
       - SCHEDULER_URL=http://scheduler:3014
       - AUTHSERVICE_URL=http://authService:3015
@@ -737,6 +742,9 @@ services:
     restart: unless-stopped
     environment:
       - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - DBMANAGER_URL=http://dbmanager:3002
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
@@ -750,6 +758,11 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3015/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     labels:
       - "traefik.enable=true"
 
@@ -758,6 +771,12 @@ services:
       - "traefik.http.routers.auth-public.entrypoints=web"
       - "traefik.http.routers.auth-public.service=auth-svc"
       - "traefik.http.routers.auth-public.middlewares=cors-default@docker"
+      # Preflight (CORS) for public auth endpoints
+      - "traefik.http.routers.auth-public-preflight.rule=Host(`localhost`) && (PathPrefix(`/auth/login`) || PathPrefix(`/auth/validate`)) && Method(`OPTIONS`)"
+      - "traefik.http.routers.auth-public-preflight.entrypoints=web"
+      - "traefik.http.routers.auth-public-preflight.priority=10000"
+      - "traefik.http.routers.auth-public-preflight.service=auth-svc"
+      - "traefik.http.routers.auth-public-preflight.middlewares=cors-default@docker"
 
       # 🔐 router ADMIN: /auth/admin/... protetto da forwardAuth
       - "traefik.http.routers.auth-admin.rule=Host(`localhost`) && PathPrefix(`/auth/admin`)"

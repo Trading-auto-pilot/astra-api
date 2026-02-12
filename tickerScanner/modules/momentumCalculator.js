@@ -335,7 +335,7 @@ class MomentumCalculator {
     try {
       const candles = await this._fetchCandles(symbol);
       if (!candles.length) {
-        this.logger.warn(`[momentum] Nessuna candela per ${symbol}`);
+        this.logger.warning(`[momentum] Nessuna candela per ${symbol}`);
         return { score: null, components: { reason: "no_candles" } };
       }
 

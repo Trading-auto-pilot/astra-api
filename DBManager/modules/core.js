@@ -150,6 +150,9 @@ function safe(val) {
 }
 
 function formatDateForMySQL(date) {
+  if (date === null || date === undefined || date === "" || date === "null") {
+    return null;
+  }
   const d = new Date(date);
   if (isNaN(d.getTime())) return null; // Ritorna null se la data non è valida
   const pad = (n) => String(n).padStart(2, '0');
@@ -160,6 +163,9 @@ function formatDateForMySQL(date) {
   const mi = pad(d.getMinutes());
   const ss = pad(d.getSeconds());
   const ms = String(d.getMilliseconds());//.padStart(3, '0');
+  if (ms === "0") {
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+  }
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}.${ms}`;
 }
 
@@ -200,6 +206,7 @@ const pool = mysql.createPool({
   user: process.env.MYSQL_USER || 'root',
   password: process.env.MYSQL_PASSWORD || '',
   database: process.env.MYSQL_DATABASE || 'Trading',
+  timezone: '+00:00',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0

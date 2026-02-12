@@ -229,6 +229,28 @@ jobs:
         echo "APCA_API_KEY_ID='${{secrets.APCA_API_KEY_ID}}'" >> .env
         echo "APCA_API_SECRET_KEY='${{secrets.APCA_API_SECRET_KEY}}'" >> .env
         echo "FMP_API_KEY='${{secrets.FMP_API_KEY}}'" >> .env
+        echo "SMTP_PASSWORD='${{ secrets.SMTP_PASSWORD }}'" >> .env
+        echo "TWILIO_ACCOUNT_SID='${{ secrets.TWILIO_ACCOUNT_SID }}'" >> .env
+        echo "TWILIO_AUTH_TOKEN='${{ secrets.TWILIO_AUTH_TOKEN }}'" >> .env
+        echo "TWILIO_CONTENT_SID='${{ secrets.TWILIO_CONTENT_SID }}'" >> .env
+        echo "ALERTING_DEDUP_SECONDS='${{ secrets.ALERTING_DEDUP_SECONDS }}'" >> .env
+        echo "ALERTING_DEFAULT_EMAIL_TO='${{ secrets.ALERTING_DEFAULT_EMAIL_TO }}'" >> .env
+        echo "ALERTING_MAX_PER_WINDOW='${{ secrets.ALERTING_MAX_PER_WINDOW }}'" >> .env
+        echo "ALERTING_WINDOW_SECONDS='${{ secrets.ALERTING_WINDOW_SECONDS }}'" >> .env
+        echo "BODY_LIMIT='${{ secrets.BODY_LIMIT }}'" >> .env
+        echo "DATA_SERVICE_VERSION='${{ secrets.DATA_SERVICE_VERSION }}'" >> .env
+        echo "IBKR_REQUEST_TIMEOUT_MS='${{ secrets.IBKR_REQUEST_TIMEOUT_MS }}'" >> .env
+        echo "IBKR_SSODH_INIT_INTERVAL_MS='${{ secrets.IBKR_SSODH_INIT_INTERVAL_MS }}'" >> .env
+        echo "INTERNAL_JWT_EXP_SECONDS='${{ secrets.INTERNAL_JWT_EXP_SECONDS }}'" >> .env
+        echo "INTERNAL_JWT_ISS='${{ secrets.INTERNAL_JWT_ISS }}'" >> .env
+        echo "MARKET_DAILY_CONCURRENCY='${{ secrets.MARKET_DAILY_CONCURRENCY }}'" >> .env
+        echo "SCAN_BULK_SIZE='${{ secrets.SCAN_BULK_SIZE }}'" >> .env
+        echo "SCAN_FMP_CONCURRENCY='${{ secrets.SCAN_FMP_CONCURRENCY }}'" >> .env
+        echo "SCAN_MISSING_BATCH='${{ secrets.SCAN_MISSING_BATCH }}'" >> .env
+        echo "SMTP_FROM='${{ secrets.SMTP_FROM }}'" >> .env
+        echo "SMTP_HOST='${{ secrets.SMTP_HOST }}'" >> .env
+        echo "SMTP_PORT='${{ secrets.SMTP_PORT }}'" >> .env
+        echo "SMTP_USER='${{ secrets.SMTP_USER }}'" >> .env
         echo "MARKETSIMULATOR_VERSION=${{vars.MARKETSIMULATOR_VERSION}}" >> .env
         echo "ORDERSIMULATOR_VERSION=${{vars.ORDERSIMULATOR_VERSION}}" >> .env
         echo "DBMANAGER_URL=${{vars.DBMANAGER_URL}}" >> .env
@@ -259,6 +281,7 @@ jobs:
         echo "IBKR_INSECURE_TLS=${{vars.IBKR_INSECURE_TLS}}" >> .env
         echo "TICKLE_INTERVAL_MS=${{vars.TICKLE_INTERVAL_MS}}" >> .env
         echo "AUTH_CHECK_INTERVAL_MS=${{vars.AUTH_CHECK_INTERVAL_MS}}" >> .env
+         echo "REDISWSBRIDGE_VERSION=${{vars.REDISWSBRIDGE_VERSION}}" >> .env
         
  
     - name: Copy .env to server

@@ -11,6 +11,7 @@ const MainModule = require("./modules/main");
 const createLogger = require("../shared/logger");
 const buildStatusRouter = require("./status"); // router standard /status/*
 const buildFundamentalsRouter = require("./fundamentals");
+const { reportJobDone } = require("../shared/jobReporter");
 
 dotenv.config();
 
@@ -23,7 +24,10 @@ const MODULE_VERSION = "0.1.0";      // es. "1.0.0"
 const DEFAULT_PORT   = 3013;                  // es. 3012 (numero)
 
 let logLevel = process.env.LOG_LEVEL || "info";
-const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, logLevel);
+const appEnv = process.env.ENV || process.env.APP_ENV || "DEV";
+const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, logLevel, {
+  busTopicPrefix: appEnv,
+});
 
 const app = express();
 app.use(express.json());
@@ -68,6 +72,7 @@ let serviceInstance;
   try {
     serviceInstance = new MainModule();
     await serviceInstance.init();
+    logger.attachBus(serviceInstance.bus);
     logger.info("[main] Service initialized successfully");
   } catch (err) {
     logger.error(
@@ -410,8 +415,15 @@ app.get("/scan", requireReady, async (req, res) => {
 
   try {
     const overrides = { ...(req.query || {}) }; // query string > DB settings
+    const jobKey =
+      (typeof req.query.jobKey === "string" && req.query.jobKey.trim()) ||
+      (typeof req.headers["x-job-key"] === "string" && req.headers["x-job-key"].trim()) ||
+      "";
+    if (jobKey) {
+      overrides.__jobKey = jobKey;
+    }
     const info = await serviceInstance.startScanJob(overrides);
-    return res.json({ ok: true, ...info });
+    return res.json({ ok: true, type: "async", ...info });
   } catch (e) {
     logger.error(`[GET /scan] Error: ${e?.message || String(e)}`);
     return res.status(500).json({
@@ -435,8 +447,15 @@ app.get("/scan/force", requireReady, async (req, res) => {
 
   try {
     const overrides = { ...(req.query || {}) };
+    const jobKey =
+      (typeof req.query.jobKey === "string" && req.query.jobKey.trim()) ||
+      (typeof req.headers["x-job-key"] === "string" && req.headers["x-job-key"].trim()) ||
+      "";
+    if (jobKey) {
+      overrides.__jobKey = jobKey;
+    }
     const info = await serviceInstance.startScanJob(overrides, { forceRefresh: true });
-    return res.json({ ok: true, ...info });
+    return res.json({ ok: true, type: "async", ...info });
   } catch (e) {
     logger.error(`[GET /scan/force] Error: ${e?.message || String(e)}`);
     return res.status(500).json({
@@ -526,7 +545,7 @@ app.delete("/scan/jobs/:jobId", requireReady, async (req, res) => {
 });
 
 // Aggiorna momentum per tutti i tickers presenti in DB
-app.post("/momentum/refresh", requireReady, async (_req, res) => {
+app.post("/momentum/refresh", requireReady, async (req, res) => {
   if (!serviceInstance?.refreshMomentumAll) {
     return res.status(501).json({
       ok: false,
@@ -535,8 +554,80 @@ app.post("/momentum/refresh", requireReady, async (_req, res) => {
   }
 
   try {
-    const info = await serviceInstance.refreshMomentumAll();
-    return res.json({ ok: true, ...info });
+    const jobKey =
+      (typeof req.query.jobKey === "string" && req.query.jobKey.trim()) ||
+      (typeof req.headers["x-job-key"] === "string" && req.headers["x-job-key"].trim()) ||
+      (typeof req.body?.jobKey === "string" && req.body.jobKey.trim()) ||
+      "manual";
+    const jobId = `momentum_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const startedAt = new Date().toISOString();
+
+    logger.info(
+      `[momentumRefresh] jobId=${jobId} started jobKey=${jobKey}`
+    );
+
+    (async () => {
+      const startedAtMs = Date.now();
+      try {
+        const info = await serviceInstance.refreshMomentumAll();
+        const finishedAt = new Date().toISOString();
+        const payload = {
+          type: "momentumRefresh",
+          jobKey,
+          jobId,
+          startedAt,
+          finishedAt,
+          durationMs: Date.now() - startedAtMs,
+          totalSymbols: info?.totalSymbols ?? 0,
+          totalUpdated: info?.totalUpdated ?? 0,
+          status: "COMPLETED",
+          __source: "tickerscanner",
+        };
+        try {
+          await serviceInstance.bus?.publish?.(
+            serviceInstance.redisTelemetyChannel,
+            payload
+          );
+        } catch (publishErr) {
+          logger.warning?.(
+            `[momentumRefresh] jobId=${jobId} telemetry publish failed: ${publishErr?.message || String(publishErr)}`
+          );
+        }
+        await reportJobDone(serviceInstance.bus, serviceInstance.redisStatusChannel, jobId, { status: "COMPLETED" });
+        logger.info(
+          `[momentumRefresh] jobId=${jobId} completed totalSymbols=${info?.totalSymbols ?? "?"} totalUpdated=${info?.totalUpdated ?? "?"}`
+        );
+      } catch (err) {
+        const finishedAt = new Date().toISOString();
+        const payload = {
+          type: "momentumRefresh",
+          jobKey,
+          jobId,
+          startedAt,
+          finishedAt,
+          durationMs: Date.now() - startedAtMs,
+          status: "FAILED",
+          error: err?.message || String(err),
+          __source: "tickerscanner",
+        };
+        try {
+          await serviceInstance.bus?.publish?.(
+            serviceInstance.redisTelemetyChannel,
+            payload
+          );
+        } catch (publishErr) {
+          logger.warning?.(
+            `[momentumRefresh] jobId=${jobId} telemetry publish failed: ${publishErr?.message || String(publishErr)}`
+          );
+        }
+        await reportJobDone(serviceInstance.bus, serviceInstance.redisStatusChannel, jobId, { status: "FAILED", error: err?.message || String(err) });
+        logger.error(
+          `[momentumRefresh] jobId=${jobId} failed: ${err?.message || String(err)}`
+        );
+      }
+    })();
+
+    return res.json({ ok: true, type: "async", started: true, jobId, jobKey, startedAt });
   } catch (e) {
     logger.error(
       `[POST /momentum/refresh] Error: ${e?.message || String(e)}`
@@ -565,15 +656,21 @@ app.use(
 );
 
 
-app.use(
-  "/fundamentals",
-  requireReady,
-  buildFundamentalsRouter({
-    service: serviceInstance,
-    logger,
-    moduleName: MODULE_NAME,
-  })
-);
+const fundamentalsRouter = buildFundamentalsRouter({
+  service: serviceInstance,
+  logger,
+  moduleName: MODULE_NAME,
+});
+
+app.use("/fundamentals", requireReady, fundamentalsRouter);
+
+if (Array.isArray(fundamentalsRouter._internalUserDailyScores)) {
+  app.post(
+    "/internal/fundamentals/user-daily-scores",
+    requireReady,
+    ...fundamentalsRouter._internalUserDailyScores
+  );
+}
 
 /* ----------------------------- STARTUP -------------------------------- */
 app.listen(port, () => {

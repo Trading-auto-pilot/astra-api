@@ -385,7 +385,7 @@ class CacheManager {
     if (typeof this.logger.setDbLogStatus === "function") {
       return this.logger.setDbLogStatus(status);
     }
-    this.logger.warn("[setDbLogStatus] Not supported by this logger", { status });
+    this.logger.warning("[setDbLogStatus] Not supported by this logger | ", { status });
     return { dbLogEnabled: false };
   }
 
@@ -405,7 +405,7 @@ class CacheManager {
       this.logger.setLevel(level);
       return { level };
     }
-    this.logger.warn("[setLogLevel] Not supported by this logger", { level });
+    this.logger.warning("[setLogLevel] Not supported by this logger | ", { level });
     return { level: process.env.LOG_LEVEL || null };
   }
 
@@ -525,13 +525,24 @@ class CacheManager {
           exchange
         );
 
-        this.logger.info(
-          `[getCandles] Provider remoto ha restituito ${providerCandles.length} candele per ${symbol} ${pFrom}→${pTo}`
+        const trimmedProviderCandles = this._filterCandlesByRange(
+          providerCandles,
+          pFrom,
+          pTo
         );
+        if (trimmedProviderCandles.length !== providerCandles.length) {
+          this.logger.warning(
+            `[getCandles] Provider remoto ha restituito ${providerCandles.length} candele (trimmed to ${trimmedProviderCandles.length}) per ${symbol} ${pFrom}→${pTo}`
+          );
+        } else {
+          this.logger.info(
+            `[getCandles] Provider remoto ha restituito ${providerCandles.length} candele per ${symbol} ${pFrom}→${pTo}`
+          );
+        }
 
         // Salvo in L2 + L3 (merge)
-        await this._writeL2(symbol, tf, providerCandles);
-        collected.push(...providerCandles);
+        await this._writeL2(symbol, tf, trimmedProviderCandles);
+        collected.push(...trimmedProviderCandles);
         await this._writeL3(symbol, tf, collected);
       }
     }
@@ -1169,7 +1180,7 @@ class CacheManager {
               const st = await fsp.stat(full);
               files.push({ path: full, size: st.size, mtimeMs: st.mtimeMs });
             } catch (err) {
-              this.logger.warn(`[L2] Impossibile leggere size file ${full}: ${err.message}`);
+              this.logger.warning(`[L2] Impossibile leggere size file ${full}: ${err.message}`);
             }
           }
         }

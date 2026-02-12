@@ -1,0 +1,35 @@
+    ip2loc: "US"
+    proxyRemoteSsl: true
+    proxyRemoteHost: "https://api.ibkr.com"
+    listenPort: 5000
+    listenSsl: true
+    ccp: false
+    svcEnvironment: "v1"
+    sslCert: "vertx.jks"
+    sslPwd: "mywebapi"
+    authDelay: 3000
+    portalBaseURL: ""
+    serverOptions:
+        blockedThreadCheckInterval: 1000000
+        eventLoopPoolSize: 20
+        workerPoolSize: 20
+        maxWorkerExecuteTime: 100
+        internalBlockingPoolSize: 20
+    cors:
+        origin.allowed: "*"
+        allowCredentials: false
+    webApps:
+        - name: "demo"
+          index: "index.html"
+    ips:
+      allow:
+        - 127.0.0.1
+        - 10.*
+        - 172.16.*
+        - 172.17.*
+        - 172.18.*
+        - 172.19.*
+        - 172.25.*
+        - 192.168.*
+      deny:
+        - 212.90.324.10

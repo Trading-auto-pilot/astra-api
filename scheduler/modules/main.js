@@ -307,7 +307,7 @@ class Scheduler {
       this.logger.setLevel(level);
       return { level };
     }
-    this.logger.warn("[setLogLevel] Not supported by this logger", { level });
+    this.logger.warning("[setLogLevel] Not supported by this logger", { level });
     return { level: process.env.LOG_LEVEL || null };
   }
 
@@ -430,7 +430,7 @@ class Scheduler {
     if (typeof this.logger.setDbLogStatus === "function") {
       return this.logger.setDbLogStatus(status);
     }
-    this.logger.warn("[setDbLogStatus] Not supported by this logger", { status });
+    this.logger.warning("[setDbLogStatus] Not supported by this logger", { status });
     return { dbLogEnabled: false };
   }
 

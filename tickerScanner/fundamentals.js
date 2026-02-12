@@ -2,6 +2,8 @@
 
 const express = require("express");
 const axios = require("axios");
+const { reportJobDone } = require("../shared/jobReporter");
+const { verifyInternalToken } = require("../shared/internalAuth");
 
 module.exports = function buildFundamentalsRouter({ service, logger, moduleName }) {
   const router = express.Router();
@@ -65,6 +67,36 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       return JSON.stringify(val);
     } catch {
       return String(val);
+    }
+  };
+
+  const requireInternalToken = async (req, res, next) => {
+    const token =
+      req.headers["x-internal-token"] ||
+      req.headers["X-Internal-Token"] ||
+      req.headers["x-internal-token".toLowerCase()];
+    if (!token || typeof token !== "string") {
+      return res.status(403).json({ ok: false, error: "Internal token mancante" });
+    }
+    try {
+      const payload = await verifyInternalToken(token, {
+        issuer: "astraai-internal",
+        audience: "tickerscanner",
+        scope: "fundamentals:update-user-daily-scores",
+        publicKey: process.env.INTERNAL_JWT_PUBLIC_KEY,
+      });
+      logger.info(
+        `${fnPrefix} internal token ok iss=${payload.iss || "-"} aud=${payload.aud || "-"} scp=${safeStringify(
+          payload.scp || payload.scope || "-"
+        )} jobKey=${payload.jobKey || "-"}`
+      );
+      req.internalAuth = payload;
+      return next();
+    } catch (err) {
+      logger.warning(
+        `${fnPrefix} internal token invalid: ${err?.message || String(err)}`
+      );
+      return res.status(403).json({ ok: false, error: "Internal token non valido" });
     }
   };
 
@@ -638,14 +670,25 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
     }
   };
 
-  const runMarketDailyJob = async (jobId) => {
-    logger.info(`${fnPrefix} update-market-daily start job=${jobId}`);
+
+  const publishTelemetry = async (payload) => {
+    try {
+      await service.bus?.publish?.(service.redisTelemetyChannel, payload);
+    } catch (err) {
+      logger.warning(`${fnPrefix} update-market-daily telemetry publish failed: ${fmtErr(err)}`);
+    }
+  };
+
+  const runMarketDailyJob = async (jobId, jobKey = "manual") => {
+    logger.info(`${fnPrefix} update-market-daily start job=${jobId} jobKey=${jobKey}`);
     const startedAt = new Date().toISOString();
     const job = updateMarketJob(jobId, { status: "running", startedAt });
     if (!job) return;
+
     const apiKey = getFmpApiKey();
     if (!apiKey) {
-      updateMarketJob(jobId, { status: "error", error: "FMP_API_KEY non configurata", finishedAt: new Date().toISOString() });
+      const finishedAt = new Date().toISOString();
+      updateMarketJob(jobId, { status: "error", error: "FMP_API_KEY non configurata", finishedAt });
       await persistMarketDailyJobRecord(jobId, {
         job_id: jobId,
         status: "error",
@@ -657,8 +700,25 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
         errors_json: [{ error: "FMP_API_KEY non configurata" }],
         params_json: {},
         started_at: toSqlDateTime(startedAt),
-        finished_at: toSqlDateTime(new Date().toISOString()),
+        finished_at: toSqlDateTime(finishedAt),
       });
+      await publishTelemetry({
+        type: "updateMarketDaily",
+        jobKey,
+        jobId,
+        startedAt,
+        finishedAt,
+        durationMs: Date.now() - new Date(startedAt).getTime(),
+        totalSymbols: 0,
+        processed: 0,
+        inserted: 0,
+        updated: 0,
+        errorCount: 1,
+        status: "FAILED",
+        error: "FMP_API_KEY non configurata",
+        __source: "tickerscanner",
+      });
+      await reportJobDone(service.bus, service.redisStatusChannel, jobId, { status: "FAILED", error: "FMP_API_KEY non configurata" });
       return;
     }
 
@@ -673,8 +733,11 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       const concurrencyRaw = Number(process.env.MARKET_DAILY_CONCURRENCY);
       const concurrency = Number.isFinite(concurrencyRaw) && concurrencyRaw > 0 ? Math.floor(concurrencyRaw) : 5;
       logger.info(`${fnPrefix} update-market-daily job=${jobId} concurrency=${concurrency}`);
-      const fmpSpacingMs = 200; // 5 req/sec max
+      const FMP_SPACING_BASE = 200;   // 5 req/sec max
+      const FMP_SPACING_MAX  = 2000;  // 0.5 req/sec floor
+      let fmpSpacingMs = FMP_SPACING_BASE;
       let nextFmpAt = 0;
+      let fmpOkStreak = 0;           // richieste consecutive OK (per recovery)
       const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       const waitForFmpSlot = async () => {
         const now = Date.now();
@@ -754,21 +817,57 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
         const fmpUrl = `https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(sym)}&apikey=${encodeURIComponent(apiKey)}`;
         let data = [];
         const fmpStart = Date.now();
-        try {
-          await waitForFmpSlot();
-          const resp = await axios.get(fmpUrl, { timeout: 15000 });
-          data = Array.isArray(resp.data?.historical) ? resp.data.historical : Array.isArray(resp.data) ? resp.data : [];
-          logger.trace?.(
-            `${fnPrefix} update-market-daily job=${jobId} fmp fetch ${safeStringify({
-              symbol: sym,
-              rows: data.length,
-              ms: Date.now() - fmpStart,
-            })}`
-          );
-        } catch (err) {
+        const maxRetries = 3;
+        let attempt = 0;
+        let lastErr = null;
+
+        while (attempt < maxRetries) {
+          attempt++;
+          try {
+            await waitForFmpSlot();
+            const resp = await axios.get(fmpUrl, { timeout: 15000 });
+            data = Array.isArray(resp.data?.historical) ? resp.data.historical : Array.isArray(resp.data) ? resp.data : [];
+            logger.trace?.(
+              `${fnPrefix} update-market-daily job=${jobId} fmp fetch ${safeStringify({
+                symbol: sym,
+                rows: data.length,
+                ms: Date.now() - fmpStart,
+              })}`
+            );
+            // recovery: dopo 30 OK consecutive, riduci spacing verso il base
+            fmpOkStreak++;
+            if (fmpOkStreak >= 30 && fmpSpacingMs > FMP_SPACING_BASE) {
+              fmpSpacingMs = Math.max(FMP_SPACING_BASE, fmpSpacingMs - 100);
+              fmpOkStreak = 0;
+              logger.info(
+                `${fnPrefix} update-market-daily job=${jobId} spacing recovery -> ${fmpSpacingMs}ms`
+              );
+            }
+            lastErr = null;
+            break; // successo, esci dal loop
+          } catch (err) {
+            lastErr = err;
+            // --- 429 handling: raddoppia spacing + retry con backoff ---
+            if (err.response?.status === 429) {
+              const prevSpacing = fmpSpacingMs;
+              fmpSpacingMs = Math.min(fmpSpacingMs * 2, FMP_SPACING_MAX);
+              fmpOkStreak = 0;
+              const backoffMs = 1000 * Math.pow(2, attempt - 1); // 1s, 2s, 4s
+              logger.warning(
+                `${fnPrefix} update-market-daily job=${jobId} 429 on ${sym} – spacing ${prevSpacing}->${fmpSpacingMs}ms, retry in ${backoffMs}ms (${maxRetries - attempt} left)`
+              );
+              await wait(backoffMs);
+              continue; // retry
+            }
+            // errore non-429: non ritentare
+            break;
+          }
+        }
+
+        if (lastErr) {
           const cur2 = marketDailyJobs.get(jobId);
           const list = cur2?.errors || [];
-          const errMsg = fmtErr(err);
+          const errMsg = fmtErr(lastErr);
           const errDetail = { symbol: sym, error: errMsg, url: fmpUrl };
           updateMarketJob(jobId, { errors: [...list, errDetail] });
           logger.error(
@@ -880,7 +979,8 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
 
       const end = marketDailyJobs.get(jobId);
       if (end?.cancel) {
-        updateMarketJob(jobId, { status: "cancelled", finishedAt: new Date().toISOString() });
+        const finishedAt = new Date().toISOString();
+        updateMarketJob(jobId, { status: "cancelled", finishedAt });
         await persistMarketDailyJobRecord(jobId, {
           job_id: jobId,
           status: "cancelled",
@@ -892,11 +992,28 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
           errors_json: end?.errors || [],
           params_json: {},
           started_at: toSqlDateTime(startedAt),
-          finished_at: toSqlDateTime(end?.finishedAt || new Date().toISOString()),
+          finished_at: toSqlDateTime(finishedAt),
         });
+        await publishTelemetry({
+          type: "updateMarketDaily",
+          jobKey,
+          jobId,
+          startedAt,
+          finishedAt,
+          durationMs: Date.now() - new Date(startedAt).getTime(),
+          totalSymbols: end?.totalSymbols || 0,
+          processed: end?.processed || 0,
+          inserted: end?.inserted || 0,
+          updated: end?.updated || 0,
+          errorCount: end?.errors?.length || 0,
+          status: "CANCELLED",
+          __source: "tickerscanner",
+        });
+        await reportJobDone(service.bus, service.redisStatusChannel, jobId, { status: "CANCELLED" });
         logger.info(`${fnPrefix} update-market-daily job=${jobId} cancelled`);
       } else {
-        updateMarketJob(jobId, { status: "completed", finishedAt: new Date().toISOString() });
+        const finishedAt = new Date().toISOString();
+        updateMarketJob(jobId, { status: "completed", finishedAt });
         await persistMarketDailyJobRecord(jobId, {
           job_id: jobId,
           status: "completed",
@@ -908,8 +1025,24 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
           errors_json: end?.errors || [],
           params_json: {},
           started_at: toSqlDateTime(startedAt),
-          finished_at: toSqlDateTime(end?.finishedAt || new Date().toISOString()),
+          finished_at: toSqlDateTime(finishedAt),
         });
+        await publishTelemetry({
+          type: "updateMarketDaily",
+          jobKey,
+          jobId,
+          startedAt,
+          finishedAt,
+          durationMs: Date.now() - new Date(startedAt).getTime(),
+          totalSymbols: end?.totalSymbols || 0,
+          processed: end?.processed || 0,
+          inserted: end?.inserted || 0,
+          updated: end?.updated || 0,
+          errorCount: end?.errors?.length || 0,
+          status: "COMPLETED",
+          __source: "tickerscanner",
+        });
+        await reportJobDone(service.bus, service.redisStatusChannel, jobId, { status: "COMPLETED" });
         logger.info(
           `${fnPrefix} update-market-daily job=${jobId} completed ${safeStringify({
             totalSymbols: end?.totalSymbols,
@@ -929,7 +1062,8 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       }
     } catch (err) {
       const errorStr = fmtErr(err);
-      updateMarketJob(jobId, { status: "error", error: errorStr, finishedAt: new Date().toISOString() });
+      const finishedAt = new Date().toISOString();
+      updateMarketJob(jobId, { status: "error", error: errorStr, finishedAt });
       await persistMarketDailyJobRecord(jobId, {
         job_id: jobId,
         status: "error",
@@ -941,17 +1075,39 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
         errors_json: [...(job?.errors || []), { error: errorStr }],
         params_json: {},
         started_at: toSqlDateTime(startedAt),
-        finished_at: toSqlDateTime(job?.finishedAt || new Date().toISOString()),
+        finished_at: toSqlDateTime(finishedAt),
       });
+      await publishTelemetry({
+        type: "updateMarketDaily",
+        jobKey,
+        jobId,
+        startedAt,
+        finishedAt,
+        durationMs: Date.now() - new Date(startedAt).getTime(),
+        totalSymbols: job?.totalSymbols || 0,
+        processed: job?.processed || 0,
+        inserted: job?.inserted || 0,
+        updated: job?.updated || 0,
+        errorCount: (job?.errors?.length || 0) + 1,
+        status: "FAILED",
+        error: errorStr,
+        __source: "tickerscanner",
+      });
+      await reportJobDone(service.bus, service.redisStatusChannel, jobId, { status: "FAILED", error: errorStr });
       logger.error(`${fnPrefix} update-market-daily job=${jobId} error ${safeStringify(err?.response?.data || err?.message || err)}`);
     }
   };
 
   // Avvia job asincrono
-  router.post("/update-market-daily", async (_req, res) => {
+  router.post("/update-market-daily", async (req, res) => {
+    const jobKey =
+      (typeof req.query.jobKey === "string" && req.query.jobKey.trim()) ||
+      (typeof req.headers["x-job-key"] === "string" && req.headers["x-job-key"].trim()) ||
+      (typeof req.body?.jobKey === "string" && req.body.jobKey.trim()) ||
+      "manual";
     const job = createMarketJob();
-    setImmediate(() => runMarketDailyJob(job.id));
-    return res.json({ ok: true, jobId: job.id });
+    setImmediate(() => runMarketDailyJob(job.id, jobKey));
+    return res.json({ ok: true, type: "async", jobId: job.id, jobKey, startedAt: job.createdAt });
   });
 
   // -------------------------------------------------------
@@ -1091,7 +1247,7 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
   };
 
   // ---- async job per user_daily_scores ----
-  const runUserDailyJob = async (jobId, { userId, targetDate, pipeId, modelName, modelVersion }) => {
+  const runUserDailyJob = async (jobId, { userId, targetDate, pipeId, modelName, modelVersion, jobKey = "manual" }) => {
     const fn = `${fnPrefix}.user-daily job=${jobId}`;
     const startedAt = new Date().toISOString();
     updateUserDailyJob(jobId, {
@@ -1103,10 +1259,27 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       modelName,
       modelVersion,
     });
+
     const userIdSafe = Number.isFinite(Number(userId)) ? Number(userId) : null;
     const pipeIdSafe = pipeId !== null && pipeId !== undefined && pipeId !== "" ? Number(pipeId) : 0;
     if (userIdSafe === null) {
-      updateUserDailyJob(jobId, { status: "error", error: "userId mancante" });
+      const finishedAt = new Date().toISOString();
+      updateUserDailyJob(jobId, { status: "error", error: "userId mancante", finishedAt });
+      await publishTelemetry({
+        type: "userDailyScores",
+        jobKey,
+        jobId,
+        startedAt,
+        finishedAt,
+        durationMs: Date.now() - new Date(startedAt).getTime(),
+        totalItems: 0,
+        savedItems: 0,
+        errorCount: 1,
+        status: "FAILED",
+        error: "userId mancante",
+        __source: "tickerscanner",
+      });
+      await reportJobDone(service.bus, service.redisStatusChannel, jobId, { status: "FAILED", error: "userId mancante" });
       return;
     }
 
@@ -1409,12 +1582,13 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
         }
       }
 
+      const finishedAt = new Date().toISOString();
       const finalStatus = userDailyJobs.get(jobId)?.cancel ? "cancelled" : "completed";
       updateUserDailyJob(jobId, {
         status: finalStatus,
         saved,
         total: results.length,
-        finishedAt: new Date().toISOString(),
+        finishedAt,
       });
       const job = userDailyJobs.get(jobId);
       await persistUserDailyJobRecord(jobId, {
@@ -1431,10 +1605,37 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
         errors_json: job?.errors || [],
         params_json: weights,
         started_at: toSqlDateTime(startedAt),
-        finished_at: toSqlDateTime(job?.finishedAt || new Date().toISOString()),
+        finished_at: toSqlDateTime(finishedAt),
+      });
+      const telemetryStatus = finalStatus === "cancelled" ? "CANCELLED" : "COMPLETED";
+      await publishTelemetry({
+        type: "userDailyScores",
+        jobKey,
+        jobId,
+        startedAt,
+        finishedAt,
+        durationMs: Date.now() - new Date(startedAt).getTime(),
+        userId: userIdSafe,
+        pipeId: pipeIdSafe,
+        targetDate,
+        totalItems: results.length,
+        savedItems: saved,
+        errorCount: job?.errors?.length || 0,
+        status: telemetryStatus,
+        __source: "tickerscanner",
+      });
+      await reportJobDone(service.bus, service.redisStatusChannel, jobId, {
+        status: telemetryStatus,
+        summary: {
+          date: targetDate,
+          pipeId: pipeIdSafe,
+          total: results.length,
+          saved,
+          errors: userDailyJobs.get(jobId)?.errors?.length || 0,
+        },
       });
       logger.info(
-        `${fn} completed ${safeStringify({
+        `${fn} ${finalStatus} ${safeStringify({
           date: targetDate,
           pipeId: pipeIdSafe,
           total: results.length,
@@ -1445,14 +1646,15 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       if (!results.length) {
         const errSample = (userDailyJobs.get(jobId)?.errors || []).slice(0, 5);
         logger.warning(
-          `${fn} nessun risultato calcolato (market data mancanti o screener vuoto) ${safeStringify({
+          `${fn} nessun risultato calcolato (market data mancanti o screener vuoto) | ${safeStringify({
             errors_sample: errSample,
           })}`
         );
       }
     } catch (err) {
       const errorStr = fmtErr(err);
-      updateUserDailyJob(jobId, { status: "error", error: errorStr, finishedAt: new Date().toISOString() });
+      const finishedAt = new Date().toISOString();
+      updateUserDailyJob(jobId, { status: "error", error: errorStr, finishedAt });
       const job = userDailyJobs.get(jobId);
       await persistUserDailyJobRecord(jobId, {
         job_id: jobId,
@@ -1467,18 +1669,146 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
         error_count: (job?.errors?.length || 0) + 1,
         errors_json: [...(job?.errors || []), { error: errorStr }],
         started_at: toSqlDateTime(startedAt),
-        finished_at: toSqlDateTime(job?.finishedAt || new Date().toISOString()),
+        finished_at: toSqlDateTime(finishedAt),
       });
+      await publishTelemetry({
+        type: "userDailyScores",
+        jobKey,
+        jobId,
+        startedAt,
+        finishedAt,
+        durationMs: Date.now() - new Date(startedAt).getTime(),
+        userId: userIdSafe,
+        pipeId: pipeIdSafe,
+        targetDate,
+        totalItems: job?.total || 0,
+        savedItems: job?.saved || 0,
+        errorCount: (job?.errors?.length || 0) + 1,
+        status: "FAILED",
+        error: errorStr,
+        __source: "tickerscanner",
+      });
+      await reportJobDone(service.bus, service.redisStatusChannel, jobId, { status: "FAILED", error: errorStr });
       logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
     }
   };
+
+  const launchUserDailyJobsForUser = async ({
+    userId,
+    targetDate,
+    pipeId,
+    modelName,
+    modelVersion,
+    jobKey,
+  }) => {
+    if (pipeId === undefined) {
+      const url = `${dbmanagerUrl}/auth/users/${userId}/score-weights`;
+      const resp = await axios.get(url, { timeout: 8000 });
+      const list = Array.isArray(resp.data) ? resp.data : [];
+      if (!list.length) {
+        return { ok: false, status: 404, error: "Pesi/pipe non trovati per l'utente" };
+      }
+      const jobs = [];
+      for (const row of list) {
+        const pid = row.pipe_id ?? row.pipeId ?? 0;
+        const job = createUserDailyJob();
+        updateUserDailyJob(job.id, {
+          date: targetDate,
+          pipeId: pid,
+          userId,
+          modelName,
+          modelVersion,
+        });
+        setImmediate(() =>
+          runUserDailyJob(job.id, { userId, targetDate, pipeId: pid, modelName, modelVersion, jobKey })
+        );
+        jobs.push(job.id);
+      }
+      return { ok: true, type: "async", jobIds: jobs, jobKey };
+    }
+
+    const job = createUserDailyJob();
+    updateUserDailyJob(job.id, {
+      date: targetDate,
+      pipeId,
+      userId,
+      modelName,
+      modelVersion,
+    });
+    setImmediate(() =>
+      runUserDailyJob(job.id, { userId, targetDate, pipeId, modelName, modelVersion, jobKey })
+    );
+    return { ok: true, type: "async", jobId: job.id, jobKey };
+  };
+
+  const internalUserDailyScoresHandler = async (req, res) => {
+    const fn = `${fnPrefix}.POST:/internal/fundamentals/user-daily-scores`;
+    try {
+      const jobKey =
+        (typeof req.query.jobKey === "string" && req.query.jobKey.trim()) ||
+        (typeof req.headers["x-job-key"] === "string" && req.headers["x-job-key"].trim()) ||
+        (typeof req.body?.jobKey === "string" && req.body.jobKey.trim()) ||
+        "internal";
+      const tz =
+        req.body?.timezone ||
+        req.query?.timezone ||
+        process.env.DEFAULT_JOB_TIMEZONE ||
+        process.env.SCHEDULER_TIMEZONE ||
+        "UTC";
+      const getDateInTz = (zone) => {
+        try {
+          return new Intl.DateTimeFormat("en-CA", {
+            timeZone: zone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          }).format(new Date());
+        } catch {
+          return new Date().toISOString().slice(0, 10);
+        }
+      };
+      const defaultDate = getDateInTz(tz);
+      const targetDate = (req.body?.date || req.query?.date || defaultDate).toString().slice(0, 10);
+      const pipeIdRaw = req.body?.pipeId ?? req.body?.pipe_id ?? req.query?.pipeId ?? req.query?.pipe_id ?? undefined;
+      const pipeId = pipeIdRaw !== undefined && pipeIdRaw !== null && pipeIdRaw !== "" ? Number(pipeIdRaw) : undefined;
+      const modelName = req.body?.name ?? req.body?.note ?? req.body?.description ?? "Non specificate";
+      const modelVersion = req.body?.version ?? "1.0";
+      const userIdRaw = req.body?.userId ?? req.body?.user_id;
+      if (userIdRaw === undefined || userIdRaw === null || userIdRaw === "") {
+        return res.status(400).json({ ok: false, error: "userId obbligatorio" });
+      }
+      const userId = Number(userIdRaw);
+      const result = await launchUserDailyJobsForUser({
+        userId,
+        targetDate,
+        pipeId,
+        modelName,
+        modelVersion,
+        jobKey,
+      });
+      if (result.ok === false) {
+        return res.status(result.status || 400).json({ ok: false, error: result.error });
+      }
+      return res.json(result);
+    } catch (err) {
+      logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)}`);
+      return res.status(500).json({ ok: false, error: "Errore avvio calcolo user_daily_scores interno" });
+    }
+  };
+
+  // Espone handler per mount su /internal/fundamentals/user-daily-scores in server.js
+  router._internalUserDailyScores = [requireInternalToken, internalUserDailyScoresHandler];
 
   // Avvia job asincrono per daily scores
   router.post("/user-daily-scores", async (req, res) => {
     const fn = `${fnPrefix}.POST:/user-daily-scores`;
     try {
       const userId = await fetchUserId(req);
-      if (!userId) return res.status(401).json({ ok: false, error: "User non identificato" });
+      const jobKey =
+        (typeof req.query.jobKey === "string" && req.query.jobKey.trim()) ||
+        (typeof req.headers["x-job-key"] === "string" && req.headers["x-job-key"].trim()) ||
+        (typeof req.body?.jobKey === "string" && req.body.jobKey.trim()) ||
+        "manual";
       const tz =
         req.body?.timezone ||
         req.query?.timezone ||
@@ -1504,41 +1834,23 @@ module.exports = function buildFundamentalsRouter({ service, logger, moduleName 
       const modelName = req.body?.name ?? req.body?.note ?? req.body?.description ?? "Non specificate";
       const modelVersion = req.body?.version ?? "1.0";
 
-      if (pipeId === undefined) {
-        // carica tutte le pipe e avvia un job per ciascuna
-        const url = `${dbmanagerUrl}/auth/users/${userId}/score-weights`;
-        const resp = await axios.get(url, { timeout: 8000 });
-        const list = Array.isArray(resp.data) ? resp.data : [];
-        if (!list.length) {
-          return res.status(404).json({ ok: false, error: "Pesi/pipe non trovati per l'utente" });
-        }
-        const jobs = [];
-        for (const row of list) {
-          const pid = row.pipe_id ?? row.pipeId ?? 0;
-          const job = createUserDailyJob();
-          updateUserDailyJob(job.id, {
-            date: targetDate,
-            pipeId: pid,
-            userId,
-            modelName,
-            modelVersion,
-          });
-          setImmediate(() => runUserDailyJob(job.id, { userId, targetDate, pipeId: pid, modelName, modelVersion }));
-          jobs.push(job.id);
-        }
-        return res.json({ ok: true, jobIds: jobs });
-      } else {
-        const job = createUserDailyJob();
-        updateUserDailyJob(job.id, {
-          date: targetDate,
-          pipeId,
-          userId,
-          modelName,
-          modelVersion,
-        });
-        setImmediate(() => runUserDailyJob(job.id, { userId, targetDate, pipeId, modelName, modelVersion }));
-        return res.json({ ok: true, jobId: job.id });
+      if (!userId) {
+        logger.warning(`${fn} missing auth: user-daily-scores denied`);
+        return res.status(401).json({ ok: false, error: "Autenticazione mancante" });
       }
+
+      const result = await launchUserDailyJobsForUser({
+        userId,
+        targetDate,
+        pipeId,
+        modelName,
+        modelVersion,
+        jobKey,
+      });
+      if (result.ok === false) {
+        return res.status(result.status || 400).json({ ok: false, error: result.error });
+      }
+      return res.json(result);
     } catch (err) {
       const url = `${dbmanagerUrl}/fundamentals/market-daily?symbol=${encodeURIComponent("ALL")}`;
       logger.error(`${fn} error ${safeStringify(err?.response?.data || err?.message || err)} url_hint=${url}`);

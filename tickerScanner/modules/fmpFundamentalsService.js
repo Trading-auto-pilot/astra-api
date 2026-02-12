@@ -43,11 +43,28 @@ class FmpFundamentalsService {
     return `${this.baseUrl}${path}?${sp.toString()}`;
   }
 
-  async fetchJson(url, label) {
+  async fetchJson(url, label, _retries = 3) {
     // ✅ tutte le chiamate passano dal rate limiter
     return this.limiter.enqueue(async () => {
       this.logger.log(`[FMP] GET ${label}: ${url}`);
       const res = await fetch(url);
+
+      // --- 429 handling: notifica al limiter + retry con backoff ---
+      if (res.status === 429) {
+        this.limiter.notifyRateLimit();
+        if (_retries > 0) {
+          const backoffMs = 1000 * Math.pow(2, 3 - _retries); // 1s, 2s, 4s
+          this.logger.warning(
+            `[FMP] ${label} 429 rate-limited – retry in ${backoffMs}ms (${_retries} left)`
+          );
+          await new Promise((r) => setTimeout(r, backoffMs));
+          return this.fetchJson(url, label, _retries - 1);
+        }
+        const text = await res.text().catch(() => "");
+        this.logger.error(`[FMP] ${label} 429 exhausted retries | ${text}`);
+        throw new Error(`${label} failed with status 429 (retries exhausted)`);
+      }
+
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         this.logger.error(
@@ -55,6 +72,8 @@ class FmpFundamentalsService {
         );
         throw new Error(`${label} failed with status ${res.status}`);
       }
+
+      this.limiter.notifySuccess();
       return res.json();
     });
   }
