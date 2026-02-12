@@ -369,6 +369,7 @@ services:
     restart: unless-stopped
     environment:
       - REDIS_URL=redis://redis:6379
+      - DBMANAGER_URL=http://dbmanager:3002
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}

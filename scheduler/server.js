@@ -351,7 +351,13 @@ app.get("/jobs", async (req, res) => {
       const resp = await axios.get(url, { timeout: 15000 });
       return res.json(resp.data);
     } catch (e) {
-      serviceInstance.getLogger().error("[GET /jobs] errore include_disabled", e.message || e);
+      const details = JSON.stringify({
+        status: e?.response?.status || 500,
+        data: e?.response?.data ?? null,
+      });
+      serviceInstance
+        .getLogger()
+        .error(`[GET /jobs] errore include_disabled ${e.message || e} | ${details}`);
       return res.status(500).json({ ok: false, error: "Errore lettura scheduler jobs" });
     }
   }
@@ -379,11 +385,17 @@ app.post("/jobs", async (req, res) => {
 
     return res.json(resp.data);
   } catch (e) {
-    serviceInstance.getLogger().error("[POST /scheduler/jobs] errore", e.message || e);
-    return res.status(500).json({
+    const status = e?.response?.status || 500;
+    const data = e?.response?.data ?? null;
+    const details = JSON.stringify({ status, data });
+    serviceInstance
+      .getLogger()
+      .error(`[POST /scheduler/jobs] errore ${e.message || e} | ${details}`);
+    return res.status(status).json({
       ok: false,
-      error: e.message || String(e),
-      module: "[POST /scheduler/jobs]"
+      error: e?.message || String(e),
+      module: "[POST /scheduler/jobs]",
+      data,
     });
   }
 });
@@ -404,7 +416,13 @@ app.put("/jobs/:id", async (req, res) => {
 
     return res.json(resp.data);
   } catch (e) {
-    serviceInstance.getLogger().error("[PUT /scheduler/jobs/:id] errore", e.message || e);
+    const details = JSON.stringify({
+      status: e?.response?.status || 500,
+      data: e?.response?.data ?? null,
+    });
+    serviceInstance
+      .getLogger()
+      .error(`[PUT /scheduler/jobs/:id] errore ${e.message || e} | ${details}`);
     return res.status(500).json({
       ok: false,
       error: e.message || String(e),
@@ -429,7 +447,13 @@ app.put("/jobs/:id/last-run", async (req, res) => {
 
     return res.json(resp.data);
   } catch (e) {
-    serviceInstance.getLogger().error("[PUT /scheduler/jobs/:id/last-run] errore", e.message || e);
+    const details = JSON.stringify({
+      status: e?.response?.status || 500,
+      data: e?.response?.data ?? null,
+    });
+    serviceInstance
+      .getLogger()
+      .error(`[PUT /scheduler/jobs/:id/last-run] errore ${e.message || e} | ${details}`);
     return res.status(500).json({
       ok: false,
       error: e.message || String(e),
@@ -477,7 +501,13 @@ app.get("/jobs/:jobKey/last-run", async (req, res) => {
     }
     return res.json({ ok: true, data });
   } catch (e) {
-    serviceInstance.getLogger().error("[GET /jobs/:jobKey/last-run] errore", e.message || e);
+    const details = JSON.stringify({
+      status: e?.response?.status || 500,
+      data: e?.response?.data ?? null,
+    });
+    serviceInstance
+      .getLogger()
+      .error(`[GET /jobs/:jobKey/last-run] errore ${e.message || e} | ${details}`);
     return res.status(500).json({ ok: false, error: e.message || String(e) });
   }
 });
@@ -504,7 +534,13 @@ app.post("/jobs/:jobKey/run", async (req, res) => {
     }
     return res.json(result);
   } catch (e) {
-    serviceInstance.getLogger().error("[POST /jobs/:jobKey/run] errore", e.message || e);
+    const details = JSON.stringify({
+      status: e?.response?.status || 500,
+      data: e?.response?.data ?? null,
+    });
+    serviceInstance
+      .getLogger()
+      .error(`[POST /jobs/:jobKey/run] errore ${e.message || e} | ${details}`);
     return res.status(500).json({
       ok: false,
       error: e.message || String(e),
