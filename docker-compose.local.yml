@@ -72,6 +72,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_PORT: ${MYSQL_PORT}
       MYSQL_HOST: ${MYSQL_HOST}
+      ENV: ${ENV}
       TZ: Asia/Dubai
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
@@ -109,6 +110,7 @@ services:
       - /etc/timezone:/etc/timezone:ro
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
+      - ENV=${ENV}
       - TZ=Asia/Dubai
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -167,6 +169,7 @@ services:
       - CORS_ORIGIN=${CORS_ORIGIN}
       - KEEPALIVE_INTERVAL_MS=45000
       - REQUEST_TIMEOUT_MS=5000
+      - ENV=${ENV}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3019/health"]
@@ -767,12 +770,12 @@ services:
       - "traefik.enable=true"
 
       # 🔓 router PUBBLICO: /auth/login e /auth/validate
-      - "traefik.http.routers.auth-public.rule=Host(`localhost`) && (PathPrefix(`/auth/login`) || PathPrefix(`/auth/validate`))"
+      - "traefik.http.routers.auth-public.rule=Host(`localhost`) && (PathPrefix(`/auth/login`) || PathPrefix(`/auth/validate`) || PathPrefix(`/auth/renew`))"
       - "traefik.http.routers.auth-public.entrypoints=web"
       - "traefik.http.routers.auth-public.service=auth-svc"
       - "traefik.http.routers.auth-public.middlewares=cors-default@docker"
       # Preflight (CORS) for public auth endpoints
-      - "traefik.http.routers.auth-public-preflight.rule=Host(`localhost`) && (PathPrefix(`/auth/login`) || PathPrefix(`/auth/validate`)) && Method(`OPTIONS`)"
+      - "traefik.http.routers.auth-public-preflight.rule=Host(`localhost`) && (PathPrefix(`/auth/login`) || PathPrefix(`/auth/validate`) || PathPrefix(`/auth/renew`)) && Method(`OPTIONS`)"
       - "traefik.http.routers.auth-public-preflight.entrypoints=web"
       - "traefik.http.routers.auth-public-preflight.priority=10000"
       - "traefik.http.routers.auth-public-preflight.service=auth-svc"

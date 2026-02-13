@@ -71,6 +71,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_PORT : ${MYSQL_PORT}
       MYSQL_HOST : ${MYSQL_HOST}
+      ENV: ${ENV}
       TZ: Asia/Dubai
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
@@ -106,6 +107,7 @@ services:
       - /etc/timezone:/etc/timezone:ro
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
+      - ENV=${ENV}
       - TZ=Asia/Dubai
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -156,6 +158,7 @@ services:
       - CORS_ORIGIN=${CORS_ORIGIN}
       - KEEPALIVE_INTERVAL_MS=45000
       - REQUEST_TIMEOUT_MS=5000
+      - ENV=${ENV}
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
@@ -278,6 +281,7 @@ services:
     environment:
       - DBMANAGER_URL=http://dbmanager:3002
       - CACHEMANAGER_URL=http://cachemanager:3006
+      - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
@@ -329,6 +333,7 @@ services:
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - IBKRGW_BASE_URL=${IBKRGW_URL}
+      - IBKR_REQUEST_TIMEOUT_MS=${IBKR_REQUEST_TIMEOUT_MS}
       - IBKR_INSECURE_TLS=${IBKR_INSECURE_TLS}
       - IBKR_BRIDGE_URL=${IBKRBRIDGE_URL}
       - TZ=Asia/Dubai
@@ -428,6 +433,7 @@ services:
       - CORS_ORIGIN=${CORS_ORIGIN}
       - TICKLE_INTERVAL_MS=${TICKLE_INTERVAL_MS}
       - AUTH_CHECK_INTERVAL_MS=${AUTH_CHECK_INTERVAL_MS}
+      - IBKR_SSODH_INIT_INTERVAL_MS=${IBKR_SSODH_INIT_INTERVAL_MS}
       - TZ=Asia/Dubai
     depends_on:
       dbmanager:
@@ -526,6 +532,10 @@ services:
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - INTERNAL_JWT_PRIVATE_KEY=${INTERNAL_JWT_PRIVATE_KEY}
+      - INTERNAL_JWT_PUBLIC_KEY=${INTERNAL_JWT_PUBLIC_KEY}
+      - INTERNAL_JWT_ISS=${INTERNAL_JWT_ISS}
+      - INTERNAL_JWT_EXP_SECONDS=${INTERNAL_JWT_EXP_SECONDS}
       - TZ=Asia/Dubai
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -562,6 +572,7 @@ services:
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - FMP_API_KEY=${FMP_API_KEY}
+      - INTERNAL_JWT_PUBLIC_KEY=${INTERNAL_JWT_PUBLIC_KEY}
       - TZ=Asia/Dubai
     depends_on:
       dbmanager:
@@ -672,13 +683,13 @@ services:
 
       # 🔓 router PUBBLICO:
       # /auth/login e /auth/validate → niente middleware, usati da client e Traefik
-      - "traefik.http.routers.auth-public.rule=Host(`api.trading.expovin.it`) && (PathPrefix(`/auth/login`) || PathPrefix(`/auth/validate`))"
+      - "traefik.http.routers.auth-public.rule=Host(`api.trading.expovin.it`) && (PathPrefix(`/auth/login`) || PathPrefix(`/auth/validate`) || PathPrefix(`/auth/renew`))"
       - "traefik.http.routers.auth-public.entrypoints=websecure"
       - "traefik.http.routers.auth-public.tls.certresolver=le"
       - "traefik.http.routers.auth-public.service=auth-svc"
       - "traefik.http.routers.auth-public.middlewares=cors-default@docker"
       # Preflight (CORS) for public auth endpoints
-      - "traefik.http.routers.auth-public-preflight.rule=Host(`api.trading.expovin.it`) && (PathPrefix(`/auth/login`) || PathPrefix(`/auth/validate`)) && Method(`OPTIONS`)"
+      - "traefik.http.routers.auth-public-preflight.rule=Host(`api.trading.expovin.it`) && (PathPrefix(`/auth/login`) || PathPrefix(`/auth/validate`) || PathPrefix(`/auth/renew`)) && Method(`OPTIONS`)"
       - "traefik.http.routers.auth-public-preflight.entrypoints=websecure"
       - "traefik.http.routers.auth-public-preflight.tls.certresolver=le"
       - "traefik.http.routers.auth-public-preflight.priority=10000"

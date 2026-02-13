@@ -289,6 +289,22 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
     }
   });
 
+  // POST /auth/renew
+  router.post("/renew", async (req, res) => {
+    try {
+      const { token, payload } = auth.renewTokenFromBearer(req.headers || {});
+      const tokenPayload = auth.formatTokenPayload(payload);
+      logger.trace(
+        `[${moduleName}] renew success userId=${payload?.sub || "-"} username=${payload?.username || "-"}`
+      );
+      return res.json({ ok: true, token, tokenPayload });
+    } catch (err) {
+      const status = err.statusCode || 401;
+      logger.warning(`[${moduleName}] renew error: ${err.message}`);
+      return res.status(status).json({ error: err.message || "Unauthorized" });
+    }
+  });
+
   // GET /auth/validate → per Traefik ForwardAuth
   router.get("/validate", async (req, res) => {
     try {

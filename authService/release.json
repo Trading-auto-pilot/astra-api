@@ -1,6 +1,6 @@
 {
-  "lastUpdate": "24/12/2025 14:14", 
-  "version": "1.5.0",
+  "lastUpdate": "13/02/2026", 
+  "version": "1.6.0",
   "microservice": "auth",
 
   "note": [
@@ -9,6 +9,7 @@
     "v.1.2.0 auth: Aggiunto modulo di autorizzazione",
     "v.1.3.0 auth: Implementazione navigazione utente lato client",
     "v.1.4.0 auth: Fix per utilizzo API_KEY",
-    "v.1.5.0 Inclusione delle informazioni di Peso per utente, aggiunto info microservice su user agent"
+    "v.1.5.0 Inclusione delle informazioni di Peso per utente, aggiunto info microservice su user agent",
+    "v.1.6.0 Tocken auto extend su interazione. Session expire solo se non usata"
   ]
 }

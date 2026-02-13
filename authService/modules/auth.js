@@ -54,6 +54,41 @@ function createAuthModule(deps) {
     return token;
   }
 
+  function renewTokenFromBearer(headers) {
+    const token = extractBearerToken(headers || {});
+    if (!token) {
+      const err = new Error("Bearer token mancante");
+      err.statusCode = 401;
+      throw err;
+    }
+    let decoded;
+    try {
+      decoded = jwt.verify(token, jwtSecret);
+    } catch (err) {
+      const e = new Error(`Token non valido: ${err.message}`);
+      e.statusCode = 401;
+      throw e;
+    }
+    const payload = {
+      sub: String(decoded.sub || ""),
+      username: decoded.username,
+      type: decoded.type,
+    };
+    if (!payload.sub) {
+      const err = new Error("Token senza sub");
+      err.statusCode = 401;
+      throw err;
+    }
+    logger.trace(
+      `[${moduleName}] renew ok userId=${payload.sub} username=${payload.username || "-"} type=${payload.type || "-"}`
+    );
+    const newToken = signToken(payload);
+    return {
+      token: newToken,
+      payload,
+    };
+  }
+
   function matchPermission(perm, reqPath, reqMethod) {
     // perm: { resource_pattern, http_method, is_allowed }
     if (!perm.is_allowed) return false;
@@ -312,6 +347,7 @@ async function cliNav(userId) {
     loginWithPassword,
     loginWithApiKey,
     validateForwardAuth,
+    renewTokenFromBearer,
     cliNav,
     sanitizeUser,
     formatTokenPayload
