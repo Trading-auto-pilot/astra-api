@@ -73,7 +73,7 @@ services:
       MYSQL_PORT: ${MYSQL_PORT}
       MYSQL_HOST: ${MYSQL_HOST}
       ENV: ${ENV}
-      TZ: Asia/Dubai
+      TZ: ${TIMEZONE}
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 5s
@@ -109,9 +109,9 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     environment:
-      - DBMANAGER_URL=http://dbmanager:3002
+      - DBMANAGER_URL=${DBMANAGER_URL}
       - ENV=${ENV}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -239,7 +239,7 @@ services:
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - REDIS_URL=redis://redis:6379
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     depends_on:
       mysql:
         condition: service_healthy
@@ -284,7 +284,7 @@ services:
     ports:
       - "3006:3006"
     environment:
-      - DBMANAGER_URL=http://dbmanager:3002
+      - DBMANAGER_URL=${DBMANAGER_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
@@ -294,7 +294,7 @@ services:
       - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
       - FMP_API_KEY=${FMP_API_KEY}
       - IBKR_BRIDGE_URL=${IBKRBRIDGE_URL}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     depends_on:
       dbmanager:
         condition: service_healthy
@@ -349,7 +349,7 @@ services:
       retries: 5
       start_period: 15s
     environment:
-      - DBMANAGER_URL=http://dbmanager:3002
+      - DBMANAGER_URL=${DBMANAGER_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
@@ -371,7 +371,7 @@ services:
       - ALERTING_MAX_PER_WINDOW=${ALERTING_MAX_PER_WINDOW}
       - ALERTING_DEDUP_SECONDS=${ALERTING_DEDUP_SECONDS}
       - ALERTING_DEFAULT_EMAIL_TO=${ALERTING_DEFAULT_EMAIL_TO}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.alertingservice.rule=Host(`localhost`) && PathPrefix(`/alertingservice`)"
@@ -398,7 +398,7 @@ services:
       - trading_net
     profiles: ["scheduler"]
     environment:
-      - DBMANAGER_URL=http://dbmanager:3002
+      - DBMANAGER_URL=${DBMANAGER_URL}
       - CACHEMANAGER_URL=http://cachemanager:3006
       - ALERTINGSERVICE_URL=http://alertingservice:3008
       - REDIS_URL=redis://redis:6379
@@ -410,7 +410,7 @@ services:
       - INTERNAL_JWT_PUBLIC_KEY=${INTERNAL_JWT_PUBLIC_KEY}
       - INTERNAL_JWT_ISS=${INTERNAL_JWT_ISS}
       - INTERNAL_JWT_EXP_SECONDS=${INTERNAL_JWT_EXP_SECONDS}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -442,7 +442,7 @@ services:
       dockerfile: tickerScanner/Dockerfile
     restart: unless-stopped
     environment:
-      - DBMANAGER_URL=http://dbmanager:3002
+      - DBMANAGER_URL=${DBMANAGER_URL}
       - CACHEMANAGER_URL=http://cachemanager:3006
       - ALERTINGSERVICE_URL=http://alertingservice:3008
       - REDIS_URL=redis://redis:6379
@@ -452,7 +452,7 @@ services:
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - FMP_API_KEY=${FMP_API_KEY}
       - INTERNAL_JWT_PUBLIC_KEY=${INTERNAL_JWT_PUBLIC_KEY}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     depends_on:
       dbmanager:
         condition: service_healthy
@@ -495,7 +495,7 @@ services:
       dockerfile: decision-engine/Dockerfile
     restart: unless-stopped
     environment:
-      - DBMANAGER_URL=http://dbmanager:3002
+      - DBMANAGER_URL=${DBMANAGER_URL}
       - CACHEMANAGER_URL=http://cachemanager:3006
       - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
       - REDIS_URL=redis://redis:6379
@@ -504,7 +504,7 @@ services:
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - INTERNAL_JWT_PUBLIC_KEY=${INTERNAL_JWT_PUBLIC_KEY}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     depends_on:
       dbmanager:
         condition: service_healthy
@@ -542,7 +542,7 @@ services:
       dockerfile: market-data-service/Dockerfile
     restart: unless-stopped
     environment:
-      - DBMANAGER_URL=http://dbmanager:3002
+      - DBMANAGER_URL=${DBMANAGER_URL}
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
@@ -553,7 +553,7 @@ services:
       - IBKR_REQUEST_TIMEOUT_MS=${IBKR_REQUEST_TIMEOUT_MS}
       - IBKR_INSECURE_TLS=${IBKR_INSECURE_TLS}
       - IBKR_BRIDGE_URL=${IBKR_BRIDGE_URL}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     depends_on:
       dbmanager:
         condition: service_healthy
@@ -592,14 +592,14 @@ services:
     restart: unless-stopped
     environment:
       - REDIS_URL=redis://redis:6379
-      - DBMANAGER_URL=http://dbmanager:3002
+      - DBMANAGER_URL=${DBMANAGER_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - REDIS_PATTERNS=${REDIS_PATTERNS}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     depends_on:
       redis:
         condition: service_healthy
@@ -640,7 +640,7 @@ services:
       dockerfile: ibkr-bridge/Dockerfile
     restart: unless-stopped
     environment:
-      - DBMANAGER_URL=http://dbmanager:3002
+      - DBMANAGER_URL=${DBMANAGER_URL}
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
@@ -651,7 +651,7 @@ services:
       - TICKLE_INTERVAL_MS=${TICKLE_INTERVAL_MS}
       - AUTH_CHECK_INTERVAL_MS=${AUTH_CHECK_INTERVAL_MS}
       - IBKR_SSODH_INIT_INTERVAL_MS=${IBKR_SSODH_INIT_INTERVAL_MS}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     depends_on:
       dbmanager:
         condition: service_healthy
@@ -699,13 +699,13 @@ services:
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - REDIS_URL=redis://redis:6379
-      - DBMANAGER_URL=http://dbmanager:3002
+      - DBMANAGER_URL=${DBMANAGER_URL}
       - CACHEMANAGER_URL=http://cachemanager:3006
       - ALERTINGSERVICE_URL=http://alertingservice:3008
       - TICKERSCANNER_URL=http://tickerscanner:3013
       - SCHEDULER_URL=http://scheduler:3014
       - AUTHSERVICE_URL=http://authService:3015
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     depends_on:
       dbmanager:
         condition: service_healthy
@@ -748,11 +748,11 @@ services:
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
-      - DBMANAGER_URL=http://dbmanager:3002
+      - DBMANAGER_URL=${DBMANAGER_URL}
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
       - CORS_ORIGIN=${CORS_ORIGIN}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     networks:
       - trading_net
     depends_on:

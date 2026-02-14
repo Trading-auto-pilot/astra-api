@@ -10,7 +10,7 @@ services:
       # Provider Docker
       - "--providers.docker=true"
       - "--providers.docker.exposedByDefault=false"
-      - "--providers.docker.network=trading_net"
+      - "--providers.docker.network=${NETWORK}"
       # EntryPoints
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
@@ -72,7 +72,7 @@ services:
       MYSQL_PORT : ${MYSQL_PORT}
       MYSQL_HOST : ${MYSQL_HOST}
       ENV: ${ENV}
-      TZ: Asia/Dubai
+      TZ: ${TIMEZONE}
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 5s
@@ -106,9 +106,9 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     environment:
-      - DBMANAGER_URL=http://dbmanager:3002
+      - DBMANAGER_URL=${DBMANAGER_URL}
       - ENV=${ENV}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -154,10 +154,10 @@ services:
     depends_on:
       - ibkrgw-paper
     environment:
-      - IBKR_BASE_URL=http://localhost:5000
+      - IBKR_BASE_URL=${IBKRGW_BASE_URL}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - KEEPALIVE_INTERVAL_MS=45000
-      - REQUEST_TIMEOUT_MS=5000
+      - REQUEST_TIMEOUT_MS=8000
       - ENV=${ENV}
     restart: unless-stopped
     labels:
@@ -179,7 +179,7 @@ services:
     image: expovin/dbmanager:${DBMANAGER_VERSION}
     restart: unless-stopped
     environment:
-      - MYSQL_HOST=mysql
+      - MYSQL_HOST=${MYSQL_HOST}
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
@@ -188,8 +188,8 @@ services:
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
-      - REDIS_URL=redis://redis:6379
-      - TZ=Asia/Dubai
+      - REDIS_URL=${REDIS_URL}
+      - TZ=${TIMEZONE}
     depends_on:
       mysql:
         condition: service_healthy
@@ -233,17 +233,17 @@ services:
     image: expovin/cachemanager:${CACHEMANAGER_VERSION}
     restart: unless-stopped
     environment:
-      - DBMANAGER_URL=http://dbmanager:3002
+      - DBMANAGER_URL=${DBMANAGER_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=${REDIS_URL}
       - APCA_API_KEY_ID=${APCA_API_KEY_ID}
       - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
       - FMP_API_KEY=${FMP_API_KEY}
       - IBKR_BRIDGE_URL=${IBKRBRIDGE_URL}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     depends_on:
       dbmanager:
         condition: service_healthy
@@ -279,16 +279,17 @@ services:
     image: expovin/decision-engine:${DECISIONENGINE_VERSION}
     restart: unless-stopped
     environment:
-      - DBMANAGER_URL=http://dbmanager:3002
-      - CACHEMANAGER_URL=http://cachemanager:3006
+      - DBMANAGER_URL=${DBMANAGER_URL}
+      - CACHEMANAGER_URL=${CACHEMANAGER_URL}
       - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=${REDIS_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - CORS_ORIGIN=${CORS_ORIGIN}
-      - TZ=Asia/Dubai
+      - INTERNAL_JWT_PUBLIC_KEY=${INTERNAL_JWT_PUBLIC_KEY}
+      - TZ=${TIMEZONE}
     depends_on:
       dbmanager:
         condition: service_healthy
@@ -325,18 +326,18 @@ services:
     image: expovin/market-data-service:${MARKETDATASERVICE_VERSION}
     restart: unless-stopped
     environment:
-      - DBMANAGER_URL=http://dbmanager:3002
-      - REDIS_URL=redis://redis:6379
+      - DBMANAGER_URL=${DBMANAGER_URL}
+      - REDIS_URL=${REDIS_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - CORS_ORIGIN=${CORS_ORIGIN}
-      - IBKRGW_BASE_URL=${IBKRGW_URL}
+      - IBKRGW_BASE_URL=${IBKRGW_BASE_URL}
       - IBKR_REQUEST_TIMEOUT_MS=${IBKR_REQUEST_TIMEOUT_MS}
       - IBKR_INSECURE_TLS=${IBKR_INSECURE_TLS}
-      - IBKR_BRIDGE_URL=${IBKRBRIDGE_URL}
-      - TZ=Asia/Dubai
+      - IBKR_BRIDGE_URL=${IBKR_BRIDGE_URL}
+      - TZ=${TIMEZONE}
     depends_on:
       dbmanager:
         condition: service_healthy
@@ -373,15 +374,15 @@ services:
     image: expovin/redis-ws-bridge:${REDISWSBRIDGE_VERSION}
     restart: unless-stopped
     environment:
-      - REDIS_URL=redis://redis:6379
-      - DBMANAGER_URL=http://dbmanager:3002
+      - REDIS_URL=${REDIS_URL}
+      - DBMANAGER_URL=${DBMANAGER_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - REDIS_PATTERNS=${REDIS_PATTERNS}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     depends_on:
       redis:
         condition: service_healthy
@@ -422,8 +423,8 @@ services:
     image: expovin/ibkr-bridge:${IBKRBRIDGE_VERSION}
     restart: unless-stopped
     environment:
-      - DBMANAGER_URL=http://dbmanager:3002
-      - REDIS_URL=redis://redis:6379
+      - DBMANAGER_URL=${DBMANAGER_URL}
+      - REDIS_URL=${REDIS_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
@@ -434,7 +435,7 @@ services:
       - TICKLE_INTERVAL_MS=${TICKLE_INTERVAL_MS}
       - AUTH_CHECK_INTERVAL_MS=${AUTH_CHECK_INTERVAL_MS}
       - IBKR_SSODH_INIT_INTERVAL_MS=${IBKR_SSODH_INIT_INTERVAL_MS}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     depends_on:
       dbmanager:
         condition: service_healthy
@@ -476,7 +477,7 @@ services:
       - trading_net
     profiles: ["alertingservice"]
     environment:
-      - DBMANAGER_URL=http://dbmanager:3002
+      - DBMANAGER_URL=${DBMANAGER_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
@@ -484,7 +485,7 @@ services:
       - PORT=3008
       - ENV=${ENV}
       - MAX_RETRY_DELAY=${MAX_RETRY_DELAY}
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=${REDIS_URL}
       - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
       - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
       - TWILIO_CONTENT_SID=${TWILIO_CONTENT_SID}
@@ -498,7 +499,7 @@ services:
       - ALERTING_MAX_PER_WINDOW=${ALERTING_MAX_PER_WINDOW}
       - ALERTING_DEDUP_SECONDS=${ALERTING_DEDUP_SECONDS}
       - ALERTING_DEFAULT_EMAIL_TO=${ALERTING_DEFAULT_EMAIL_TO}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.alertingservice.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/alertingservice`)"
@@ -524,10 +525,10 @@ services:
       - trading_net
     profiles: ["scheduler"]
     environment:
-      - DBMANAGER_URL=http://dbmanager:3002
-      - CACHEMANAGER_URL=http://cachemanager:3006
-      - ALERTINGSERVICE_URL=http://alertingservice:3008
-      - REDIS_URL=redis://redis:6379
+      - DBMANAGER_URL=${DBMANAGER_URL}
+      - CACHEMANAGER_URL=${CACHEMANAGER_URL}
+      - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
+      - REDIS_URL=${REDIS_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
@@ -536,7 +537,7 @@ services:
       - INTERNAL_JWT_PUBLIC_KEY=${INTERNAL_JWT_PUBLIC_KEY}
       - INTERNAL_JWT_ISS=${INTERNAL_JWT_ISS}
       - INTERNAL_JWT_EXP_SECONDS=${INTERNAL_JWT_EXP_SECONDS}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -563,17 +564,17 @@ services:
     image: expovin/tickerscanner:${TICKERSCANNER_VERSION}
     restart: unless-stopped
     environment:
-      - DBMANAGER_URL=http://dbmanager:3002
-      - CACHEMANAGER_URL=http://cachemanager:3006
-      - ALERTINGSERVICE_URL=http://alertingservice:3008
-      - REDIS_URL=redis://redis:6379
+      - DBMANAGER_URL=${DBMANAGER_URL}
+      - CACHEMANAGER_URL=${CACHEMANAGER_URL}
+      - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
+      - REDIS_URL=${REDIS_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - FMP_API_KEY=${FMP_API_KEY}
       - INTERNAL_JWT_PUBLIC_KEY=${INTERNAL_JWT_PUBLIC_KEY}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     depends_on:
       dbmanager:
           condition: service_healthy
@@ -608,19 +609,19 @@ services:
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
-      - MYSQL_HOST=mysql
+      - MYSQL_HOST=${MYSQL_HOST}
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
       - MYSQL_DATABASE=${MYSQL_DATABASE}
-      - REDIS_URL=redis://redis:6379
-      - DBMANAGER_URL=http://dbmanager:3002
-      - CACHEMANAGER_URL=http://cachemanager:3006
-      - ALERTINGSERVICE_URL=http://alertingservice:3008
-      - TICKERSCANNER_URL=http://tickerscanner:3013
-      - SCHEDULER_URL=http://scheduler:3014
-      - AUTHSERVICE_URL=http://authService:3015
-      - TZ=Asia/Dubai
+      - REDIS_URL=${REDIS_URL}
+      - DBMANAGER_URL=${DBMANAGER_URL}
+      - CACHEMANAGER_URL=${CACHEMANAGER_URL}
+      - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
+      - TICKERSCANNER_URL=${TICKERSCANNER_URL}
+      - SCHEDULER_URL=${SCHEDULER_URL}
+      - AUTHSERVICE_URL=${AUTHSERVICE_URL}
+      - TZ=${TIMEZONE}
     depends_on:
       dbmanager:
           condition: service_healthy
@@ -665,11 +666,11 @@ services:
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
-      - DBMANAGER_URL=http://dbmanager:3002
+      - DBMANAGER_URL=${DBMANAGER_URL}
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
       - CORS_ORIGIN=${CORS_ORIGIN}
-      - TZ=Asia/Dubai
+      - TZ=${TIMEZONE}
     networks:
       - trading_net
     depends_on:
@@ -724,7 +725,7 @@ services:
 
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=trading_net"
+      - "traefik.docker.network=${NETWORK}"
 
       # Router frontend → trading.expovin.it
       - "traefik.http.routers.astraai-frontend.rule=Host(`trading.expovin.it`)"
@@ -751,5 +752,5 @@ volumes:
 
 networks:
   trading_net:
-    name:  trading_net
+    name: ${NETWORK}
     driver: bridge

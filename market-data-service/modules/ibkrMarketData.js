@@ -534,6 +534,17 @@ class IbkrMarketDataModule {
   _publishMarketData(payload) {
     if (!this.redisBus || !this.redisDataChannel) return;
     try {
+      const tickers = payload.ticker ? [payload.ticker] : [];
+      if (tickers.length > 0) {
+        this.logger?.trace?.(
+          `[ibkrMarketData] arrivati i dati live per i tickers ${tickers.join(", ")} | ${JSON.stringify({
+            ticker: payload.ticker,
+            conid: payload.conid,
+            dataMode: payload.dataMode,
+            payload: payload.payload,
+          })}`
+        );
+      }
       this.redisBus.publish(this.redisDataChannel, {
         type: "marketData",
         ts: Date.now(),
@@ -621,6 +632,7 @@ class IbkrMarketDataModule {
     this.ws.send(JSON.stringify({ session: this.sessionValue }));
     this.logger?.info?.("[ibkrMarketData] websocket session sent");
     await this._ensureHmdsInit();
+    await this._setMarketDataType();
   }
 
   async _ensureHmdsInit() {
@@ -645,6 +657,33 @@ class IbkrMarketDataModule {
       const data = err?.response?.data;
       this.logger?.warning?.(
         `[ibkrMarketData] hmds auth init failed status=${status ?? "-"} data=${JSON.stringify(data || {})}`
+      );
+    }
+  }
+
+  async _setMarketDataType() {
+    const httpBase = this.gatewayBaseUrl;
+    if (!httpBase) return;
+    const insecure = String(process.env.IBKR_INSECURE_TLS || "").toLowerCase() === "true";
+    const httpsAgent = insecure ? new https.Agent({ rejectUnauthorized: false }) : undefined;
+    try {
+      const resp = await axios.post(
+        `${httpBase}/v1/api/iserver/marketdata/type`,
+        { marketDataType: 1 },
+        {
+          timeout: 8000,
+          httpsAgent,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+      this.logger?.log?.(
+        `[ibkrMarketData] market data type set to 1 (live) | status=${resp.status} response=${JSON.stringify(resp?.data || {})}`
+      );
+    } catch (err) {
+      const status = err?.response?.status;
+      const data = err?.response?.data;
+      this.logger?.warning?.(
+        `[ibkrMarketData] failed to set market data type | status=${status ?? "-"} data=${JSON.stringify(data || {})}`
       );
     }
   }

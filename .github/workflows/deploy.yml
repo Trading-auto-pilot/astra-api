@@ -241,17 +241,10 @@ jobs:
         echo "SMTP_HOST='${{ vars.SMTP_HOST }}'" >> .env
         echo "SMTP_PORT='${{ vars.SMTP_PORT }}'" >> .env
         echo "SMTP_USER='${{ vars.SMTP_USER }}'" >> .env
-        echo "MARKETSIMULATOR_VERSION=${{vars.MARKETSIMULATOR_VERSION}}" >> .env
-        echo "ORDERSIMULATOR_VERSION=${{vars.ORDERSIMULATOR_VERSION}}" >> .env
         echo "DBMANAGER_URL=${{vars.DBMANAGER_URL}}" >> .env
-        echo "SMA_URL=${{vars.SMA_URL}}" >> .env
-        echo "SLTP_URL=${{vars.SLTP_URL}}" >> .env
-        echo "CAPITAL_MANAGER_URL=${{vars.CAPITAL_MANAGER_URL}}" >> .env
         echo "ALERTINGMANAGER_URL=${{vars.ALERTINGMANAGER_URL}}" >> .env
         echo "CACHEMANAGER_URL=${{vars.CACHEMANAGER_URL}}" >> .env
         echo "REDIS_URL=${{vars.REDIS_URL}}" >> .env
-        echo "LIVEMARKETMANAGER_URL=${{vars.LIVEMARKETMANAGER_URL}}" >> .env
-        echo "MARKETSIMULATOR_URL=${{vars.MARKETSIMULATOR_URL}}" >> .env
         echo "SCHEDULER_URL=${{vars.SCHEDULER_URL}}" >> .env
         echo "TICKERSCANNER_URL=${{vars.TICKERSCANNER_URL}}" >> .env
         echo "AUTHSERVICE_URL=${{vars.AUTHSERVICE_URL}}" >> .env  

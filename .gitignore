@@ -19,3 +19,4 @@ db/versions/
 *.pem
 *.key
 *.p12
+.ssh
