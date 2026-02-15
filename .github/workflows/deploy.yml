@@ -269,7 +269,11 @@ jobs:
         echo "INTERNAL_JWT_PRIVATE_KEY=${{secrets.INTERNAL_JWT_PRIVATE_KEY}}" >> .env
         echo "INTERNAL_JWT_PUBLIC_KEY=${{vars.INTERNAL_JWT_PUBLIC_KEY}}" >> .env
         echo "COMPOSE_PROFILES=${{vars.COMPOSE_PROFILES}}" >> .env
-
+        echo "TIMEZONE=${{vars.TIMEZONE}}" >> .env
+        echo "LOG_BATCH_MAX_BYTES=${{vars.LOG_BATCH_MAX_BYTES}}" >> .env
+        echo "MAX_RETRY_DELAY=${{vars.MAX_RETRY_DELAY}}" >> .env
+        echo "ALERTING_LOGS_PATTERN=${{vars.ALERTING_LOGS_PATTERN}}" >> .env
+        
         
  
     - name: Copy .env to server
