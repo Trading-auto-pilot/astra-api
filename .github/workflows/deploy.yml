@@ -67,7 +67,6 @@ jobs:
         fi
 
         services=(
-          DBManager
           cacheManager
           alertingService
           scheduler
@@ -216,6 +215,7 @@ jobs:
         echo "JWT_EXPIRES_IN=${{ vars.JWT_EXPIRES_IN }}" >> .env
         echo "ENABLE_DB_LOG=${{ vars.ENABLE_DB_LOG }}" >> .env
         echo "DBMANAGER_VERSION=${{ vars.DBMANAGER_VERSION }}" >> .env
+        echo "DATAHUB_VERSION=${{ vars.DATAHUB_VERSION }}" >> .env
         echo "CACHEMANAGER_VERSION=${{ vars.CACHEMANAGER_VERSION }}" >> .env
         echo "TICKERSCANNER_VERSION=${{ vars.TICKERSCANNER_VERSION }}" >> .env
         echo "AUTHSERVICE_VERSION=${{ vars.AUTHSERVICE_VERSION }}" >> .env
@@ -282,9 +282,41 @@ jobs:
         echo "REDIS_PATTERNS=${{vars.REDIS_PATTERNS}}" >> .env
         echo "MARKETDATASERVICE_URL=${{vars.MARKETDATASERVICE_URL}}" >> .env
         echo "DATAHUB_URL=${{vars.DATAHUB_URL}}" >> .env
+        echo "SERVICECONTROLPLANE_URL=${{vars.SERVICECONTROLPLANE_URL}}" >> .env
+        echo "LIQUIDITY_MANAGER_URL=${{vars.LIQUIDITY_MANAGER_URL}}" >> .env
+        echo "BROKEREXECUTORIBKR_URL=${{vars.BROKEREXECUTORIBKR_URL}}" >> .env
+        echo "MCPGATEWAY_URL=${{vars.MCPGATEWAY_URL}}" >> .env
 
-        
- 
+    - name: Validate .env variables
+      run: |
+        set -euo pipefail
+        echo "🔍 Validating required environment variables..."
+        set -a && source .env && set +a
+        REQUIRED=(
+          DATAHUB_URL DATAHUB_VERSION
+          AUTHSERVICE_URL AUTHSERVICE_VERSION
+          SERVICECONTROLPLANE_URL SERVICECONTROLPLANE_VERSION
+          LIQUIDITY_MANAGER_URL BROKEREXECUTORIBKR_URL
+          REDIS_URL MYSQL_HOST MYSQL_DATABASE
+          CACHEMANAGER_URL TICKERSCANNER_VERSION SCHEDULER_VERSION
+          NETWORK TIMEZONE
+        )
+        FAILED=0
+        for var in "${REQUIRED[@]}"; do
+          val="${!var:-}"
+          if [[ -z "$val" ]]; then
+            echo "  ❌ $var is empty"
+            FAILED=1
+          fi
+        done
+        if [[ $FAILED -eq 1 ]]; then
+          echo ""
+          echo "❌ One or more required variables are empty — aborting deploy."
+          echo "   Set them in: GitHub → Settings → Environments → ${{ github.ref_name }} → Variables"
+          exit 1
+        fi
+        echo "✅ All required variables are set"
+
     - name: Copy .env to server
       run: |
         scp -o StrictHostKeyChecking=no .env $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/.env
@@ -320,6 +352,7 @@ jobs:
 
 
     - name: Copy DB restore script and dump to server
+      if: false  # DB restore manuale
       run: |
         TAR_FILE=$(ls -1t db/Trading_${{ github.ref_name }}_*.tar.gz 2>/dev/null | head -n 1)
         if [[ -z "$TAR_FILE" ]]; then
@@ -334,8 +367,10 @@ jobs:
           $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/
 
     - name: Restore DB on server
+      if: false  # DB restore manuale
       run: |
-        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -s" <<'EOF'
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -e -s" <<'EOF'
+          set -e
           cd ~/deploy
 
           # carico le variabili MYSQL_* da .env
@@ -401,7 +436,8 @@ jobs:
 
     - name: Start all other container
       run: |
-        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -s" <<'EOF'
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -e -s" <<'EOF'
+          set -e
           cd ~/deploy
 
           LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
@@ -451,11 +487,36 @@ jobs:
 
     - name: Start all other container
       run: |
-        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -s" <<'EOF'
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -e -s" <<'EOF'
+          set -e
           cd ~/deploy
           LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
           docker compose -f "docker-compose.${ENV_NAME,,}.yml" -f docker-compose.build.yml --env-file .env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans --no-recreate
           docker image prune -a -f
+        EOF
+
+    - name: Verify deploy health
+      run: |
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -e -s" <<'EOF'
+          set -e
+          LOWER=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
+          echo "⏳ Waiting 20s for containers to stabilize..."
+          sleep 20
+          echo "🔍 Checking for exited containers in project '${LOWER}'..."
+          EXITED=$(docker ps -a --filter "name=${LOWER}-" --filter "status=exited" --format "{{.Names}}" 2>/dev/null || true)
+          if [[ -n "$EXITED" ]]; then
+            echo "❌ These containers exited unexpectedly:"
+            echo "$EXITED"
+            echo ""
+            echo "--- Last logs (tail 30) ---"
+            while IFS= read -r cname; do
+              echo ">>> $cname"
+              docker logs --tail=30 "$cname" 2>&1 || true
+            done <<< "$EXITED"
+            exit 1
+          fi
+          echo "✅ No containers exited — deploy looks healthy"
+          docker ps --filter "name=${LOWER}-" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
         EOF
 
     - name: Cleanup .env on server
