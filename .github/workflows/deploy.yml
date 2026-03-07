@@ -281,6 +281,8 @@ jobs:
         echo "ALERTING_LOGS_PATTERN=${{vars.ALERTING_LOGS_PATTERN}}" >> .env
         echo "REDIS_PATTERNS=${{vars.REDIS_PATTERNS}}" >> .env
         echo "MARKETDATASERVICE_URL=${{vars.MARKETDATASERVICE_URL}}" >> .env
+        echo "DATAHUB_URL=${{vars.DATAHUB_URL}}" >> .env
+
         
  
     - name: Copy .env to server

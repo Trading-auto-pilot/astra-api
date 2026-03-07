@@ -106,7 +106,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     environment:
-      - DATAHUB_URL=http://datahub:3000
+      - DATAHUB_URL=${DATAHUB_URL}
       - ENV=${ENV}
       - TZ=${TIMEZONE}
     healthcheck:
@@ -189,14 +189,14 @@ services:
       - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
       - TICKERSCANNER_URL=${TICKERSCANNER_URL}
       - SCHEDULER_URL=${SCHEDULER_URL}
-      - AUTHSERVICE_URL=http://authService:3015
-      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - AUTHSERVICE_URL=${AUTHSERVICE_URL}
+      - SERVICECONTROLPLANE_URL=${SERVICECONTROLPLANE_URL}
       - IBKRBRIDGE_URL=${IBKRBRIDGE_URL}
       - DECISIONENGINE_URL=${DECISIONENGINE_URL}
       - IBKRKEEPALIVE_URL=${IBKRKEEPALIVE_URL}
-      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - LIQUIDITY_MANAGER_URL=${LIQUIDITY_MANAGER_URL}
       - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
-      - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
+      - BROKEREXECUTORIBKR_URL=${BROKEREXECUTORIBKR_URL}
       - MYSQL_HOST=${MYSQL_HOST}
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
@@ -248,7 +248,7 @@ services:
     image: expovin/cachemanager:${CACHEMANAGER_VERSION}
     restart: unless-stopped
     environment:
-      - DATAHUB_URL=http://datahub:3000
+      - DATAHUB_URL=${DATAHUB_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
@@ -295,7 +295,7 @@ services:
     image: expovin/decision-engine:${DECISIONENGINE_VERSION}
     restart: unless-stopped
     environment:
-      - DATAHUB_URL=http://datahub:3000
+      - DATAHUB_URL=${DATAHUB_URL}
       - CACHEMANAGER_URL=${CACHEMANAGER_URL}
       - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
       - REDIS_URL=${REDIS_URL}
@@ -342,7 +342,7 @@ services:
     image: expovin/market-data-service:${MARKETDATASERVICE_VERSION}
     restart: unless-stopped
     environment:
-      - DATAHUB_URL=http://datahub:3000
+      - DATAHUB_URL=${DATAHUB_URL}
       - REDIS_URL=${REDIS_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
@@ -391,7 +391,7 @@ services:
     restart: unless-stopped
     environment:
       - REDIS_URL=${REDIS_URL}
-      - DATAHUB_URL=http://datahub:3000
+      - DATAHUB_URL=${DATAHUB_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
@@ -439,7 +439,7 @@ services:
     image: expovin/ibkr-bridge:${IBKRBRIDGE_VERSION}
     restart: unless-stopped
     environment:
-      - DATAHUB_URL=http://datahub:3000
+      - DATAHUB_URL=${DATAHUB_URL}
       - REDIS_URL=${REDIS_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
@@ -493,7 +493,7 @@ services:
       - trading_net
     profiles: ["alertingservice"]
     environment:
-      - DATAHUB_URL=http://datahub:3000
+      - DATAHUB_URL=${DATAHUB_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
@@ -541,7 +541,7 @@ services:
       - trading_net
     profiles: ["scheduler"]
     environment:
-      - DATAHUB_URL=http://datahub:3000
+      - DATAHUB_URL=${DATAHUB_URL}
       - CACHEMANAGER_URL=${CACHEMANAGER_URL}
       - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
       - REDIS_URL=${REDIS_URL}
@@ -580,7 +580,7 @@ services:
     image: expovin/tickerscanner:${TICKERSCANNER_VERSION}
     restart: unless-stopped
     environment:
-      - DATAHUB_URL=http://datahub:3000
+      - DATAHUB_URL=${DATAHUB_URL}
       - CACHEMANAGER_URL=${CACHEMANAGER_URL}
       - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
       - REDIS_URL=${REDIS_URL}
@@ -633,7 +633,7 @@ services:
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - REDIS_URL=${REDIS_URL}
-      - DATAHUB_URL=http://datahub:3000
+      - DATAHUB_URL=${DATAHUB_URL}
       - CACHEMANAGER_URL=${CACHEMANAGER_URL}
       - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
       - TICKERSCANNER_URL=${TICKERSCANNER_URL}
@@ -684,7 +684,7 @@ services:
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
-      - DATAHUB_URL=http://datahub:3000
+      - DATAHUB_URL=${DATAHUB_URL}
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
       - CORS_ORIGIN=${CORS_ORIGIN}
@@ -741,7 +741,7 @@ services:
     restart: unless-stopped
     profiles: ["liquidity-manager"]
     environment:
-      - DATAHUB_URL=http://datahub:3000
+      - DATAHUB_URL=${DATAHUB_URL}
       - REDIS_URL=${REDIS_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
@@ -753,8 +753,8 @@ services:
       - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
       - TICKERSCANNER_URL=${TICKERSCANNER_URL}
       - SCHEDULER_URL=${SCHEDULER_URL}
-      - AUTHSERVICE_URL=http://authService:3015
-      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - AUTHSERVICE_URL=${AUTHSERVICE_URL}
+      - SERVICECONTROLPLANE_URL=${SERVICECONTROLPLANE_URL}
       - IBKRBRIDGE_URL=${IBKRBRIDGE_URL}
       - DECISIONENGINE_URL=${DECISIONENGINE_URL}
       - IBKRKEEPALIVE_URL=${IBKRKEEPALIVE_URL}
@@ -796,7 +796,7 @@ services:
     restart: unless-stopped
     profiles: ["broker-executor-ibkr"]
     environment:
-      - DATAHUB_URL=http://datahub:3000
+      - DATAHUB_URL=${DATAHUB_URL}
       - REDIS_URL=${REDIS_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
@@ -807,12 +807,12 @@ services:
       - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
       - TICKERSCANNER_URL=${TICKERSCANNER_URL}
       - SCHEDULER_URL=${SCHEDULER_URL}
-      - AUTHSERVICE_URL=http://authService:3015
-      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - AUTHSERVICE_URL=${AUTHSERVICE_URL}
+      - SERVICECONTROLPLANE_URL=${SERVICECONTROLPLANE_URL}
       - IBKRBRIDGE_URL=${IBKRBRIDGE_URL}
       - DECISIONENGINE_URL=${DECISIONENGINE_URL}
       - IBKRKEEPALIVE_URL=${IBKRKEEPALIVE_URL}
-      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - LIQUIDITY_MANAGER_URL=${LIQUIDITY_MANAGER_URL}
       - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
       - IBKRGW_BASE_URL=${IBKRGW_BASE_URL}
       - IBKR_EXECUTOR_USE_BRIDGE=true
@@ -853,7 +853,7 @@ services:
     restart: unless-stopped
     profiles: ["mcp-gateway"]
     environment:
-      - DATAHUB_URL=http://datahub:3000
+      - DATAHUB_URL=${DATAHUB_URL}
       - REDIS_URL=${REDIS_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
@@ -864,14 +864,14 @@ services:
       - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
       - TICKERSCANNER_URL=${TICKERSCANNER_URL}
       - SCHEDULER_URL=${SCHEDULER_URL}
-      - AUTHSERVICE_URL=http://authService:3015
-      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - AUTHSERVICE_URL=${AUTHSERVICE_URL}
+      - SERVICECONTROLPLANE_URL=${SERVICECONTROLPLANE_URL}
       - IBKRBRIDGE_URL=${IBKRBRIDGE_URL}
       - DECISIONENGINE_URL=${DECISIONENGINE_URL}
       - IBKRKEEPALIVE_URL=${IBKRKEEPALIVE_URL}
-      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - LIQUIDITY_MANAGER_URL=${LIQUIDITY_MANAGER_URL}
       - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
-      - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
+      - BROKEREXECUTORIBKR_URL=${BROKEREXECUTORIBKR_URL}
       - TZ=${TIMEZONE}
     depends_on:
       datahub:
@@ -909,7 +909,7 @@ services:
     restart: unless-stopped
     profiles: ["capital-manager"]
     environment:
-      - DATAHUB_URL=http://datahub:3000
+      - DATAHUB_URL=${DATAHUB_URL}
       - REDIS_URL=${REDIS_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
@@ -920,18 +920,18 @@ services:
       - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
       - TICKERSCANNER_URL=${TICKERSCANNER_URL}
       - SCHEDULER_URL=${SCHEDULER_URL}
-      - AUTHSERVICE_URL=http://authService:3015
-      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - AUTHSERVICE_URL=${AUTHSERVICE_URL}
+      - SERVICECONTROLPLANE_URL=${SERVICECONTROLPLANE_URL}
       - IBKRBRIDGE_URL=${IBKRBRIDGE_URL}
       - DECISIONENGINE_URL=${DECISIONENGINE_URL}
       - IBKRKEEPALIVE_URL=${IBKRKEEPALIVE_URL}
-      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - LIQUIDITY_MANAGER_URL=${LIQUIDITY_MANAGER_URL}
       - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
-      - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
-      - MCPGATEWAY_URL=http://mcp-gateway:3004
+      - BROKEREXECUTORIBKR_URL=${BROKEREXECUTORIBKR_URL}
+      - MCPGATEWAY_URL=${MCPGATEWAY_URL}
       - TZ=${TIMEZONE}
       - IBKR_BRIDGE_URL=${IBKRBRIDGE_URL}
-      - LIQUIDITY_MANAGER_URL=http://liquidity-manager:3001
+      - LIQUIDITY_MANAGER_URL=${LIQUIDITY_MANAGER_URL}
       - RESERVATION_TTL_SEC=${RESERVATION_TTL_SEC:-180}
       - VOL_SCALE=${VOL_SCALE:-100}
       - FALLBACK_RESERVED_CASH_PCT=${FALLBACK_RESERVED_CASH_PCT:-0.60}
