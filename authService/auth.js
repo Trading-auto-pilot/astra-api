@@ -3,17 +3,19 @@
 const bcryptjs=require("bcryptjs");
 const express = require("express");
 const jwt = require("jsonwebtoken");
+const { randomUUID } = require("crypto");
 const createAuthModule = require("./modules/auth");
 const buildAuthorization = require("./modules/authorization");
 const createUserClient = require("./modules/user");
 const createApiKeysClient = require("./modules/apiKeys");
 
-function buildAuthRouter({ logger, moduleName = "auth" }) {
+function buildAuthRouter({ logger, moduleName = "auth", getService = null }) {
   const router = express.Router();
 
   const JWT_SECRET = process.env.JWT_SECRET
   const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
-  const DBMANAGER_URL = process.env.DBMANAGER_URL || "http://dbmanager:3002";
+  // Support both DATAHUB_URL (preferred) and DBMANAGER_URL (backward compat)
+  const DBMANAGER_URL = process.env.DATAHUB_URL || process.env.DBMANAGER_URL || "http://datahub:3000";
 
   if (!JWT_SECRET) {
     throw new Error("JWT_SECRET non impostata! Configura la variabile d'ambiente.");
@@ -76,6 +78,33 @@ function buildAuthRouter({ logger, moduleName = "auth" }) {
       }
     }
     return false;
+  }
+
+  const serviceName = process.env.MICROSERVICE_NAME || "authService";
+  const envName = process.env.ENV || process.env.APP_ENV || "DEV";
+
+  async function publishEvent(eventId, payload = {}, severity = "info", correlationId = null) {
+    try {
+      const service = typeof getService === "function" ? getService() : null;
+      const bus = service?.bus || null;
+      const eventsChannel =
+        service?.redisEventsChannel || `${envName}.${serviceName}.events`;
+      if (!bus || typeof bus.publish !== "function") return;
+      await bus.publish(eventsChannel, {
+        eventKey: `${serviceName}.${eventId}`,
+        eventId,
+        service: serviceName,
+        env: envName,
+        ts: new Date().toISOString(),
+        severity,
+        correlationId: correlationId || randomUUID(),
+        payload,
+      });
+    } catch (err) {
+      logger.warning(
+        `[${moduleName}] [events] publish failed eventId=${eventId}: ${err?.message || String(err)}`
+      );
+    }
   }
 
   // =========================
@@ -497,6 +526,26 @@ router.post("/admin/user", async (req, res) => {
     };
 
     const result = await userClient.createUser(payload);
+    const userId = result?.id ?? result?.insertId ?? null;
+    const correlationId = randomUUID();
+    logger.info(
+      `[${moduleName}] [POST /auth/admin/user] created userId=${userId} username=${username}`
+    );
+    await publishEvent(
+      "USER.CREATED",
+      {
+        user: {
+          id: userId,
+          username,
+          email: rest?.email ?? null,
+          is_active: rest?.is_active ?? true,
+          is_service: rest?.is_service ?? false,
+        },
+        source: "/auth/admin/user",
+      },
+      "info",
+      correlationId
+    );
     return res.json(result);
   } catch (err) {
     logger.error(`[${moduleName}] [POST /auth/admin/user] ${err.message}`);
@@ -828,6 +877,36 @@ router.post("/admin/user", async (req, res) => {
       };
 
       const result = await apiKeysClient.createApiKey(apiKeyPayload);
+      const apiKeyId = result?.id ?? result?.insertId ?? null;
+      const apiKeyPreview = generatedApiKey
+        ? `${generatedApiKey.slice(0, 8)}...${generatedApiKey.slice(-4)}`
+        : null;
+      const correlationId = randomUUID();
+      logger.info(
+        `[${moduleName}] [POST /auth/admin/api-keys] created apiKeyId=${apiKeyId} owner_user_id=${owner_user_id ?? createdUserId}`
+      );
+      await publishEvent(
+        "API_KEY.CREATED",
+        {
+          apiKey: {
+            id: apiKeyId,
+            name,
+            owner_user_id: owner_user_id ?? createdUserId,
+            is_active: is_active ?? true,
+            expires_at: expires_at ?? null,
+            preview: apiKeyPreview,
+          },
+          user: {
+            id: createdUserId,
+            username: userPayload.username,
+            email: userPayload.email,
+            is_service: true,
+          },
+          source: "/auth/admin/api-keys",
+        },
+        "info",
+        correlationId
+      );
       // Return api_key only on creation.
       return res.json({ ...result, user_id: createdUserId, api_key: generatedApiKey });
     } catch (err) {

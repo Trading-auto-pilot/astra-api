@@ -1,0 +1,49 @@
+{
+  "service": "capital-manager",
+  "version": "1.0.0",
+  "channel": "${ENV}.${MICROSERVICE_NAME}.events",
+  "envelope": {
+    "eventKey": "string (service.eventId)",
+    "eventId": "string",
+    "service": "string",
+    "env": "string",
+    "ts": "ISO-8601 datetime",
+    "severity": "info|warning|error",
+    "correlationId": "string",
+    "payload": "object"
+  },
+  "events": [
+    {
+      "eventId": "CAPITAL.ALLOCATED",
+      "eventKey": "capital-manager.CAPITAL.ALLOCATED",
+      "severity": "info",
+      "description": "Pubblicato quando una richiesta di quotazione viene approvata e viene allocato capitale per un'operazione.",
+      "channels": ["hooks (event=CAPITAL.ALLOCATED)"],
+      "hookEvent": "CAPITAL.ALLOCATED",
+      "payloadSchema": {
+        "userId": "string|number",
+        "symbol": "string",
+        "market": "string",
+        "maxInvestable": "number",
+        "limitedBy": "string|null",
+        "clientRequestId": "string"
+      }
+    },
+    {
+      "eventId": "CAPITAL.QUOTE_REJECTED",
+      "eventKey": "capital-manager.CAPITAL.QUOTE_REJECTED",
+      "severity": "warning",
+      "description": "Pubblicato quando una richiesta di quotazione viene rifiutata per insufficienza di capitale o violazione dei limiti di concentrazione.",
+      "channels": ["hooks (event=CAPITAL.QUOTE_REJECTED)"],
+      "hookEvent": "CAPITAL.QUOTE_REJECTED",
+      "payloadSchema": {
+        "userId": "string|number",
+        "symbol": "string",
+        "market": "string",
+        "reason": "string (error code: INSUFFICIENT_CASH | LOW_CONFIDENCE | CONCENTRATION_LIMIT | ...)",
+        "message": "string",
+        "clientRequestId": "string"
+      }
+    }
+  ]
+}

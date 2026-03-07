@@ -1,36 +1,22 @@
-// modules/main.js — TEMPLATE DEFINITIVO
+// modules/main.js
 "use strict";
 
-const path = require("path");
-require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
-const fs = require("fs/promises");
-const createLogger = require("../../shared/logger");
-const {
-  initializeSettings,
-  getSetting,
-  getAllSettings,
-  reloadSettings,
-  setSetting,
-} = require("../../shared/loadSettings");
-const { RedisBus } = require("../../shared/redisBus");
-const { asBool, asInt } = require("../../shared/helpers");
+const BaseService = require("../../shared/BaseService");
+const { getSetting } = require("../../shared/loadSettings");
 const IbkrConnectivity = require("./connectivity");
 
-// =========================================================
-// PLACEHOLDER da sostituire via script di scaffolding
-// =========================================================
-const MICROSERVICE    = "ibkr-bridge";
-const MODULE_NAME     = "main";
-const MODULE_VERSION  = "1.0";    // e.g. "0.1.0"
-
-class IbkrBridge {
+class IbkrBridge extends BaseService {
   constructor() {
-    // =====================================================
-    // URL DI TUTTI I MICROSERVIZI STANDARD DEL SISTEMA
-    // =====================================================
+    super({
+      microservice: "ibkr-bridge",
+      moduleName: "main",
+      moduleVersion: "1.0.0",
+      defaultPort: 3017,
+    });
 
-    //     // Auto-generated service URLs from doc/ports.json
-    this.dbmanagerUrl = process.env.DBMANAGER_URL || "http://dbmanager:3002";
+    // All microservice URLs
+    // Support both DATAHUB_URL (preferred) and DBMANAGER_URL (backward compat)
+    this.dbmanagerUrl = process.env.DATAHUB_URL || process.env.DBMANAGER_URL || "http://datahub:3000";
     this.marketsimulatorUrl = process.env.MARKETSIMULATOR_URL || "http://marketsimulator:3003";
     this.ordersimulatorUrl = process.env.ORDERSIMULATOR_URL || "http://ordersimulator:3004";
     this.orderlistnerUrl = process.env.ORDERLISTNER_URL || "http://orderlistner:3005";
@@ -47,284 +33,28 @@ class IbkrBridge {
     this.servicecontrolplaneUrl = process.env.SERVICECONTROLPLANE_URL || "http://servicecontrolplane:3016";
     this.ibkrbridgeUrl = process.env.IBKRBRIDGE_URL || "http://ibkr-bridge:3017";
 
-
-    // =====================================================
-    // Ambiente
-    // =====================================================
-    this.env = process.env.ENV || "DEV";
-
-    // =====================================================
-    // Canali Redis standard
-    // =====================================================
-    this.redisTelemetyChannel = `${this.env}.${MICROSERVICE}.telemetry`;
-    this.redisStatusChannel   = `${this.env}.${MICROSERVICE}.status`;
-    this.redisDataChannel     = `${this.env}.${MICROSERVICE}.data`;
-    this.redisLogsChannel     = `${this.env}.${MICROSERVICE}.logs`;
-
-    // Stato del modulo
-    this._status       = "STARTING";
-    this.statusDetails = null;
-
-    // =====================================================
-    // Configurazione standard dei canali del Redis Bus
-    // =====================================================
-    this.communicationChannels = {
-      telemetry: { on: true, params: { intervalsMs: 1000 } },
-      metrics:   { on: true, params: { intervalsMs: 1000 } },
-      data:      { on: true, params: { intervalsMs: 0    } },
-      logs:      { on: true, params: { intervalsMs: 0    } },
-    };
-
-    // =====================================================
-    // Redis BUS
-    // =====================================================
-    this.bus = new RedisBus({
-      channels: this.communicationChannels,
-      name: MICROSERVICE
-    });
-
-    // =====================================================
-    // LOGGER
-    // =====================================================
-    process.env.MICROSERVICE_NAME = process.env.MICROSERVICE_NAME || MICROSERVICE;
-    this.logger = createLogger(
-      MICROSERVICE,
-      MODULE_NAME,
-      MODULE_VERSION,
-      process.env.LOG_LEVEL || "info",
-      {
-        bus: null,
-        busTopicPrefix: this.env,
-        console: true,
-        enqueueDb: true,
-      }
-    );
-
-    this.bus.setLogger(this.logger);
-
-    // Mini storage per metriche locali
-    this.metrics = [];
-
     // Connectivity state machine
     this.connectivity = new IbkrConnectivity({
       logger: this.logger,
       getSetting,
       publishTelemetry: async (payload) =>
-        this.bus.publish(this.redisTelemetyChannel, payload),
+        this.bus.publish(this.redisTelemetryChannel, payload),
       getEnv: () => this.env,
       getStatus: () => this._status,
     });
   }
 
-  // =========================================================
-  // init(): logger + redis + settings dal DB
-  // =========================================================
-  async init() {
-    this.logger.info("[init] Initializing...");
-
-    // 1) CONNECT REDIS BUS
-    await this.bus.connect();
-    this.logger.attachBus(this.bus);
-
-    // STATUS: STARTING
-    await this.bus.publish(this.redisStatusChannel, {
-      status: "STARTING",
-      details: "Loading DB settings"
-    });
-
-    // 2) LOAD SETTINGS DAL DB
-    const ok = await initializeSettings(this.dbmanagerUrl);
-    if (!ok) {
-      this._status = "ERROR";
-      this.statusDetails = "DB unreachable";
-      await this.bus.publish(this.redisStatusChannel, {
-        status: this._status,
-        details: this.statusDetails
-      });
-
-      this.logger.error("[init] Failed DB initialization");
-      process.exit(1);
-    }
-
-    // 3) APPLY COMMON SETTINGS
-    this.delayBetweenMessages = asInt(
-      getSetting("PROCESS_DELAY_BETWEEN_MESSAGES"),
-      500
-    );
-
-    this.logger.info(
-      `[init] Settings loaded: delayBetweenMessages=${this.delayBetweenMessages}`
-    );
-
-    // 4) HOOK EVENTUALE
-    await this.afterInit();
-
-    // 5) READY
-    this._status = "READY";
-    this.statusDetails = "Initialization complete";
-
-    await this.bus.publish(this.redisStatusChannel, {
-      status: this._status,
-      details: this.statusDetails
-    });
-  }
-
-  // =========================================================
-  // Hook custom per ogni microservizio (override)
-  // =========================================================
-  async afterInit() {
-    this.logger.info("[afterInit] Starting connectivity loop.");
+  /**
+   * Custom initialization logic for ibkr-bridge
+   */
+  async _onInit() {
+    this.logger.info("[_onInit] Starting connectivity loop");
     this.connectivity.start();
   }
 
-
-  async getReleaseInfo() {
-    const mainDir =
-      (typeof require !== "undefined" &&
-        require.main &&
-        require.main.filename &&
-        path.dirname(require.main.filename)) ||
-      null;
-    const candidates = Array.from(
-      new Set(
-        [
-          path.resolve(__dirname, "..", "release.json"),
-          path.resolve(process.cwd(), "release.json"),
-          path.resolve(process.cwd(), "__TemplateService", "release.json"),
-          mainDir ? path.resolve(mainDir, "release.json") : null,
-        ].filter(Boolean)
-      )
-    );
-    for (const filePath of candidates) {
-      try {
-        await fs.access(filePath);
-        const raw = await fs.readFile(filePath, "utf8");
-        this.logger.info("[getReleaseInfo] lettura release.json", { filePath });
-        return JSON.parse(raw);
-      } catch {
-        // tenta il prossimo percorso
-      }
-    }
-    this.logger.warning("[getReleaseInfo] release.json non trovato", { candidates });
-    return {
-      lastUpdate: null,
-      version: "unknown",
-      microservice: "__TemplateService",
-      note: ["release.json non trovato"],
-    };
-  }
-
-  
   /**
-   * Ricarica i settings da DB senza riavviare il servizio.
+   * Get info with auth status
    */
-  async reloadSettings() {
-    this.logger.info("[reloadSettings] Reloading settings from DB...");
-    const ok = await reloadSettings(this.dbmanagerUrl);
-    if (!ok) {
-      this.logger.error("[reloadSettings] Failed to reload settings from DB");
-      throw new Error("reloadSettings failed");
-    }
-
-    this.delayBetweenMessages = asInt(
-      getSetting("PROCESS_DELAY_BETWEEN_MESSAGES"),
-      500
-    );
-
-    this.logger.info(
-      `[reloadSettings] Settings reloaded: delayBetweenMessages=${this.delayBetweenMessages}`
-    );
-
-    if (typeof this.afterSettingsReload === "function") {
-      await this.afterSettingsReload();
-    }
-
-    return {
-      ok: true,
-      delayBetweenMessages: this.delayBetweenMessages,
-    };
-  }
-
-  // =========================================================
-  // METRICHE GENERICHE
-  // =========================================================
-  getMetricsSnapshot(max = 100) {
-    return this.metrics.slice(-max);
-  }
-
-  pushMetric(metric) {
-    metric.ts = Date.now();
-    this.metrics.push(metric);
-    if (this.metrics.length > 2000) this.metrics.shift();
-  }
-
-  // =========================================================
-  // Aggiornamento dinamico dei channel config
-  // =========================================================
-  normalizeChannels(inCfg = {}, prev = {}) {
-    const ms = (v, d = 500) => Number(v ?? d) || d;
-
-    const norm = (k) => ({
-      on: !!inCfg?.[k]?.on ?? prev?.[k]?.on ?? true,
-      params: {
-        intervalsMs: ms(
-          inCfg?.[k]?.params?.intervalsMs ??
-          prev?.[k]?.params?.intervalsMs ??
-          500
-        ),
-      },
-    });
-
-    return {
-      telemetry: norm("telemetry"),
-      metrics:   norm("metrics"),
-      data:      norm("data"),
-      logs:      norm("logs"),
-    };
-  }
-
-  async updateCommunicationChannel(newConf) {
-    const cfg = this.normalizeChannels(newConf, this.communicationChannels);
-
-    this.communicationChannels = cfg;
-
-    // applica config al BUS
-    await this.bus.applyChannels?.(cfg);
-
-    this.bus.setChannelConfig("telemetry", cfg.telemetry);
-    this.bus.setChannelConfig("metrics",   cfg.metrics);
-    this.bus.setChannelConfig("data",      cfg.data);
-    this.bus.setChannelConfig("logs",      cfg.logs);
-
-    this.logger.info(
-      `[channels] telemetry=${cfg.telemetry.on} metrics=${cfg.metrics.on} data=${cfg.data.on} logs=${cfg.logs.on}`
-    );
-
-    return { ok: true, channels: cfg };
-  }
-
-  // =========================================================
-  // GET INFO STANDARDIZZATO
-  // =========================================================
-  getInfo() {
-    return {
-      MICROSERVICE,
-      MODULE_NAME,
-      MODULE_VERSION,
-      STATUS: this._status,
-      STATUS_DETAILS: this.statusDetails,
-      ENV: this.env,
-      Connectivity: this.connectivity?.getState?.() || null,
-      communicationChannels: this.communicationChannels,
-      BusChannels: {
-        telemetry: this.redisTelemetyChannel,
-        status:    this.redisStatusChannel,
-        data:      this.redisDataChannel,
-        logs:      this.redisLogsChannel,
-      },
-    };
-  }
-
   async getInfoWithAuth() {
     const info = this.getInfo();
     const authStatus = this.connectivity?.getAuthStatus
@@ -333,79 +63,22 @@ class IbkrBridge {
     return {
       ...info,
       authStatus,
+      Connectivity: this.connectivity?.getState?.() || null,
     };
   }
 
-  // =========================================================
-  // SHUTDOWN
-  // =========================================================
+  /**
+   * Override disconnect to also stop connectivity
+   */
   async disconnect() {
-    this.logger.info("[disconnect] Shutting down...");
-
+    this.logger.info("[disconnect] Shutting down connectivity...");
     try {
       this.connectivity?.stop?.();
-      await this.bus.close();
     } catch (e) {
-      this.logger.error("[disconnect] Error closing RedisBus", e);
+      this.logger.error("[disconnect] Error stopping connectivity", e);
     }
-
-    this._status = "STOPPED";
-    return this._status;
+    return await super.disconnect();
   }
-
-  // =========================================================
-  // DB Logger API (usata da /dbLogger nel server.js)
-  // =========================================================
-  getDbLogStatus() {
-    // Se il logger supporta questa API, la usiamo
-    if (typeof this.logger.getDbLogStatus === "function") {
-      return this.logger.getDbLogStatus();
-    }
-    // Fallback neutro
-    return { dbLogEnabled: false };
-  }
-
-  setDbLogStatus(status) {
-    if (typeof this.logger.setDbLogStatus === "function") {
-      return this.logger.setDbLogStatus(status);
-    }
-    this.logger.warning("[setDbLogStatus] Not supported by this logger", { status });
-    return { dbLogEnabled: false };
-  }
-
-  // =========================================================
-  // Settings passthrough (usata da /settings nel server.js)
-  // =========================================================
-  getAllSettings() {
-    return getAllSettings();
-  }
-
-  setSetting(key, value) {
-    return setSetting(key, value);
-  }
-
-  // =========================================================
-  // Log level helpers (usata da /status/logLevel)
-  // =========================================================
-  getLogLevel() {
-    if (typeof this.logger.getLogLevel === "function") {
-      return this.logger.getLogLevel();
-    }
-    return process.env.LOG_LEVEL || "info";
-  }
-
-  setLogLevel(level) {
-    if (typeof this.logger.setLogLevel === "function") {
-      this.logger.setLogLevel(level);
-      return;
-    }
-    this.logger.warning("[setLogLevel] Not supported by this logger", { level });
-  }
-
-  // Accesso diretto
-  getBus()    { return this.bus; }
-  getLogger() { return this.logger; }
-  get status() { return this._status; }
 }
 
 module.exports = IbkrBridge;

@@ -1,0 +1,105 @@
+{
+  "service": "scheduler",
+  "version": "1.0.0",
+  "channel": "${ENV}.${MICROSERVICE_NAME}.events",
+  "envelope": {
+    "eventKey": "string (service.eventId)",
+    "eventId": "string",
+    "service": "string",
+    "env": "string",
+    "ts": "ISO-8601 datetime",
+    "severity": "info|warning|error",
+    "correlationId": "string",
+    "payload": "object"
+  },
+  "events": [
+    {
+      "eventId": "TASK.STARTED",
+      "eventKey": "scheduler.TASK.STARTED",
+      "severity": "info",
+      "description": "Pubblicato quando un task schedulato parte in esecuzione.",
+      "payloadSchema": {
+        "task": {
+          "id": "number|null",
+          "jobKey": "string|null",
+          "method": "string",
+          "url": "string|null",
+          "timeoutMs": "number|null",
+          "retry": "object|null",
+          "openMarket": "boolean",
+          "exchanges": [
+            "string"
+          ],
+          "timezone": "string",
+          "enabled": "boolean|number|string",
+          "rules": [
+            "object"
+          ],
+          "headers": "object",
+          "body": "any",
+          "asyncTimeoutMs": "number|null"
+        },
+        "execution": {
+          "attempt": "number",
+          "maxAttempts": "number",
+          "startedAt": "ISO-8601 datetime",
+          "resolved": {
+            "url": "string",
+            "headers": "object",
+            "body": "any"
+          }
+        }
+      }
+    },
+    {
+      "eventId": "TASK.COMPLETED",
+      "eventKey": "scheduler.TASK.COMPLETED",
+      "severity": "info",
+      "description": "Pubblicato quando un task termina correttamente (sincrono o asincrono).",
+      "payloadSchema": {
+        "task": "object",
+        "execution": {
+          "attempt": "number",
+          "maxAttempts": "number"
+        },
+        "async": {
+          "jobId": "string",
+          "hookStatus": "string|null",
+          "startedAt": "ISO-8601 datetime|null",
+          "completedAt": "ISO-8601 datetime"
+        },
+        "summary": "string|object|null",
+        "response": {
+          "status": "number",
+          "data": "any"
+        }
+      }
+    },
+    {
+      "eventId": "TASK.ERROR",
+      "eventKey": "scheduler.TASK.ERROR",
+      "severity": "error",
+      "description": "Pubblicato quando un task termina in errore.",
+      "payloadSchema": {
+        "task": "object",
+        "execution": {
+          "attempt": "number",
+          "maxAttempts": "number"
+        },
+        "async": {
+          "jobId": "string",
+          "hookStatus": "string|null",
+          "startedAt": "ISO-8601 datetime|null",
+          "failedAt": "ISO-8601 datetime",
+          "timeoutMs": "number"
+        },
+        "error": "string|object",
+        "summary": "string|object|null",
+        "response": {
+          "status": "number|null",
+          "data": "any"
+        }
+      }
+    }
+  ]
+}

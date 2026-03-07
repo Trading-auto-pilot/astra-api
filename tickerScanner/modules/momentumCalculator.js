@@ -113,6 +113,112 @@ class MomentumCalculator {
     return trs.reduce((sum, v) => sum + v, 0) / trs.length;
   }
 
+  // ATR normalizzato: ATR / lastClose * 100  (%)
+  // Esprime la volatilità come percentuale del prezzo → confrontabile tra simboli
+  // Restituisce null se ATR o lastClose non sono disponibili.
+  _atrPct(candles, period = 14) {
+    const atr = this._atr(candles, period);
+    if (atr == null) return null;
+    const lastClose = candles[candles.length - 1]?.c;
+    if (!Number.isFinite(lastClose) || lastClose === 0) return null;
+    return (atr / lastClose) * 100;
+  }
+
+  /**
+   * Computes all persisted technical indicator columns from a candles array.
+   * Uses only indicator functions already implemented in this class.
+   *
+   * @param {Array}  candles - Raw candle objects { t, o, h, l, c, v }
+   * @param {object} [opts]
+   * @param {string} [opts.symbol] - Symbol name, used only for log messages
+   * @returns {{ ret_1d, ret_5d, ret_20d, ret_60d, sma_10, sma_20, sma_50, sma_200,
+   *             sma_20_slope, sma_50_slope, atr_14, atr_14_pct, rsi_14,
+   *             avg_gap_20, max_dd_60, dollar_vol_20d }}
+   *   Each field is a number or null (insufficient history / missing OHLCV).
+   */
+  computeTechnicals(candles, { symbol = "?" } = {}) {
+    const nullResult = {
+      ret_1d: null, ret_5d: null, ret_20d: null, ret_60d: null,
+      sma_10: null, sma_20: null, sma_50: null, sma_200: null,
+      sma_20_slope: null, sma_50_slope: null,
+      atr_14: null, atr_14_pct: null,
+      rsi_14: null, avg_gap_20: null, max_dd_60: null,
+      dollar_vol_20d: null,
+    };
+
+    if (!Array.isArray(candles) || !candles.length) return nullResult;
+
+    // Sort ascending — _fetchCandles already sorts, but be defensive
+    const sorted = [...candles].sort((a, b) => new Date(a.t) - new Date(b.t));
+
+    // Build filtered closes (null/NaN excluded so SMA/RSI helpers work safely)
+    const closes = sorted
+      .map(c => (c.c != null ? Number(c.c) : null))
+      .filter(v => Number.isFinite(v));
+
+    const n = closes.length;
+    if (n < 2) return nullResult; // nothing meaningful possible
+
+    const lastClose = closes[n - 1];
+
+    // Log insufficient history once per symbol
+    if (n < 200) {
+      this.logger.warning(
+        `[computeTechnicals] ${symbol}: only ${n} bars — ${n < 61 ? "ret_60d, sma_50/200" : "sma_200"} will be null`,
+      );
+    }
+
+    // ---- returns ----
+    const ret_1d  = n >= 2  ? this._pctChange(closes[n - 2],  closes[n - 1]) : null;
+    const ret_5d  = n >= 6  ? this._pctChange(closes[n - 6],  closes[n - 1]) : null;
+    const ret_20d = n >= 21 ? this._pctChange(closes[n - 21], closes[n - 1]) : null;
+    const ret_60d = n >= 61 ? this._pctChange(closes[n - 61], closes[n - 1]) : null;
+
+    // ---- SMA ----
+    const sma_10  = this._sma(closes, 10);
+    const sma_20  = this._sma(closes, 20);
+    const sma_50  = this._sma(closes, 50);
+    const sma_200 = this._sma(closes, 200);
+
+    // SMA slopes: lookback=5 matches the value used in calculateForSymbol
+    const sma_20_slope = this._smaSlope(closes, 20, 5);
+    const sma_50_slope = this._smaSlope(closes, 50, 5);
+
+    // ---- ATR (needs full OHLC candle objects) ----
+    const atr_14     = this._atr(sorted, 14);
+    const atr_14_pct = atr_14 != null && lastClose ? atr_14 / lastClose : null;
+
+    // ---- RSI ----
+    const rsi_14 = this._rsi(closes, 14);
+
+    // ---- Avg overnight gap (needs open + prevClose) ----
+    const avg_gap_20 = this._avgGap(sorted, 20);
+
+    // ---- Max drawdown over 60 bars ----
+    const max_dd_60 = this._maxDrawdown(closes, 60);
+
+    // ---- Dollar volume 20d: avg(close × volume) over last 20 bars ----
+    const last20 = sorted.slice(-20);
+    const dollarVols = [];
+    for (const c of last20) {
+      const close = c.c != null ? Number(c.c) : null;
+      const vol   = c.v != null ? Number(c.v) : null;
+      if (Number.isFinite(close) && Number.isFinite(vol)) dollarVols.push(close * vol);
+    }
+    const dollar_vol_20d = dollarVols.length
+      ? dollarVols.reduce((a, b) => a + b, 0) / dollarVols.length
+      : null;
+
+    return {
+      ret_1d, ret_5d, ret_20d, ret_60d,
+      sma_10, sma_20, sma_50, sma_200,
+      sma_20_slope, sma_50_slope,
+      atr_14, atr_14_pct,
+      rsi_14, avg_gap_20, max_dd_60,
+      dollar_vol_20d,
+    };
+  }
+
   _maxDrawdown(closes, lookback = 60) {
     if (!Array.isArray(closes) || closes.length < 2) return null;
     const slice = closes.slice(-lookback).filter((v) => Number.isFinite(v));
@@ -336,7 +442,7 @@ class MomentumCalculator {
       const candles = await this._fetchCandles(symbol);
       if (!candles.length) {
         this.logger.warning(`[momentum] Nessuna candela per ${symbol}`);
-        return { score: null, components: { reason: "no_candles" } };
+        return { score: null, _candles: [], components: { reason: "no_candles" } };
       }
 
       const closes = candles.map(c => (c.c != null ? Number(c.c) : null));
@@ -615,6 +721,7 @@ class MomentumCalculator {
 
       return {
         score: finalScore,
+        _candles: candles,        // raw sorted candles — reused by computeTechnicals in the scan flow
         doubleTopScore: doubleTop?.score ?? null,
         components: {
           lastClose,
@@ -688,7 +795,7 @@ class MomentumCalculator {
       this.logger.error(
         `[momentum] Errore calcolo momentum ${symbol}: ${e.message}`
       );
-      return { score: null, components: { error: e.message } };
+      return { score: null, _candles: [], components: { error: e.message } };
     }
   }
 }

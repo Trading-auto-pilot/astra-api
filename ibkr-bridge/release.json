@@ -1,10 +1,11 @@
 {
-  "lastUpdate": "12/02/2026", 
-  "version": "1.0.1",
+  "lastUpdate": "07/03/2026", 
+  "version": "1.1.0",
   "microservice": "ibkr-bridge",
 
   "note": [
     "v.1.0.0 ibkr-bridge: Initial scaffolding generated from template.",
-    "v.1.0.1 Fix general settings per scrittura logs"
+    "v.1.0.1 Fix general settings per scrittura logs",
+    "v.1.1.0 Revisione gestione routes"
   ]
 }

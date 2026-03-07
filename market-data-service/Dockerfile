@@ -1,25 +1,26 @@
-# Base image
 FROM node:20
-
-# Working directory root
 WORKDIR /app
 
-# (opzionale, ma utile se ti serve curl anche negli altri servizi)
 RUN apt-get update && apt-get install -y curl
 
-# =========================
-# Codice condiviso + servizio
-# =========================
+# Copy service directory
 COPY market-data-service/ ./market-data-service/
+
+# Copy shared libraries
 COPY shared/ ./shared/
 
-# Usa il package.json del microservizio ma installa in /app/node_modules
+# Copy package.json
 COPY market-data-service/package.json .
 
+# Install dependencies (only nodemon, rest is in shared)
 RUN npm install --omit=dev
 
-# Porta esposta (placeholder)
+# Expose port
 EXPOSE 3020
 
-# Start the server
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3020/status/health || exit 1
+
+# Start service
 CMD ["node", "market-data-service/server.js"]

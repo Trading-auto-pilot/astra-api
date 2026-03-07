@@ -180,29 +180,42 @@ app.put("/settings", requireReady, (req, res) => {
   }
 });
 
-// GET /Log → proxy verso DBManager /logs (supporta query, es. ?limit=100)
+// GET /Log → proxy verso datahub /api/table/logs (supporta query, es. ?limit=100)
 app.get("/Log", requireReady, async (req, res) => {
   try {
+    const { convertPathToDatahub, adaptDatahubResponse } = require("../shared/datahubAdapter");
+
     const base =
       (serviceInstance && serviceInstance.dbmanagerUrl) ||
+      process.env.DATAHUB_URL ||
       process.env.DBMANAGER_URL ||
-      "http://dbmanager:3002";
+      "http://datahub:3000";
 
     const search = new URLSearchParams(req.query || {}).toString();
-    const target = `${base.replace(/\/+$/, "")}/logs${search ? `?${search}` : ""}`;
+    // Convert DBManager path to datahub path (/logs -> /api/table/logs)
+    const datahubPath = convertPathToDatahub("/logs");
+    const target = `${base.replace(/\/+$/, "")}${datahubPath}${search ? `?${search}` : ""}`;
+
+    logger.info(`[GET /Log] Proxying to: ${target}`);
+    logger.info(`[GET /Log] Query params: ${JSON.stringify(req.query)}`);
 
     const response = await fetch(target, { method: "GET" });
     const data = await response.json().catch(() => ({}));
 
+    logger.info(`[GET /Log] Response status: ${response.status}, count: ${data.count || 0}, data length: ${data.data?.length || 0}`);
+
     if (!response.ok) {
-      const message = data?.error || data?.message || "Errore dal DBManager";
+      const message = data?.error || data?.message || "Errore da datahub";
       return res.status(response.status || 500).json({ error: message });
     }
 
-    return res.json(data);
+    // Convert datahub response to DBManager format
+    const adaptedData = adaptDatahubResponse(data);
+    logger.info(`[GET /Log] Adapted response - count: ${adaptedData.count || 0}, items length: ${adaptedData.items?.length || 0}`);
+    return res.json(adaptedData);
   } catch (err) {
     logger.error(`[GET /Log] Proxy error: ${err?.message || String(err)}`);
-    return res.status(500).json({ error: err?.message || "Errore proxy verso DBManager" });
+    return res.status(500).json({ error: err?.message || "Errore proxy verso datahub" });
   }
 });
 
@@ -437,6 +450,26 @@ app.get("/candles", async (req, res) => {
   } catch (err) {
     logger.error(`[CACHE] Errore GET /candles: ${err.message}`);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /candles/latest?symbol=AAPL&tf=1min
+// Returns the most recent candle from L3 (Redis) for the given symbol/timeframe.
+// Does not fetch from provider — returns 404 on cache miss.
+app.get("/candles/latest", requireReady, async (req, res) => {
+  try {
+    const { symbol, tf } = req.query;
+    if (!symbol || !tf) {
+      return res.status(400).json({ ok: false, error: "symbol and tf required" });
+    }
+    const candle = await serviceInstance.getLatestCandle(symbol, tf);
+    if (!candle) {
+      return res.status(404).json({ ok: false, error: "no candle in cache", symbol, tf });
+    }
+    return res.json({ ok: true, candle, symbol, tf });
+  } catch (err) {
+    logger.error(`[CACHE] Error GET /candles/latest: ${err.message}`);
+    return res.status(500).json({ ok: false, error: err.message });
   }
 });
 

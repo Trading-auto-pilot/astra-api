@@ -4,13 +4,18 @@
 const express = require("express");
 const { createServiceFlagsClient } = require("./modules/serviceFlags");
 
-module.exports = (serviceInstance, logger) => {
+module.exports = (getService, logger) => {
   const router = express.Router();
-  const client = createServiceFlagsClient(serviceInstance.dbmanagerUrl, logger);
+
+  // Helper to get client lazily
+  const getClient = () => {
+    const service = getService();
+    return createServiceFlagsClient(service.dbmanagerUrl, logger);
+  };
 
   router.get("/", async (_req, res) => {
     try {
-      const items = await client.list();
+      const items = await getClient().list();
       return res.json({ ok: true, items });
     } catch (err) {
       logger.error("[GET /service-flags] error:", err.message || err);
@@ -20,7 +25,7 @@ module.exports = (serviceInstance, logger) => {
 
   router.get("/:id", async (req, res) => {
     try {
-      const item = await client.get(req.params.id);
+      const item = await getClient().get(req.params.id);
       if (!item) return res.status(404).json({ ok: false, error: "Flag non trovato" });
       return res.json({ ok: true, item });
     } catch (err) {
@@ -35,10 +40,10 @@ module.exports = (serviceInstance, logger) => {
       return res.status(400).json({ ok: false, error: "env e microservice sono obbligatori" });
     }
     try {
-      const result = await client.create({ env, microservice, enabled, note });
+      const result = await getClient().create({ env, microservice, enabled, note });
       // restituiamo il record appena creato se disponibile
       if (result?.id) {
-        const item = await client.get(result.id);
+        const item = await getClient().get(result.id);
         return res.json({ ok: true, item, ...result });
       }
       return res.json(result);
@@ -56,9 +61,9 @@ module.exports = (serviceInstance, logger) => {
       return res.status(400).json({ ok: false, error: "env e microservice sono obbligatori" });
     }
     try {
-      const result = await client.update(req.params.id, { env, microservice, enabled, note });
+      const result = await getClient().update(req.params.id, { env, microservice, enabled, note });
       // ritorna il record aggiornato se possibile
-      const item = await client.get(req.params.id).catch(() => null);
+      const item = await getClient().get(req.params.id).catch(() => null);
       return res.json({ ok: true, item, ...result });
     } catch (err) {
       const status = err?.response?.status;
@@ -70,7 +75,7 @@ module.exports = (serviceInstance, logger) => {
 
   router.delete("/:id", async (req, res) => {
     try {
-      const result = await client.remove(req.params.id);
+      const result = await getClient().remove(req.params.id);
       return res.json(result);
     } catch (err) {
       const status = err?.response?.status;

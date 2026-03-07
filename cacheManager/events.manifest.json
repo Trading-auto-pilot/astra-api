@@ -1,0 +1,53 @@
+{
+  "service": "cacheManager",
+  "version": "1.0.0",
+  "channel": "${ENV}.${MICROSERVICE_NAME}.events",
+  "envelope": {
+    "eventKey": "string (service.eventId)",
+    "eventId": "string",
+    "service": "string",
+    "env": "string",
+    "ts": "ISO-8601 datetime",
+    "severity": "info|warning|error",
+    "correlationId": "string",
+    "payload": "object"
+  },
+  "events": [
+    {
+      "eventId": "CACHE.L2.CLEANING",
+      "eventKey": "cacheManager.CACHE.L2.CLEANING",
+      "severity": "warning",
+      "description": "Pubblicato quando la cache L2 supera il limite e vengono rimossi i file piu vecchi.",
+      "payloadSchema": {
+        "reason": "string",
+        "limitMb": "number",
+        "beforeBytes": "number",
+        "afterBytes": "number",
+        "removedFilesCount": "number",
+        "touchedSymbols": [
+          "string"
+        ],
+        "removedFiles": [
+          {
+            "path": "string",
+            "size": "number",
+            "mtimeMs": "number|null"
+          }
+        ]
+      }
+    },
+    {
+      "eventId": "CACHE.L3.THRESHOLD.REACHED",
+      "eventKey": "cacheManager.CACHE.L3.THRESHOLD.REACHED",
+      "severity": "warning",
+      "description": "Pubblicato quando l'utilizzo memoria Redis della cache L3 raggiunge la soglia configurata.",
+      "payloadSchema": {
+        "reason": "string",
+        "thresholdPercent": "number",
+        "usedBytes": "number",
+        "maxBytes": "number",
+        "usagePercent": "number"
+      }
+    }
+  ]
+}

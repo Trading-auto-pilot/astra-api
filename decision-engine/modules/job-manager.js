@@ -11,6 +11,15 @@ const {
   MAX_CONCURRENCY,
   DEFAULT_CONCURRENCY,
   MIN_CONCURRENCY,
+  RANKING_DAILY_PIPE_ID,
+  RANKING_DAILY_MAX_ATR_PCT,
+  RANKING_DAILY_REQUIRE_SMA50,
+  RANKING_DAILY_REQUIRE_SMA200,
+  VOL_TIER_LOW_THRESHOLD,
+  VOL_TIER_HIGH_THRESHOLD,
+  RANKING_DAILY_VOL_LOW,
+  RANKING_DAILY_VOL_NORMAL,
+  RANKING_DAILY_VOL_HIGH,
 } = require("./constants");
 const {
   asNumber,
@@ -170,9 +179,119 @@ const fetchUserFundamentalsTickers = async (tickerscannerUrl, pipeId, headers, d
         row?.exchangeName ||
         null;
       if (!ticker) return null;
-      return { ticker, exchange: exchange ? String(exchange).trim() : null };
+      const isEtf = row?.is_etf != null ? Boolean(Number(row.is_etf)) : null;
+      const asset_type = row?.asset_type ?? (isEtf === true ? "ETF" : isEtf === false ? "EQUITY" : null);
+      return { ticker, exchange: exchange ? String(exchange).trim() : null, asset_type };
     })
     .filter(Boolean);
+};
+
+// buildRankingDailyParams — derive adaptive spot-finder params from ranking daily meta
+// Returns an extraParams object to merge into the spot-finder query for pipeId=0
+const buildRankingDailyParams = (meta) => {
+  if (!meta) return {};
+  const result = {};
+
+  // Level 2: pass current price so spot-finder uses it as priceRef
+  if (meta.price != null && Number.isFinite(Number(meta.price))) {
+    result.currentPrice = Number(meta.price);
+  }
+
+  // Level 3: adaptive params based on volatility tier
+  const atrPct = meta.atr_14_pct;
+  if (Number.isFinite(atrPct)) {
+    let tier;
+    if (atrPct < VOL_TIER_LOW_THRESHOLD)       tier = RANKING_DAILY_VOL_LOW;
+    else if (atrPct >= VOL_TIER_HIGH_THRESHOLD) tier = RANKING_DAILY_VOL_HIGH;
+    else                                         tier = RANKING_DAILY_VOL_NORMAL;
+    Object.assign(result, tier);
+  }
+
+  return result;
+};
+
+// fetchRankingDailyTickers — virtual pipe 0
+// Reads tickers from AST_RANKING_DAILY via GET /fundamentals/ranking/daily?score_date=YYYY-MM-DD
+// Applies pre-filter rules and enriches each entry with meta for adaptive params.
+const fetchRankingDailyTickers = async (tickerscannerUrl, dateParam, timeout, logger, filterOpts = {}) => {
+  const {
+    maxAtrPct   = RANKING_DAILY_MAX_ATR_PCT,
+    requireSma50  = RANKING_DAILY_REQUIRE_SMA50,
+    requireSma200 = RANKING_DAILY_REQUIRE_SMA200,
+  } = filterOpts;
+
+  const dateValue = normalizeDateParam(dateParam);
+  if (!dateValue) throw new Error("score_date is required for ranking daily pipe (pipeId=0)");
+  const url = `${tickerscannerUrl}/fundamentals/ranking/daily?score_date=${encodeURIComponent(dateValue)}`;
+  logger?.trace?.(
+    `[decision-engine] fetchRankingDailyTickers ${JSON.stringify({ date: dateValue, url })}`
+  );
+  const resp = await axios.get(url, { timeout });
+  const payload = resp?.data;
+  const list = Array.isArray(payload?.items) ? payload.items
+             : Array.isArray(payload?.data)  ? payload.data
+             : Array.isArray(payload)         ? payload
+             : [];
+
+  const result = [];
+  let skipped = 0;
+
+  for (const row of list) {
+    const ticker = String(row?.symbol || "").trim().toUpperCase();
+    if (!ticker) continue;
+
+    const reason = row?.reason_json || {};
+    const atrPct = reason?.atr_14_pct ?? null;
+    const trend  = reason?.trend || {};
+
+    // Safety rule: atr_14_pct missing → skip (no sizing basis)
+    if (atrPct === null || !Number.isFinite(Number(atrPct))) {
+      logger?.debug?.(`[fetchRankingDailyTickers] skip ${ticker}: atr_14_pct missing`);
+      skipped++;
+      continue;
+    }
+
+    // Safety rule: atr_14_pct too high → unreliable zones
+    if (Number(atrPct) > maxAtrPct) {
+      logger?.debug?.(`[fetchRankingDailyTickers] skip ${ticker}: atr_14_pct=${atrPct} > ${maxAtrPct}`);
+      skipped++;
+      continue;
+    }
+
+    // Optional: trend filter SMA50
+    if (requireSma50 && trend?.price_gt_sma50 === false) {
+      logger?.debug?.(`[fetchRankingDailyTickers] skip ${ticker}: price below SMA50`);
+      skipped++;
+      continue;
+    }
+
+    // Optional: golden cross filter
+    if (requireSma200 && trend?.sma50_gt_sma200 === false) {
+      logger?.debug?.(`[fetchRankingDailyTickers] skip ${ticker}: SMA50 below SMA200`);
+      skipped++;
+      continue;
+    }
+
+    result.push({
+      ticker,
+      exchange: null,
+      asset_type: row?.asset_type ?? null,
+      meta: {
+        price:        reason?.price ?? null,
+        atr_14_pct:   Number(atrPct),
+        trend: {
+          price_gt_sma50:   trend?.price_gt_sma50  ?? null,
+          sma50_gt_sma200:  trend?.sma50_gt_sma200 ?? null,
+        },
+      },
+    });
+  }
+
+  if (skipped > 0) {
+    logger?.info?.(`[fetchRankingDailyTickers] pre-filter: ${result.length} passed, ${skipped} skipped`);
+  }
+
+  return result;
 };
 
 const applyPipeLimit = (list, query) => {
@@ -213,8 +332,8 @@ const startAsyncJob = async (opts) => {
     logger,
   } = opts;
 
-  const runSpotFinderForTicker = async (ticker, q, request, exchangeOverride, relaxed) => {
-    const params = { ...q, ticker };
+  const runSpotFinderForTicker = async (ticker, q, request, exchangeOverride, relaxed, extraParams = {}) => {
+    const params = { ...q, ticker, ...extraParams };
     if (exchangeOverride && !params.exchange) {
       params.exchange = exchangeOverride;
     }
@@ -262,7 +381,9 @@ const startAsyncJob = async (opts) => {
   const dateParam = normalizeDateParam(dateParamRaw);
   const headers = pickAuthHeaders(req);
   const tickers = applyPipeLimit(
-    await fetchUserFundamentalsTickers(tickerscannerUrl, pipeId, headers, dateParam, tickerscannerTimeoutMs, logger),
+    pipeId === RANKING_DAILY_PIPE_ID
+      ? await fetchRankingDailyTickers(tickerscannerUrl, dateParam, tickerscannerTimeoutMs, logger)
+      : await fetchUserFundamentalsTickers(tickerscannerUrl, pipeId, headers, dateParam, tickerscannerTimeoutMs, logger),
     query
   );
   let cachedResults = [];
@@ -370,10 +491,13 @@ const startAsyncJob = async (opts) => {
     const entry = pendingTickers[index++];
     const ticker = entry?.ticker || entry;
     const exchange = entry?.exchange || null;
+    const extraParams = pipeId === RANKING_DAILY_PIPE_ID
+      ? buildRankingDailyParams(entry?.meta)
+      : {};
     try {
-      let data = await runSpotFinderForTicker(ticker, query, req, exchange);
+      let data = await runSpotFinderForTicker(ticker, query, req, exchange, false, extraParams);
       if (data?.ok === false && isSupportNotAvailable(data)) {
-        data = await runSpotFinderForTicker(ticker, query, req, exchange, true);
+        data = await runSpotFinderForTicker(ticker, query, req, exchange, true, extraParams);
       }
       const errorMessage =
         data?.ok === false ? data?.error || data?.message || "spot-finder failed" : null;
@@ -477,6 +601,8 @@ module.exports = {
   persistSpotFinderSnapshot,
   updateSnapshotResult,
   fetchUserFundamentalsTickers,
+  buildRankingDailyParams,
+  fetchRankingDailyTickers,
   applyPipeLimit,
   startAsyncJob,
 };

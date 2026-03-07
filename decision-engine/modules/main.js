@@ -13,6 +13,7 @@ const {
   setSetting,
 } = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
+const { publishEventsManifest } = require("../../shared/eventsManifestRegistry");
 const { asBool, asInt } = require("../../shared/helpers");
 
 // =========================================================
@@ -29,7 +30,8 @@ class DecisionEngine {
     // =====================================================
 
     //     // Auto-generated service URLs from doc/ports.json
-    this.dbmanagerUrl = process.env.DBMANAGER_URL || "http://dbmanager:3002";
+    // Support both DATAHUB_URL (preferred) and DBMANAGER_URL (backward compat)
+    this.dbmanagerUrl = process.env.DATAHUB_URL || process.env.DBMANAGER_URL || "http://datahub:3000";
     this.marketsimulatorUrl = process.env.MARKETSIMULATOR_URL || "http://marketsimulator:3003";
     this.ordersimulatorUrl = process.env.ORDERSIMULATOR_URL || "http://ordersimulator:3004";
     this.orderlistnerUrl = process.env.ORDERLISTNER_URL || "http://orderlistner:3005";
@@ -60,6 +62,7 @@ class DecisionEngine {
     this.redisStatusChannel   = `${this.env}.${MICROSERVICE}.status`;
     this.redisDataChannel     = `${this.env}.${MICROSERVICE}.data`;
     this.redisLogsChannel     = `${this.env}.${MICROSERVICE}.logs`;
+    this.redisEventsChannel   = `${this.env}.${MICROSERVICE}.events`;
     this.redisMarketDataChannel = `${this.env}.market-data-service.data`;
     this._marketDataSubscribed = false;
     this._marketDataHandlers = new Set();
@@ -76,6 +79,7 @@ class DecisionEngine {
       metrics:   { on: true, params: { intervalsMs: 1000 } },
       data:      { on: true, params: { intervalsMs: 0    } },
       logs:      { on: true, params: { intervalsMs: 0    } },
+      events:    { on: true, params: { intervalsMs: 0    } },
     };
 
     // =====================================================
@@ -118,6 +122,12 @@ class DecisionEngine {
     // 1) CONNECT REDIS BUS
     await this.bus.connect();
     this.logger.attachBus(this.bus);
+    await publishEventsManifest({
+      bus: this.bus,
+      logger: this.logger,
+      microserviceName: MICROSERVICE,
+      serviceRootDir: path.resolve(__dirname, ".."),
+    });
     await this._maybeSubscribeMarketData();
 
     // STATUS: STARTING
@@ -281,6 +291,7 @@ class DecisionEngine {
       metrics:   norm("metrics"),
       data:      norm("data"),
       logs:      norm("logs"),
+      events:    norm("events"),
     };
   }
 
@@ -296,9 +307,10 @@ class DecisionEngine {
     this.bus.setChannelConfig("metrics",   cfg.metrics);
     this.bus.setChannelConfig("data",      cfg.data);
     this.bus.setChannelConfig("logs",      cfg.logs);
+    this.bus.setChannelConfig("events",    cfg.events);
 
     this.logger.info(
-      `[channels] telemetry=${cfg.telemetry.on} metrics=${cfg.metrics.on} data=${cfg.data.on} logs=${cfg.logs.on}`
+      `[channels] telemetry=${cfg.telemetry.on} metrics=${cfg.metrics.on} data=${cfg.data.on} logs=${cfg.logs.on} events=${cfg.events.on}`
     );
 
     await this._maybeSubscribeMarketData();
@@ -323,6 +335,7 @@ class DecisionEngine {
         status:    this.redisStatusChannel,
         data:      this.redisDataChannel,
         logs:      this.redisLogsChannel,
+        events:    this.redisEventsChannel,
       },
     };
   }

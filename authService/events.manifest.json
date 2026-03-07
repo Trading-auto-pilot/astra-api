@@ -1,0 +1,56 @@
+{
+  "service": "authService",
+  "version": "1.0.0",
+  "channel": "${ENV}.${MICROSERVICE_NAME}.events",
+  "envelope": {
+    "eventKey": "string (service.eventId)",
+    "eventId": "string",
+    "service": "string",
+    "env": "string",
+    "ts": "ISO-8601 datetime",
+    "severity": "info|warning|error",
+    "correlationId": "string",
+    "payload": "object"
+  },
+  "events": [
+    {
+      "eventId": "USER.CREATED",
+      "eventKey": "authService.USER.CREATED",
+      "severity": "info",
+      "description": "Pubblicato alla creazione riuscita di un utente da endpoint admin.",
+      "payloadSchema": {
+        "user": {
+          "id": "number|null",
+          "username": "string",
+          "email": "string|null",
+          "is_active": "boolean",
+          "is_service": "boolean"
+        },
+        "source": "string"
+      }
+    },
+    {
+      "eventId": "API_KEY.CREATED",
+      "eventKey": "authService.API_KEY.CREATED",
+      "severity": "info",
+      "description": "Pubblicato alla creazione riuscita di una API key da endpoint admin.",
+      "payloadSchema": {
+        "apiKey": {
+          "id": "number|null",
+          "name": "string",
+          "owner_user_id": "number|null",
+          "is_active": "boolean",
+          "expires_at": "datetime|string|null",
+          "preview": "string|null"
+        },
+        "user": {
+          "id": "number|null",
+          "username": "string",
+          "email": "string|null",
+          "is_service": "boolean"
+        },
+        "source": "string"
+      }
+    }
+  ]
+}

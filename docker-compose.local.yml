@@ -27,7 +27,6 @@ services:
       # log (opzionale)
       - "--log.level=INFO"
       
-
     ports:
       - "8080:80"
       - "8443:443"
@@ -53,9 +52,12 @@ services:
 
       # CORS Configuration (solo HTTP locale)
       - "traefik.http.middlewares.cors-default.headers.accessControlAllowOriginList=http://localhost:8080,http://localhost:5173"
-      - "traefik.http.middlewares.cors-default.headers.accessControlAllowMethods=GET,OPTIONS,PUT,POST,DELETE"
-      - "traefik.http.middlewares.cors-default.headers.accessControlAllowHeaders=Content-Type,Authorization,X-Requested-With"
+      - "traefik.http.middlewares.cors-default.headers.accessControlAllowMethods=GET,OPTIONS,PUT,POST,DELETE,PATCH"
+      - "traefik.http.middlewares.cors-default.headers.accessControlAllowHeaders=Content-Type,Authorization,X-Requested-With,X-Api-Key,Upgrade,Connection,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Extensions,Sec-WebSocket-Accept"
       - "traefik.http.middlewares.cors-default.headers.accessControlAllowCredentials=true"
+      - "traefik.http.middlewares.cors-default.headers.accessControlMaxAge=3600"
+      - "traefik.http.middlewares.cors-default.headers.accessControlExposeHeaders=Content-Length,Content-Type,X-User-Id"
+      - "traefik.http.middlewares.cors-default.headers.addVaryHeader=true"
 
   # ======================
   # CORE SERVICES (sempre ON)
@@ -109,7 +111,6 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     environment:
-      - DBMANAGER_URL=${DBMANAGER_URL}
       - ENV=${ENV}
       - TZ=${TIMEZONE}
     healthcheck:
@@ -122,7 +123,6 @@ services:
       - "6379:6379"
     networks:
       - trading_net
-
 
   ibkrgw-paper:
     image: local/ibkr-clientportal:1.0
@@ -165,6 +165,7 @@ services:
     depends_on:
       - ibkrgw-paper
     environment:
+      - DATAHUB_URL=http://datahub:3000
       - IBKR_BASE_URL=http://localhost:5000
       - CORS_ORIGIN=${CORS_ORIGIN}
       - KEEPALIVE_INTERVAL_MS=45000
@@ -220,56 +221,65 @@ services:
       - "traefik.http.middlewares.ibkrgw-live-headers.headers.customRequestHeaders.X-Forwarded-For=127.0.0.1"
       - "traefik.http.middlewares.ibkrgw-live-headers.headers.customRequestHeaders.X-Real-IP=127.0.0.1"
 
-  dbmanager:
-    image: local/dbmanager:${DBMANAGER_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: DBManager/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "3002:3002"
-    environment:
-      - MYSQL_HOST=mysql
-      - MYSQL_PORT=${MYSQL_PORT}
-      - MYSQL_USER=${MYSQL_USER}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
-      - MYSQL_DATABASE=${MYSQL_DATABASE}
-      - LOG_LEVEL=${LOG_LEVEL}
-      - ENV=${ENV}
-      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
-      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
-      - REDIS_URL=redis://redis:6379
-      - TZ=${TIMEZONE}
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - cache_data:/app/cache
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - trading_net
-    labels:
-      - "traefik.enable=true"
-      # Router: http://localhost:8080/dbmanager/...
-      - "traefik.http.routers.dbmanager.rule=Host(`localhost`) && PathPrefix(`/dbmanager`)"
-      - "traefik.http.routers.dbmanager.entrypoints=web"
-      - "traefik.http.services.dbmanager.loadbalancer.server.port=3002"
-      - "traefik.http.middlewares.dbmanager-stripprefix.stripPrefix.prefixes=/dbmanager"
-      - "traefik.http.routers.dbmanager.middlewares=dbmanager-stripprefix,cors-default@docker,auth-forward@docker"
-      # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
-      - "traefik.http.routers.dbmanager-preflight.rule=Host(`localhost`) && PathPrefix(`/dbmanager`) && Method(`OPTIONS`)"
-      - "traefik.http.routers.dbmanager-preflight.entrypoints=web"
-      - "traefik.http.routers.dbmanager-preflight.priority=10000"
-      - "traefik.http.routers.dbmanager-preflight.service=dbmanager"
-      - "traefik.http.routers.dbmanager-preflight.middlewares=dbmanager-stripprefix,cors-default@docker"
+  # ======================
+  # DBMANAGER - DEPRECATED
+  # ======================
+  # DBManager has been replaced by datahub service
+  # All microservices have been migrated to use DATAHUB_URL instead of DBMANAGER_URL
+  # This service is kept here for reference but is no longer used
+  # Uncomment if you need to run dbmanager for backward compatibility
+  # ======================
+  #
+  # dbmanager:
+  #   image: local/dbmanager:${DBMANAGER_VERSION:-latest}
+  #   build:
+  #     context: .
+  #     dockerfile: DBManager/Dockerfile
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3002:3002"
+  #   environment:
+  #     - MYSQL_HOST=mysql
+  #     - MYSQL_PORT=${MYSQL_PORT}
+  #     - MYSQL_USER=${MYSQL_USER}
+  #     - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+  #     - MYSQL_DATABASE=${MYSQL_DATABASE}
+  #     - LOG_LEVEL=${LOG_LEVEL}
+  #     - ENV=${ENV}
+  #     - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+  #     - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+  #     - REDIS_URL=redis://redis:6379
+  #     - TZ=${TIMEZONE}
+  #   depends_on:
+  #     mysql:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   volumes:
+  #     - /etc/localtime:/etc/localtime:ro
+  #     - /etc/timezone:/etc/timezone:ro
+  #     - cache_data:/app/cache
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - trading_net
+  #   labels:
+  #     - "traefik.enable=true"
+  #     # Router: http://localhost:8080/dbmanager/...
+  #     - "traefik.http.routers.dbmanager.rule=Host(`localhost`) && PathPrefix(`/dbmanager`)"
+  #     - "traefik.http.routers.dbmanager.entrypoints=web"
+  #     - "traefik.http.services.dbmanager.loadbalancer.server.port=3002"
+  #     - "traefik.http.middlewares.dbmanager-stripprefix.stripPrefix.prefixes=/dbmanager"
+  #     - "traefik.http.routers.dbmanager.middlewares=dbmanager-stripprefix,cors-default@docker,auth-forward@docker"
+  #     # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
+  #     - "traefik.http.routers.dbmanager-preflight.rule=Host(`localhost`) && PathPrefix(`/dbmanager`) && Method(`OPTIONS`)"
+  #     - "traefik.http.routers.dbmanager-preflight.entrypoints=web"
+  #     - "traefik.http.routers.dbmanager-preflight.priority=10000"
+  #     - "traefik.http.routers.dbmanager-preflight.service=dbmanager"
+  #     - "traefik.http.routers.dbmanager-preflight.middlewares=dbmanager-stripprefix,cors-default@docker"
 
   # ======================
   # MICROSERVIZI ABILITABILI (via profiles)
@@ -284,7 +294,7 @@ services:
     ports:
       - "3006:3006"
     environment:
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
@@ -294,9 +304,10 @@ services:
       - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
       - FMP_API_KEY=${FMP_API_KEY}
       - IBKR_BRIDGE_URL=${IBKRBRIDGE_URL}
+      - L3_USAGE_ALERT_PERCENT=${L3_USAGE_ALERT_PERCENT:-95}
       - TZ=${TIMEZONE}
     depends_on:
-      dbmanager:
+      datahub:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -338,7 +349,7 @@ services:
       dockerfile: alertingService/Dockerfile
     restart: unless-stopped
     depends_on:
-      - dbmanager
+      - datahub
     networks:
       - trading_net
     profiles: ["alertingservice"]
@@ -349,7 +360,7 @@ services:
       retries: 5
       start_period: 15s
     environment:
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - LOG_LEVEL=${LOG_LEVEL}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
@@ -392,13 +403,13 @@ services:
       dockerfile: scheduler/Dockerfile
     restart: unless-stopped
     depends_on:
-      dbmanager:
+      datahub:
         condition: service_healthy
     networks:
       - trading_net
     profiles: ["scheduler"]
     environment:
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - CACHEMANAGER_URL=http://cachemanager:3006
       - ALERTINGSERVICE_URL=http://alertingservice:3008
       - REDIS_URL=redis://redis:6379
@@ -442,7 +453,7 @@ services:
       dockerfile: tickerScanner/Dockerfile
     restart: unless-stopped
     environment:
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - CACHEMANAGER_URL=http://cachemanager:3006
       - ALERTINGSERVICE_URL=http://alertingservice:3008
       - REDIS_URL=redis://redis:6379
@@ -452,9 +463,14 @@ services:
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - FMP_API_KEY=${FMP_API_KEY}
       - INTERNAL_JWT_PUBLIC_KEY=${INTERNAL_JWT_PUBLIC_KEY}
+      - DEFAULT_JOB_TIMEZONE=America/New_York
+      - SCHEDULER_TIMEZONE=America/New_York
       - TZ=${TIMEZONE}
+      - SCAN_FMP_CONCURRENCY=${SCAN_FMP_CONCURRENCY}
+      - SCAN_MOMENTUM_CONCURRENCY=${SCAN_MOMENTUM_CONCURRENCY}
+      - SCAN_UPSERT_CONCURRENCY=${SCAN_UPSERT_CONCURRENCY}
     depends_on:
-      dbmanager:
+      datahub:
         condition: service_healthy
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -495,7 +511,7 @@ services:
       dockerfile: decision-engine/Dockerfile
     restart: unless-stopped
     environment:
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - CACHEMANAGER_URL=http://cachemanager:3006
       - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
       - REDIS_URL=redis://redis:6379
@@ -506,7 +522,7 @@ services:
       - INTERNAL_JWT_PUBLIC_KEY=${INTERNAL_JWT_PUBLIC_KEY}
       - TZ=${TIMEZONE}
     depends_on:
-      dbmanager:
+      datahub:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -535,55 +551,6 @@ services:
       - "traefik.http.routers.decision-engine-preflight.service=decision-engine"
       - "traefik.http.routers.decision-engine-preflight.middlewares=decision-engine-stripprefix,cors-default@docker"
 
-  market-data-service:
-    image: local/market-data-service:${MARKET_DATA_SERVICE_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: market-data-service/Dockerfile
-    restart: unless-stopped
-    environment:
-      - DBMANAGER_URL=${DBMANAGER_URL}
-      - REDIS_URL=redis://redis:6379
-      - LOG_LEVEL=${LOG_LEVEL}
-      - ENV=${ENV}
-      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
-      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
-      - CORS_ORIGIN=${CORS_ORIGIN}
-      - IBKRGW_BASE_URL=${IBKRGW_BASE_URL}
-      - IBKR_REQUEST_TIMEOUT_MS=${IBKR_REQUEST_TIMEOUT_MS}
-      - IBKR_INSECURE_TLS=${IBKR_INSECURE_TLS}
-      - IBKR_BRIDGE_URL=${IBKR_BRIDGE_URL}
-      - TZ=${TIMEZONE}
-    depends_on:
-      dbmanager:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-    networks:
-      - trading_net
-    profiles: ["market-data-service"]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3020/status/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.market-data-service.rule=Host(`localhost`) && PathPrefix(`/market-data-service`)"
-      - "traefik.http.routers.market-data-service.entrypoints=web"
-      - "traefik.http.services.market-data-service.loadbalancer.server.port=3020"
-      - "traefik.http.middlewares.market-data-service-stripprefix.stripPrefix.prefixes=/market-data-service"
-      - "traefik.http.routers.market-data-service.middlewares=market-data-service-stripprefix,cors-default@docker,auth-forward@docker"
-      - "traefik.http.routers.market-data-service-preflight.rule=Host(`localhost`) && PathPrefix(`/market-data-service`) && Method(`OPTIONS`)"
-      - "traefik.http.routers.market-data-service-preflight.entrypoints=web"
-      - "traefik.http.routers.market-data-service-preflight.priority=10000"
-      - "traefik.http.routers.market-data-service-preflight.service=market-data-service"
-      - "traefik.http.routers.market-data-service-preflight.middlewares=market-data-service-stripprefix,cors-default@docker"
-
   redis-ws-bridge:
     image: local/redis-ws-bridge:${REDISWSBRIDGE_VERSION:-latest}
     build:
@@ -592,7 +559,7 @@ services:
     restart: unless-stopped
     environment:
       - REDIS_URL=redis://redis:6379
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
@@ -631,7 +598,7 @@ services:
       - "traefik.http.routers.redis-ws-bridge-ws.entrypoints=web"
       - "traefik.http.routers.redis-ws-bridge-ws.priority=10001"
       - "traefik.http.routers.redis-ws-bridge-ws.service=redis-ws-bridge"
-      - "traefik.http.routers.redis-ws-bridge-ws.middlewares=redis-ws-bridge-stripprefix,cors-default@docker"
+      - "traefik.http.routers.redis-ws-bridge-ws.middlewares=redis-ws-bridge-stripprefix"
 
   ibkr-bridge:
     image: local/ibkr-bridge:${IBKRBRIDGE_VERSION:-latest}
@@ -640,7 +607,7 @@ services:
       dockerfile: ibkr-bridge/Dockerfile
     restart: unless-stopped
     environment:
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
@@ -653,7 +620,7 @@ services:
       - IBKR_SSODH_INIT_INTERVAL_MS=${IBKR_SSODH_INIT_INTERVAL_MS}
       - TZ=${TIMEZONE}
     depends_on:
-      dbmanager:
+      datahub:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -699,7 +666,7 @@ services:
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - REDIS_URL=redis://redis:6379
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - CACHEMANAGER_URL=http://cachemanager:3006
       - ALERTINGSERVICE_URL=http://alertingservice:3008
       - TICKERSCANNER_URL=http://tickerscanner:3013
@@ -707,7 +674,7 @@ services:
       - AUTHSERVICE_URL=http://authService:3015
       - TZ=${TIMEZONE}
     depends_on:
-      dbmanager:
+      datahub:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -737,63 +704,7 @@ services:
       - "traefik.http.routers.servicecontrolplane-preflight.service=servicecontrolplane"
       - "traefik.http.routers.servicecontrolplane-preflight.middlewares=servicecontrolplane-stripprefix,cors-default@docker"
 
-  authservice:
-    image: local/authservice:${AUTHSERVICE_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: authService/Dockerfile
-    restart: unless-stopped
-    environment:
-      - LOG_LEVEL=${LOG_LEVEL}
-      - ENV=${ENV}
-      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
-      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
-      - DBMANAGER_URL=${DBMANAGER_URL}
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
-      - CORS_ORIGIN=${CORS_ORIGIN}
-      - TZ=${TIMEZONE}
-    networks:
-      - trading_net
-    depends_on:
-      dbmanager:
-        condition: service_healthy
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3015/status/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    labels:
-      - "traefik.enable=true"
-
-      # 🔓 router PUBBLICO: /auth/login e /auth/validate
-      - "traefik.http.routers.auth-public.rule=Host(`localhost`) && (PathPrefix(`/auth/login`) || PathPrefix(`/auth/validate`) || PathPrefix(`/auth/renew`))"
-      - "traefik.http.routers.auth-public.entrypoints=web"
-      - "traefik.http.routers.auth-public.service=auth-svc"
-      - "traefik.http.routers.auth-public.middlewares=cors-default@docker"
-      # Preflight (CORS) for public auth endpoints
-      - "traefik.http.routers.auth-public-preflight.rule=Host(`localhost`) && (PathPrefix(`/auth/login`) || PathPrefix(`/auth/validate`) || PathPrefix(`/auth/renew`)) && Method(`OPTIONS`)"
-      - "traefik.http.routers.auth-public-preflight.entrypoints=web"
-      - "traefik.http.routers.auth-public-preflight.priority=10000"
-      - "traefik.http.routers.auth-public-preflight.service=auth-svc"
-      - "traefik.http.routers.auth-public-preflight.middlewares=cors-default@docker"
-
-      # 🔐 router ADMIN: /auth/admin/... protetto da forwardAuth
-      - "traefik.http.routers.auth-admin.rule=Host(`localhost`) && PathPrefix(`/auth/admin`)"
-      - "traefik.http.routers.auth-admin.entrypoints=web"
-      - "traefik.http.routers.auth-admin.middlewares=cors-default@docker,auth-forward@docker"
-      - "traefik.http.routers.auth-admin.service=auth-svc"
-      # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
-      - "traefik.http.routers.auth-admin-preflight.rule=Host(`localhost`) && PathPrefix(`/auth/admin`) && Method(`OPTIONS`)"
-      - "traefik.http.routers.auth-admin-preflight.entrypoints=web"
-      - "traefik.http.routers.auth-admin-preflight.priority=10000"
-      - "traefik.http.routers.auth-admin-preflight.service=auth-svc"
-      - "traefik.http.routers.auth-admin-preflight.middlewares=cors-default@docker"
-
-      - "traefik.http.services.auth-svc.loadbalancer.server.port=3015"
+  # authservice configuration removed - see authService below with profile
 
   astraai-frontend:
     image: local/astraai-frontend:${ASTRAAI_VERSION:-latest}
@@ -812,6 +723,464 @@ services:
       # Router frontend → http://localhost:8080
       - "traefik.http.routers.astraai-frontend.rule=Host(`localhost`)"
       - "traefik.http.routers.astraai-frontend.entrypoints=web"
+
+  help-trading:
+    image: local/help-trading:${HELPTRADING_VERSION:-latest}
+    build:
+      context: ../help.trading
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "4000:80"
+    profiles: ["frontend"]
+    networks:
+      - trading_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=trading_net"
+      - "traefik.http.routers.help-trading.rule=Host(`localhost`) && PathPrefix(`/help`)"
+      - "traefik.http.routers.help-trading.entrypoints=web"
+      - "traefik.http.services.help-trading.loadbalancer.server.port=80"
+      - "traefik.http.middlewares.help-trading-stripprefix.stripPrefix.prefixes=/help"
+      - "traefik.http.routers.help-trading.middlewares=help-trading-stripprefix"
+
+  liquidity-manager:
+    image: local/liquidity-manager:${LIQUIDITYMANAGER_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: liquidity-manager/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - DATAHUB_URL=http://datahub:3000
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - FRED_API_KEY=${FRED_API_KEY}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - STRATEGYUTILS_URL=http://strategyUtils:3007
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
+      - TICKERSCANNER_URL=http://tickerscanner:3013
+      - SCHEDULER_URL=http://scheduler:3014
+      - AUTHSERVICE_URL=http://authService:3015
+      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - IBKRBRIDGE_URL=http://ibkr-bridge:3017
+      - IBKR_ACCOUNT_ID=${IBKR_ACCOUNT_ID}
+      - IBKR_WS_INSECURE_TLS=${IBKR_WS_INSECURE_TLS}
+      - DECISIONENGINE_URL=http://decision-engine:3018
+      - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
+      - MARKETDATASERVICE_URL=http://market-data-service:3020
+      - TZ=${TIMEZONE}
+    depends_on:
+      datahub:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    profiles: ["liquidity-manager"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.liquidity-manager.rule=Host(`localhost`) && PathPrefix(`/liquidity-manager`)"
+      - "traefik.http.routers.liquidity-manager.entrypoints=web"
+      - "traefik.http.services.liquidity-manager.loadbalancer.server.port=3001"
+      - "traefik.http.middlewares.liquidity-manager-stripprefix.stripPrefix.prefixes=/liquidity-manager"
+      - "traefik.http.routers.liquidity-manager.middlewares=liquidity-manager-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.liquidity-manager-preflight.rule=Host(`localhost`) && PathPrefix(`/liquidity-manager`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.liquidity-manager-preflight.entrypoints=web"
+      - "traefik.http.routers.liquidity-manager-preflight.priority=10000"
+      - "traefik.http.routers.liquidity-manager-preflight.service=liquidity-manager"
+      - "traefik.http.routers.liquidity-manager-preflight.middlewares=liquidity-manager-stripprefix,cors-default@docker"
+
+  market-data-service:
+    image: local/market-data-service:${MARKETDATASERVICE_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: market-data-service/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3020:3020"
+    environment:
+      - DATAHUB_URL=http://datahub:3000
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - STRATEGYUTILS_URL=http://strategyUtils:3007
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
+      - TICKERSCANNER_URL=http://tickerscanner:3013
+      - SCHEDULER_URL=http://scheduler:3014
+      - AUTHSERVICE_URL=http://authService:3015
+      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - IBKRBRIDGE_URL=http://ibkr-bridge:3017
+      - DECISIONENGINE_URL=http://decision-engine:3018
+      - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
+      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - IBKRGW_BASE_URL=${IBKRGW_BASE_URL}
+      - IBKR_INSECURE_TLS=${IBKR_INSECURE_TLS:-true}
+      - TZ=${TIMEZONE}
+    depends_on:
+      datahub:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    profiles: ["market-data-service"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3020/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.market-data-service.rule=Host(`localhost`) && PathPrefix(`/market-data-service`)"
+      - "traefik.http.routers.market-data-service.entrypoints=web"
+      - "traefik.http.services.market-data-service.loadbalancer.server.port=3020"
+      - "traefik.http.middlewares.market-data-service-stripprefix.stripPrefix.prefixes=/market-data-service"
+      - "traefik.http.routers.market-data-service.middlewares=market-data-service-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.market-data-service-preflight.rule=Host(`localhost`) && PathPrefix(`/market-data-service`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.market-data-service-preflight.entrypoints=web"
+      - "traefik.http.routers.market-data-service-preflight.priority=10000"
+      - "traefik.http.routers.market-data-service-preflight.service=market-data-service"
+      - "traefik.http.routers.market-data-service-preflight.middlewares=market-data-service-stripprefix,cors-default@docker"
+
+  authService:
+    image: local/authservice:${AUTHSERVICE_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: authService/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3015:3015"
+    environment:
+      - DATAHUB_URL=http://datahub:3000
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - JWT_SECRET=${JWT_SECRET:-your_default_jwt_secret_change_in_production_12345}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-1h}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - TZ=${TIMEZONE}
+    depends_on:
+      datahub:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      trading_net:
+        aliases:
+          - authservice  # Required for Traefik auth-forward middleware
+    profiles: ["authService"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3015/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      # No stripprefix - router is mounted at /auth in server.js
+      - "traefik.http.routers.authservice.rule=Host(`localhost`) && PathPrefix(`/auth`)"
+      - "traefik.http.routers.authservice.entrypoints=web"
+      - "traefik.http.services.authservice.loadbalancer.server.port=3015"
+      - "traefik.http.routers.authservice.middlewares=cors-default@docker"
+      - "traefik.http.routers.authservice-preflight.rule=Host(`localhost`) && PathPrefix(`/auth`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.authservice-preflight.entrypoints=web"
+      - "traefik.http.routers.authservice-preflight.priority=10000"
+      - "traefik.http.routers.authservice-preflight.service=authservice"
+      - "traefik.http.routers.authservice-preflight.middlewares=cors-default@docker"
+
+  broker-executor-ibkr:
+    image: local/broker-executor-ibkr:${BROKER_EXECUTOR_IBKR_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: brokerExecutor-ibkr/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    environment:
+      - DATAHUB_URL=http://datahub:3000
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - STRATEGYUTILS_URL=http://strategyUtils:3007
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
+      - TICKERSCANNER_URL=http://tickerscanner:3013
+      - SCHEDULER_URL=http://scheduler:3014
+      - AUTHSERVICE_URL=http://authService:3015
+      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - IBKRBRIDGE_URL=http://ibkr-bridge:3017
+      - DECISIONENGINE_URL=http://decision-engine:3018
+      - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
+      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - MARKETDATASERVICE_URL=http://market-data-service:3020
+      - IBKRGW_BASE_URL=https://ibkrgw-paper:5000
+      - IBKR_WS_URL=wss://ibkrgw-paper:5000/v1/api/ws
+      - IBKR_INSECURE_TLS=true
+      - IBKR_EXECUTOR_USE_BRIDGE=true
+      - TZ=${TIMEZONE}
+    depends_on:
+      datahub:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    profiles: ["broker-executor-ibkr"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.broker-executor-ibkr.rule=Host(`localhost`) && PathPrefix(`/broker-executor-ibkr`)"
+      - "traefik.http.routers.broker-executor-ibkr.entrypoints=web"
+      - "traefik.http.services.broker-executor-ibkr.loadbalancer.server.port=3003"
+      - "traefik.http.middlewares.broker-executor-ibkr-stripprefix.stripPrefix.prefixes=/broker-executor-ibkr"
+      - "traefik.http.routers.broker-executor-ibkr.middlewares=broker-executor-ibkr-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.broker-executor-ibkr-preflight.rule=Host(`localhost`) && PathPrefix(`/broker-executor-ibkr`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.broker-executor-ibkr-preflight.entrypoints=web"
+      - "traefik.http.routers.broker-executor-ibkr-preflight.priority=10000"
+      - "traefik.http.routers.broker-executor-ibkr-preflight.service=broker-executor-ibkr"
+      - "traefik.http.routers.broker-executor-ibkr-preflight.middlewares=broker-executor-ibkr-stripprefix,cors-default@docker"
+
+  datahub:
+    image: local/datahub:${DATAHUB_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: datahub/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - STRATEGYUTILS_URL=http://strategyUtils:3007
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
+      - TICKERSCANNER_URL=http://tickerscanner:3013
+      - SCHEDULER_URL=http://scheduler:3014
+      - AUTHSERVICE_URL=http://authService:3015
+      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - IBKRBRIDGE_URL=http://ibkr-bridge:3017
+      - DECISIONENGINE_URL=http://decision-engine:3018
+      - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
+      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - MARKETDATASERVICE_URL=http://market-data-service:3020
+      - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - BODY_LIMIT=${BODY_LIMIT}
+      - TZ=${TIMEZONE}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.datahub.rule=Host(`localhost`) && PathPrefix(`/datahub`)"
+      - "traefik.http.routers.datahub.entrypoints=web"
+      - "traefik.http.services.datahub.loadbalancer.server.port=3000"
+      - "traefik.http.middlewares.datahub-stripprefix.stripPrefix.prefixes=/datahub"
+      - "traefik.http.routers.datahub.middlewares=datahub-stripprefix,cors-default@docker,auth-forward@docker"
+
+      # DBManager-compatible /settings endpoint (no auth required for migration compatibility)
+      - "traefik.http.routers.datahub-settings.rule=Host(`localhost`) && Path(`/datahub/settings`)"
+      - "traefik.http.routers.datahub-settings.entrypoints=web"
+      - "traefik.http.routers.datahub-settings.priority=10000"
+      - "traefik.http.routers.datahub-settings.service=datahub"
+      - "traefik.http.routers.datahub-settings.middlewares=datahub-stripprefix,cors-default@docker"
+
+      # OPTIONS requests (CORS preflight)
+      - "traefik.http.routers.datahub-preflight.rule=Host(`localhost`) && PathPrefix(`/datahub`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.datahub-preflight.entrypoints=web"
+      - "traefik.http.routers.datahub-preflight.priority=10000"
+      - "traefik.http.routers.datahub-preflight.service=datahub"
+      - "traefik.http.routers.datahub-preflight.middlewares=datahub-stripprefix,cors-default@docker"
+
+  mcp-gateway:
+    image: local/mcp-gateway:${MCP_GATEWAY_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: mcp-gateway/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+    environment:
+      - DATAHUB_URL=http://datahub:3000
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - STRATEGYUTILS_URL=http://strategyUtils:3007
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
+      - TICKERSCANNER_URL=http://tickerscanner:3013
+      - SCHEDULER_URL=http://scheduler:3014
+      - AUTHSERVICE_URL=http://authService:3015
+      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - IBKRBRIDGE_URL=http://ibkr-bridge:3017
+      - DECISIONENGINE_URL=http://decision-engine:3018
+      - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
+      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - MARKETDATASERVICE_URL=http://market-data-service:3020
+      - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
+      - DATAHUB_URL=http://datahub:3000
+      - TZ=${TIMEZONE}
+    depends_on:
+      datahub:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    profiles: ["mcp-gateway"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3004/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mcp-gateway.rule=Host(`localhost`) && PathPrefix(`/mcp-gateway`)"
+      - "traefik.http.routers.mcp-gateway.entrypoints=web"
+      - "traefik.http.services.mcp-gateway.loadbalancer.server.port=3004"
+      - "traefik.http.middlewares.mcp-gateway-stripprefix.stripPrefix.prefixes=/mcp-gateway"
+      - "traefik.http.routers.mcp-gateway.middlewares=mcp-gateway-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.mcp-gateway-preflight.rule=Host(`localhost`) && PathPrefix(`/mcp-gateway`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.mcp-gateway-preflight.entrypoints=web"
+      - "traefik.http.routers.mcp-gateway-preflight.priority=10000"
+      - "traefik.http.routers.mcp-gateway-preflight.service=mcp-gateway"
+      - "traefik.http.routers.mcp-gateway-preflight.middlewares=mcp-gateway-stripprefix,cors-default@docker"
+
+  capital-manager:
+    image: local/capital-manager:${CAPITAL_MANAGER_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: capital-manager/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3010:3010"
+    environment:
+      - DATAHUB_URL=http://datahub:3000
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - STRATEGYUTILS_URL=http://strategyUtils:3007
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
+      - TICKERSCANNER_URL=http://tickerscanner:3013
+      - SCHEDULER_URL=http://scheduler:3014
+      - AUTHSERVICE_URL=http://authService:3015
+      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - IBKRBRIDGE_URL=http://ibkr-bridge:3017
+      - DECISIONENGINE_URL=http://decision-engine:3018
+      - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
+      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - MARKETDATASERVICE_URL=http://market-data-service:3020
+      - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
+      - MCPGATEWAY_URL=http://mcp-gateway:3004
+      - TZ=${TIMEZONE}
+      # capital-manager specifico
+      - IBKR_BRIDGE_URL=http://ibkr-bridge:3017
+      - LIQUIDITY_MANAGER_URL=http://liquidity-manager:3001
+      - RESERVATION_TTL_SEC=${RESERVATION_TTL_SEC:-180}
+      - VOL_SCALE=${VOL_SCALE:-100}
+      - FALLBACK_RESERVED_CASH_PCT=${FALLBACK_RESERVED_CASH_PCT:-0.60}
+      - MIN_ORDER_NOTIONAL=${MIN_ORDER_NOTIONAL:-50}
+    depends_on:
+      datahub:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    profiles: ["capital-manager"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3010/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.capital-manager.rule=Host(`localhost`) && PathPrefix(`/capital-manager`)"
+      - "traefik.http.routers.capital-manager.entrypoints=web"
+      - "traefik.http.services.capital-manager.loadbalancer.server.port=3010"
+      - "traefik.http.middlewares.capital-manager-stripprefix.stripPrefix.prefixes=/capital-manager"
+      - "traefik.http.routers.capital-manager.middlewares=capital-manager-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.capital-manager-preflight.rule=Host(`localhost`) && PathPrefix(`/capital-manager`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.capital-manager-preflight.entrypoints=web"
+      - "traefik.http.routers.capital-manager-preflight.priority=10000"
+      - "traefik.http.routers.capital-manager-preflight.service=capital-manager"
+      - "traefik.http.routers.capital-manager-preflight.middlewares=capital-manager-stripprefix,cors-default@docker"
+
 
 volumes:
   trading-system_mysql_data:

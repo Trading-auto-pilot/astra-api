@@ -11,6 +11,15 @@ class EmailClient {
     this.smtpPassword = process.env.SMTP_PASSWORD;
     this.smtpFrom = process.env.SMTP_FROM;
 
+    // Log configuration status
+    const configStatus = {
+      SMTP_HOST: this.smtpHost ? '✓' : '✗',
+      SMTP_PORT: this.smtpPort ? '✓' : '✗',
+      SMTP_USER: this.smtpUser ? '✓' : '✗',
+      SMTP_PASSWORD: this.smtpPassword ? '✓' : '✗',
+      SMTP_FROM: this.smtpFrom ? '✓' : '✗',
+    };
+
     const port = Number(this.smtpPort);
     if (this.smtpHost && this.smtpUser && this.smtpPassword && Number.isFinite(port)) {
       this.transporter = nodemailer.createTransport({
@@ -21,12 +30,29 @@ class EmailClient {
           user: this.smtpUser,
           pass: this.smtpPassword,
         },
-        connectionTimeout: 10000,
-        greetingTimeout: 5000,
-        socketTimeout: 10000,
+        // Increased timeouts for better reliability
+        connectionTimeout: 30000,  // 30 seconds
+        greetingTimeout: 10000,    // 10 seconds
+        socketTimeout: 30000,      // 30 seconds
+        // Force IPv4 to avoid DNS resolution issues
+        family: 4,
+        // Enable debug logging for connection issues
+        logger: this.logger?.debug ? true : false,
+        debug: this.logger?.debug ? true : false,
       });
+      this.logger?.info?.(`[EmailClient] SMTP configured: ${this.smtpUser}@${this.smtpHost}:${port} | from=${this.smtpFrom}`);
     } else {
       this.transporter = null;
+      // Find which variables are missing
+      const missing = [];
+      if (!this.smtpHost) missing.push('SMTP_HOST');
+      if (!this.smtpUser) missing.push('SMTP_USER');
+      if (!this.smtpPassword) missing.push('SMTP_PASSWORD');
+      if (!Number.isFinite(port)) missing.push('SMTP_PORT (invalid or missing)');
+
+      this.logger?.error?.(
+        `[EmailClient] SMTP NOT configured - Missing: ${missing.join(', ')} | Config: ${JSON.stringify(configStatus)}`
+      );
     }
   }
 
@@ -36,12 +62,18 @@ class EmailClient {
 
   async sendEmail({ to, subject, body }) {
     if (!this.transporter || !this.smtpFrom) {
-      const error = "SMTP client not configured";
-      this.logger?.error?.(`[email] ${error}`);
+      const missingParts = [];
+      if (!this.transporter) missingParts.push('transporter (check SMTP_HOST/USER/PASSWORD/PORT)');
+      if (!this.smtpFrom) missingParts.push('SMTP_FROM');
+
+      const error = `SMTP client not configured: Missing ${missingParts.join(' and ')}`;
+      this.logger?.error?.(`[email.sendEmail] ${error}`);
       throw new Error(error);
     }
     if (!to || !subject || !body) {
-      throw new Error("Missing to/subject/body");
+      const error = `Missing required fields - to: ${!!to}, subject: ${!!subject}, body: ${!!body}`;
+      this.logger?.error?.(`[email.sendEmail] ${error}`);
+      throw new Error(error);
     }
 
     this.logger?.info?.(`[email] sending to=${to} subject="${subject}"`);

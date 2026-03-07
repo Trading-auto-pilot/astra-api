@@ -13,6 +13,7 @@ const {
   setSetting,
 } = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
+const { publishEventsManifest } = require("../../shared/eventsManifestRegistry");
 const { asBool, asInt } = require("../../shared/helpers");
 const RuleEngine = require("./RuleEngine");
 
@@ -30,7 +31,8 @@ class AlertingService {
     // =====================================================
 
     //     // Auto-generated service URLs from doc/ports.json
-    this.dbmanagerUrl = process.env.DBMANAGER_URL || "http://dbmanager:3002";
+    // Use datahub if available, fallback to dbmanager for backward compatibility
+    this.dbmanagerUrl = process.env.DATAHUB_URL || process.env.DBMANAGER_URL || "http://datahub:3000";
     this.marketsimulatorUrl = process.env.MARKETSIMULATOR_URL || "http://marketsimulator:3003";
     this.ordersimulatorUrl = process.env.ORDERSIMULATOR_URL || "http://ordersimulator:3004";
     this.orderlistnerUrl = process.env.ORDERLISTNER_URL || "http://orderlistner:3005";
@@ -63,6 +65,7 @@ class AlertingService {
     this.redisStatusChannel   = `${this.env}.${MICROSERVICE}.status`;
     this.redisDataChannel     = `${this.env}.${MICROSERVICE}.data`;
     this.redisLogsChannel     = `${this.env}.${MICROSERVICE}.logs`;
+    this.redisEventsChannel   = `${this.env}.${MICROSERVICE}.events`;
 
     // Stato del modulo
     this._status       = "STARTING";
@@ -76,6 +79,7 @@ class AlertingService {
       metrics:   { on: true, params: { intervalsMs: 1000 } },
       data:      { on: true, params: { intervalsMs: 0    } },
       logs:      { on: true, params: { intervalsMs: 0    } },
+      events:    { on: true, params: { intervalsMs: 0    } },
     };
 
     // =====================================================
@@ -118,6 +122,12 @@ class AlertingService {
     // 1) CONNECT REDIS BUS
     await this.bus.connect();
     this.logger.attachBus(this.bus);
+    await publishEventsManifest({
+      bus: this.bus,
+      logger: this.logger,
+      microserviceName: MICROSERVICE,
+      serviceRootDir: path.resolve(__dirname, ".."),
+    });
 
     // STATUS: STARTING
     await this.bus.publish(this.redisStatusChannel, {
@@ -296,6 +306,7 @@ class AlertingService {
       metrics:   norm("metrics"),
       data:      norm("data"),
       logs:      norm("logs"),
+      events:    norm("events"),
     };
   }
 
@@ -311,9 +322,10 @@ class AlertingService {
     this.bus.setChannelConfig("metrics",   cfg.metrics);
     this.bus.setChannelConfig("data",      cfg.data);
     this.bus.setChannelConfig("logs",      cfg.logs);
+    this.bus.setChannelConfig("events",    cfg.events);
 
     this.logger.info(
-      `[channels] telemetry=${cfg.telemetry.on} metrics=${cfg.metrics.on} data=${cfg.data.on} logs=${cfg.logs.on}`
+      `[channels] telemetry=${cfg.telemetry.on} metrics=${cfg.metrics.on} data=${cfg.data.on} logs=${cfg.logs.on} events=${cfg.events.on}`
     );
 
     return { ok: true, channels: cfg };
@@ -336,6 +348,7 @@ class AlertingService {
         status:    this.redisStatusChannel,
         data:      this.redisDataChannel,
         logs:      this.redisLogsChannel,
+        events:    this.redisEventsChannel,
       },
     };
   }

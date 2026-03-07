@@ -11,9 +11,19 @@ module.exports = function buildEmailRouter({ logger }) {
     const payload = req.body || {};
 
     if (!emailClient.isReady()) {
+      logger?.error?.(
+        `[POST /email/send] SMTP client not configured | ` +
+        `Has transporter: ${!!emailClient.transporter} | ` +
+        `Has SMTP_FROM: ${!!emailClient.smtpFrom} | ` +
+        `Request payload: ${JSON.stringify({ to: payload.to, subject: payload.subject, hasBody: !!payload.body })}`
+      );
       return res.status(500).json({
         ok: false,
         error: "SMTP client not configured",
+        details: {
+          hasTransporter: !!emailClient.transporter,
+          hasSmtpFrom: !!emailClient.smtpFrom,
+        }
       });
     }
 

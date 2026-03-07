@@ -80,6 +80,11 @@ jobs:
           ibkr-keepalive
           market-data-service
           redisWsBridge
+          liquidity-manager
+          brokerExecutor-ibkr
+          datahub
+          mcp-gateway
+          capital-manager
         )
 
         for service in "${services[@]}"; do
@@ -218,6 +223,7 @@ jobs:
         echo "MYSQL_PORT=${{vars.MYSQL_PORT}}" >> .env
         echo "APCA_API_KEY_ID='${{secrets.APCA_API_KEY_ID}}'" >> .env
         echo "APCA_API_SECRET_KEY='${{secrets.APCA_API_SECRET_KEY}}'" >> .env
+         echo "FRED_API_KEY='${{secrets.FRED_API_KEY}}'" >> .env
         echo "FMP_API_KEY='${{secrets.FMP_API_KEY}}'" >> .env
         echo "SMTP_PASSWORD='${{ secrets.SMTP_PASSWORD }}'" >> .env
         echo "TWILIO_ACCOUNT_SID='${{ secrets.TWILIO_ACCOUNT_SID }}'" >> .env
@@ -273,7 +279,8 @@ jobs:
         echo "LOG_BATCH_MAX_BYTES=${{vars.LOG_BATCH_MAX_BYTES}}" >> .env
         echo "MAX_RETRY_DELAY=${{vars.MAX_RETRY_DELAY}}" >> .env
         echo "ALERTING_LOGS_PATTERN=${{vars.ALERTING_LOGS_PATTERN}}" >> .env
-        
+        echo "REDIS_PATTERNS=${{vars.REDIS_PATTERNS}}" >> .env
+        echo "MARKETDATASERVICE_URL=${{vars.MARKETDATASERVICE_URL}}" >> .env
         
  
     - name: Copy .env to server

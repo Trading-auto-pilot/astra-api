@@ -1,0 +1,160 @@
+{
+  "service": "decision-engine",
+  "version": "1.0.0",
+  "channel": "${ENV}.${MICROSERVICE_NAME}.events",
+  "envelope": {
+    "eventKey": "string (service.eventId)",
+    "eventId": "string",
+    "service": "string",
+    "env": "string",
+    "ts": "ISO-8601 datetime",
+    "severity": "info|warning|error",
+    "correlationId": "string",
+    "payload": "object"
+  },
+  "events": [
+    {
+      "eventId": "PRICEFLAG.CHANGED",
+      "eventKey": "decision-engine.PRICEFLAG.CHANGED",
+      "severity": "info",
+      "description": "Pubblicato quando uno o piu flag di valutazione prezzo/volume cambiano rispetto allo snapshot precedente.",
+      "payloadSchema": {
+        "ticker": "string",
+        "reason": "string",
+        "changes": [
+          "string"
+        ],
+        "transitions": [
+          {
+            "flag": "trendOk|flagOk|breakoutOk|pullbackOk",
+            "from": "OK|KO",
+            "to": "OK|KO"
+          }
+        ],
+        "flags": {
+          "trendOk": "boolean|null",
+          "flagOk": "boolean|null",
+          "breakoutOk": "boolean",
+          "pullbackOk": "boolean"
+        },
+        "dataMode": "string"
+      }
+    },
+    {
+      "eventId": "ENTRY.CONDITION_MET",
+      "eventKey": "decision-engine.ENTRY.CONDITION_MET",
+      "severity": "info",
+      "description": "Pubblicato quando prezzo e volume live soddisfano le condizioni di ingresso (con cooldown applicato).",
+      "payloadSchema": {
+        "ticker": "string",
+        "reason": "string",
+        "entryMode": "breakout|pullback",
+        "message": "string",
+        "levels": {
+          "entryLimit": "number|null",
+          "stopLoss": "number|null",
+          "takeProfit1": "number|null",
+          "takeProfit2": "number|null"
+        },
+        "live": {
+          "price": "number|null",
+          "volume": "number|null",
+          "threshold": "number|null"
+        },
+        "riskRegime": "RISK_ON|RISK_OFF|NEUTRAL|null",
+        "riskScore": "number|null",
+        "candleRange": "number|null"
+      }
+    },
+    {
+      "eventId": "ENTRY.EARNINGS_PROXIMITY_BLOCKED",
+      "eventKey": "decision-engine.ENTRY.EARNINGS_PROXIMITY_BLOCKED",
+      "severity": "warning",
+      "description": "Pubblicato quando un segnale BUY viene bloccato perché la data di earnings è entro la finestra di blocco configurata (default: 14 giorni / 2 settimane). Il segnale rimane attivo e verrà rivalutato al prossimo tick. Configurabile via env DE_EARNINGS_GUARD_ENABLED e EARNINGS_BLOCK_WEEKS. Richiede FMP_API_KEY. Aggiornabile a runtime via PATCH /guards/config.",
+      "channels": ["events", "hooks (event=ENTRY_SIGNAL_BLOCKED_EARNINGS)"],
+      "hookEvent": "ENTRY_SIGNAL_BLOCKED_EARNINGS",
+      "payloadSchema": {
+        "ticker": "string",
+        "entryMode": "breakout|pullback",
+        "message": "string",
+        "earningsDate": "string (YYYY-MM-DD)",
+        "daysToEarnings": "number",
+        "blockDays": "number (default 14)",
+        "levels": { "entryLimit": "number|null", "stopLoss": "number|null", "takeProfit1": "number|null", "takeProfit2": "number|null" }
+      }
+    },
+    {
+      "eventId": "ENTRY.FOMC_PROXIMITY_BLOCKED",
+      "eventKey": "decision-engine.ENTRY.FOMC_PROXIMITY_BLOCKED",
+      "severity": "warning",
+      "description": "Pubblicato quando un segnale BUY viene bloccato perché una riunione FOMC è entro la finestra di blocco (default: 2 giorni). Configurabile via env DE_FOMC_GUARD_ENABLED e DE_FOMC_BLOCK_DAYS. Richiede FMP_API_KEY. Aggiornabile a runtime via PATCH /guards/config.",
+      "channels": ["events", "hooks (event=ENTRY_SIGNAL_BLOCKED_FOMC)"],
+      "hookEvent": "ENTRY_SIGNAL_BLOCKED_FOMC",
+      "payloadSchema": {
+        "ticker": "string",
+        "entryMode": "breakout|pullback",
+        "message": "string",
+        "fomcDate": "string (YYYY-MM-DD)",
+        "daysToFomc": "number",
+        "blockDays": "number (default 2)",
+        "levels": { "entryLimit": "number|null", "stopLoss": "number|null", "takeProfit1": "number|null", "takeProfit2": "number|null" }
+      }
+    },
+    {
+      "eventId": "ENTRY.MACRO_EVENT_PROXIMITY_BLOCKED",
+      "eventKey": "decision-engine.ENTRY.MACRO_EVENT_PROXIMITY_BLOCKED",
+      "severity": "warning",
+      "description": "Pubblicato quando un segnale BUY viene bloccato per un evento macro ad alto impatto imminente (CPI, NFP/Non-Farm Payroll). Default: 1 giorno. Configurabile via env DE_MACRO_GUARD_ENABLED e DE_MACRO_BLOCK_DAYS. Richiede FMP_API_KEY. Aggiornabile a runtime via PATCH /guards/config.",
+      "channels": ["events", "hooks (event=ENTRY_SIGNAL_BLOCKED_MACRO)"],
+      "hookEvent": "ENTRY_SIGNAL_BLOCKED_MACRO",
+      "payloadSchema": {
+        "ticker": "string",
+        "entryMode": "breakout|pullback",
+        "message": "string",
+        "macroDate": "string (YYYY-MM-DD)",
+        "daysToMacro": "number",
+        "blockDays": "number (default 1)",
+        "levels": { "entryLimit": "number|null", "stopLoss": "number|null", "takeProfit1": "number|null", "takeProfit2": "number|null" }
+      }
+    },
+    {
+      "eventId": "ENTRY.DIVIDEND_PROXIMITY_BLOCKED",
+      "eventKey": "decision-engine.ENTRY.DIVIDEND_PROXIMITY_BLOCKED",
+      "severity": "warning",
+      "description": "Pubblicato quando un segnale BUY viene bloccato perché l'ex-dividend date è entro la finestra di blocco (default: 3 giorni). Evita l'acquisto prima del gap-down da stacco dividendo. Configurabile via env DE_DIVIDEND_GUARD_ENABLED e DE_DIVIDEND_BLOCK_DAYS. Richiede FMP_API_KEY. Aggiornabile a runtime via PATCH /guards/config.",
+      "channels": ["events", "hooks (event=ENTRY_SIGNAL_BLOCKED_DIVIDEND)"],
+      "hookEvent": "ENTRY_SIGNAL_BLOCKED_DIVIDEND",
+      "payloadSchema": {
+        "ticker": "string",
+        "entryMode": "breakout|pullback",
+        "message": "string",
+        "exDate": "string (YYYY-MM-DD)",
+        "daysToExDate": "number",
+        "blockDays": "number (default 3)",
+        "levels": { "entryLimit": "number|null", "stopLoss": "number|null", "takeProfit1": "number|null", "takeProfit2": "number|null" }
+      }
+    },
+    {
+      "eventId": "ENTRY.BREAKOUT_OPEN_BLOCKED",
+      "eventKey": "decision-engine.ENTRY.BREAKOUT_OPEN_BLOCKED",
+      "severity": "info",
+      "description": "Pubblicato quando un segnale BREAKOUT viene rilevato ma siamo nella finestra di alta volatilità di apertura (default: primi 25 min). Il segnale viene differito, non scartato: verrà rivalutato al prossimo tick. Configurabile via env BREAKOUT_OPEN_BLOCK_MINUTES e MARKET_OPEN_UTC.",
+      "channels": ["events", "hooks (event=ENTRY_SIGNAL_DEFERRED)"],
+      "hookEvent": "ENTRY_SIGNAL_DEFERRED",
+      "payloadSchema": {
+        "ticker": "string",
+        "entryMode": "breakout",
+        "message": "string (es. 'Segnale ON al breakout ma volatilità alta in apertura aspetto 25 min')",
+        "minutesSinceOpen": "number (minuti interi trascorsi dall'apertura)",
+        "minutesRemaining": "number (minuti rimanenti prima che il blocco scada)",
+        "blockMinutes": "number (durata configurata del blocco)",
+        "levels": {
+          "entryLimit": "number|null",
+          "stopLoss": "number|null",
+          "takeProfit1": "number|null",
+          "takeProfit2": "number|null"
+        }
+      }
+    }
+  ]
+}

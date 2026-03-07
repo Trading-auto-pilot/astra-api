@@ -2,6 +2,7 @@
 "use strict";
 
 const axios = require("axios");
+const { createDatahubAdapter, convertPathToDatahub } = require("../../shared/datahubAdapter");
 const TwilioClient = require("./twilio");
 const EmailClient = require("./email");
 
@@ -19,18 +20,23 @@ class RuleEngine {
     this.rules = [];
     this.stateByRuleId = new Map();
 
-    this.pattern =
-      process.env.ALERTING_LOGS_PATTERN || `${this.env}.*`;
+    this.logsPattern =
+      process.env.ALERTING_LOGS_PATTERN || `${this.env}.*.*.logs.*`;
+    this.eventsPattern =
+      process.env.ALERTING_EVENTS_PATTERN || `${this.env}.*.events*`;
+    this.logsSubscribed = false;
+    this.eventsSubscribed = false;
 
     this.windowSeconds = Number(process.env.ALERTING_WINDOW_SECONDS) || DEFAULT_WINDOW_SECONDS;
     this.maxPerWindow = Number(process.env.ALERTING_MAX_PER_WINDOW) || DEFAULT_MAX_PER_WINDOW;
     this.dedupSeconds = Number(process.env.ALERTING_DEDUP_SECONDS) || DEFAULT_DEDUP_SECONDS;
 
-    this.http = axios.create({
+    // Use datahub adapter for automatic response format conversion (DBManager-compatible)
+    this.http = createDatahubAdapter(axios.create({
       baseURL: this.dbmanagerUrl,
       timeout: 15000,
       validateStatus: () => true,
-    });
+    }));
 
     this.twilio = new TwilioClient({ logger: this.logger });
     this.email = new EmailClient({ logger: this.logger });
@@ -38,33 +44,82 @@ class RuleEngine {
 
   async start() {
     await this.reloadRules();
-    await this.subscribe();
     this.logger.info(
-      `[ruleEngine] started pattern=${this.pattern} rules=${this.rules.length}`
+      `[ruleEngine] started logsPattern=${this.logsPattern} eventsPattern=${this.eventsPattern} rules=${this.rules.length}`
     );
   }
 
-  async subscribe() {
-    await this.bus.psubscribe(this.pattern, async (msg, raw, channel) => {
+  getRuleSource(rule) {
+    const match = rule?.match_json || {};
+    const raw = String(match.source || "").toLowerCase().trim();
+    if (raw === "events" || raw === "logs") return raw;
+    return match.event_key || match.eventKey ? "events" : "logs";
+  }
+
+  async subscribeLogs() {
+    if (this.logsSubscribed) return;
+    await this.bus.psubscribe(this.logsPattern, async (msg, raw, channel) => {
       const payload = msg ?? this.safeJson(raw);
       if (!payload || typeof payload !== "object") return;
       await this.onLogMessage(payload, channel);
     });
+    this.logsSubscribed = true;
+    this.logger.info(`[ruleEngine] subscribed logs pattern=${this.logsPattern}`);
+  }
+
+  async unsubscribeLogs() {
+    if (!this.logsSubscribed) return;
+    try {
+      await this.bus?.sub?.pUnsubscribe(this.logsPattern);
+    } catch (err) {
+      this.logger.warning?.(
+        `[ruleEngine] logs unsubscribe warning pattern=${this.logsPattern} err=${err?.message || String(err)}`
+      );
+    } finally {
+      this.logsSubscribed = false;
+    }
+    this.logger.info(`[ruleEngine] unsubscribed logs pattern=${this.logsPattern}`);
+  }
+
+  async subscribeEvents() {
+    if (this.eventsSubscribed) return;
+    await this.bus.psubscribe(this.eventsPattern, async (msg, raw, channel) => {
+      const payload = msg ?? this.safeJson(raw);
+      if (!payload || typeof payload !== "object") return;
+      await this.onEventMessage(payload, channel);
+    });
+    this.eventsSubscribed = true;
+    this.logger.info(`[ruleEngine] subscribed events pattern=${this.eventsPattern}`);
+  }
+
+  async refreshSubscriptions() {
+    const hasLogRules = this.rules.some(
+      (rule) => this.getRuleSource(rule) === "logs" && rule.enabled !== 0 && rule.enabled !== false
+    );
+
+    await this.subscribeEvents();
+    if (hasLogRules) {
+      await this.subscribeLogs();
+    } else {
+      await this.unsubscribeLogs();
+    }
   }
 
   async reloadRules() {
-    const rulesResp = await this.http.get("/alerting-rules");
+    // Convert DBManager path to datahub path
+    const rulesResp = await this.http.get(convertPathToDatahub("/alerting-rules"));
     if (rulesResp.status >= 400) {
       this.logger.error(
         `[ruleEngine] reload rules failed status=${rulesResp.status}`
       );
       return { ok: false, error: "rules load failed", status: rulesResp.status };
     }
+    // Adapter automatically converts to DBManager format: { items: [...], count: N }
     this.rules = Array.isArray(rulesResp.data?.items)
       ? rulesResp.data.items
       : [];
 
-    const stateResp = await this.http.get("/alerting-state");
+    const stateResp = await this.http.get(convertPathToDatahub("/alerting-state"));
     if (stateResp.status < 400 && Array.isArray(stateResp.data?.items)) {
       this.stateByRuleId.clear();
       for (const st of stateResp.data.items) {
@@ -75,6 +130,7 @@ class RuleEngine {
     this.logger.info(
       `[ruleEngine] reload ok rules=${this.rules.length} state=${this.stateByRuleId.size}`
     );
+    await this.refreshSubscriptions();
     return { ok: true, rules: this.rules.length, state: this.stateByRuleId.size };
   }
 
@@ -102,10 +158,34 @@ class RuleEngine {
     };
   }
 
-  isMatch(event, rule) {
-    const match = rule.match_json || {};
-    if (rule.enabled === 0 || rule.enabled === false) return false;
+  normalizeBusEvent(payload, channel) {
+    const ts = payload.ts ? new Date(payload.ts).getTime() : Date.now();
+    const service = payload.service || payload.microservice || payload.sourceService || null;
+    const severity = payload.severity || payload.level || null;
+    return {
+      ts,
+      tsIso: payload.ts || new Date(ts).toISOString(),
+      source: "events",
+      level: severity ? String(severity).toLowerCase() : null,
+      microservice: service,
+      moduleName: payload.moduleName || payload.module || null,
+      functionName: payload.functionName || payload.function || null,
+      message:
+        payload.message ||
+        payload.description ||
+        payload.payload?.reason ||
+        payload.eventId ||
+        payload.event_id ||
+        payload.eventKey ||
+        null,
+      eventKey: payload.eventKey || payload.event_key || null,
+      eventId: payload.eventId || payload.event_id || null,
+      channel,
+      raw: payload,
+    };
+  }
 
+  isLogMatch(event, match) {
     const inList = (v, list) =>
       !Array.isArray(list) || list.length === 0 || list.includes(v);
 
@@ -122,6 +202,30 @@ class RuleEngine {
       } catch {
         return false;
       }
+    }
+    return true;
+  }
+
+  isEventMatch(event, match) {
+    if (!event.eventKey || !event.microservice) return false;
+    if (match.event_key && event.eventKey !== match.event_key) return false;
+    if (match.event_id && event.eventId !== match.event_id) return false;
+    if (match.event_service && event.microservice !== match.event_service) return false;
+    if (match.severity && event.level && String(match.severity).toLowerCase() !== String(event.level).toLowerCase()) {
+      return false;
+    }
+    return true;
+  }
+
+  isMatch(event, rule) {
+    const match = rule.match_json || {};
+    if (rule.enabled === 0 || rule.enabled === false) return false;
+    const source = this.getRuleSource(rule);
+
+    if (source === "events") {
+      if (!this.isEventMatch(event, match)) return false;
+    } else {
+      if (!this.isLogMatch(event, match)) return false;
     }
 
     if (match.after_ts) {
@@ -143,7 +247,7 @@ class RuleEngine {
   }
 
   async onLogMessage(payload, channel) {
-    if (typeof channel === "string" && !channel.includes(".logs.")) return;
+    if (typeof channel === "string" && !/\.logs(\.|$)/.test(channel)) return;
     const event = this.normalizeEvent(payload, channel);
     if (!event.level || !event.microservice) return;
 
@@ -152,6 +256,7 @@ class RuleEngine {
     );
 
     for (const rule of this.rules) {
+      if (this.getRuleSource(rule) !== "logs") continue;
       const matched = this.isMatch(event, rule);
       if (!matched) {
         this.logger?.debug?.(
@@ -166,8 +271,31 @@ class RuleEngine {
     }
   }
 
+  async onEventMessage(payload, channel) {
+    if (typeof channel === "string" && !/\.events(\.|$)/.test(channel)) return;
+    const event = this.normalizeBusEvent(payload, channel);
+    if (!event.eventKey || !event.microservice) return;
+
+    this.logger?.debug?.(
+      `[ruleEngine] bus-event received rules=${this.rules.length} key=${event.eventKey} service=${event.microservice}`
+    );
+
+    for (const rule of this.rules) {
+      if (this.getRuleSource(rule) !== "events") continue;
+      const matched = this.isMatch(event, rule);
+      if (!matched) continue;
+      this.logger?.debug?.(
+        `[ruleEngine] event-match rule=${rule.id || "-"} key=${event.eventKey} service=${event.microservice}`
+      );
+      await this.applyRule(rule, event);
+    }
+  }
+
   buildHash(event) {
     return [
+      event.source,
+      event.eventKey,
+      event.eventId,
       event.level,
       event.microservice,
       event.moduleName,
@@ -188,6 +316,9 @@ class RuleEngine {
       module: event.moduleName,
       function: event.functionName,
       channel: event.channel,
+      eventKey: event.eventKey,
+      eventId: event.eventId,
+      severity: event.level,
     };
     return String(template || "")
       .replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, k) =>
@@ -198,8 +329,9 @@ class RuleEngine {
   async ensureState(ruleId) {
     const key = Number(ruleId);
     if (this.stateByRuleId.has(key)) return this.stateByRuleId.get(key);
-    const resp = await this.http.post("/alerting-state", { rule_id: key });
+    const resp = await this.http.post(convertPathToDatahub("/alerting-state"), { rule_id: key });
     if (resp.status >= 400) return null;
+    // Adapter automatically converts to DBManager format: { id: X, rule_id: key }
     const state = { rule_id: key, id: resp.data?.id };
     this.stateByRuleId.set(key, state);
     return state;
@@ -208,11 +340,12 @@ class RuleEngine {
   async updateState(ruleId, patch) {
     const state = await this.ensureState(ruleId);
     if (!state?.id) return;
-    const resp = await this.http.put(`/alerting-state/${state.id}`, {
+    const resp = await this.http.put(`${convertPathToDatahub("/alerting-state")}/${state.id}`, {
       rule_id: ruleId,
       ...patch,
     });
     if (resp.status < 400) {
+      // Adapter automatically converts to DBManager format: { id: X, ...patch }
       this.stateByRuleId.set(Number(ruleId), {
         ...state,
         ...patch,
@@ -310,7 +443,7 @@ class RuleEngine {
     }
 
     for (const d of deliveries) {
-      await this.http.post("/alerting-deliveries", {
+      await this.http.post(convertPathToDatahub("/alerting-deliveries"), {
         rule_id: ruleId,
         provider: d.provider,
         status: d.status,

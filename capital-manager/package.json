@@ -1,0 +1,21 @@
+{
+  "name": "capital-manager",
+  "version": "1.0.0",
+  "description": "Microservizio che restituisce il capitale da investire per ogni rchiesta",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jose": "^5.9.6",
+    "redis": "^4.6.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

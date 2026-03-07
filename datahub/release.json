@@ -1,0 +1,8 @@
+{
+  "lastUpdate": "07/03/2026",
+  "version": "1.0.0",
+  "microservice": "datahub",
+  "note": [
+    "v.1.0.0 Initial release using. Refactoring completo del DBManager"
+  ]
+}

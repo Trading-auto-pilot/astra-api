@@ -55,7 +55,7 @@ services:
       # CORS Configuration
       - "traefik.http.middlewares.cors-default.headers.accessControlAllowOriginList=https://trading.expovin.it,https://api.trading.expovin.it,http://localhost:5173,http://localhost:8080"
       - "traefik.http.middlewares.cors-default.headers.accessControlAllowMethods=GET,OPTIONS,PUT,POST,DELETE"
-      - "traefik.http.middlewares.cors-default.headers.accessControlAllowHeaders=Content-Type,Authorization,X-Requested-With,X-Api-Key"
+      - "traefik.http.middlewares.cors-default.headers.accessControlAllowHeaders=Content-Type,Authorization,X-Requested-With,X-Api-Key,Upgrade,Connection,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Extensions,Sec-WebSocket-Accept"
       - "traefik.http.middlewares.cors-default.headers.accessControlAllowCredentials=true"
 
   # ======================
@@ -106,7 +106,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     environment:
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - ENV=${ENV}
       - TZ=${TIMEZONE}
     healthcheck:
@@ -175,20 +175,34 @@ services:
       - "traefik.http.routers.ibkr-keepalive-preflight.service=ibkr-keepalive"
       - "traefik.http.routers.ibkr-keepalive-preflight.middlewares=ibkr-keepalive-stripprefix,cors-default@docker"
 
-  dbmanager:
-    image: expovin/dbmanager:${DBMANAGER_VERSION}
+  datahub:
+    image: expovin/datahub:${DATAHUB_VERSION}
     restart: unless-stopped
     environment:
+      - REDIS_URL=${REDIS_URL}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - CACHEMANAGER_URL=${CACHEMANAGER_URL}
+      - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
+      - TICKERSCANNER_URL=${TICKERSCANNER_URL}
+      - SCHEDULER_URL=${SCHEDULER_URL}
+      - AUTHSERVICE_URL=http://authService:3015
+      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - IBKRBRIDGE_URL=${IBKRBRIDGE_URL}
+      - DECISIONENGINE_URL=${DECISIONENGINE_URL}
+      - IBKRKEEPALIVE_URL=${IBKRKEEPALIVE_URL}
+      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
+      - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
       - MYSQL_HOST=${MYSQL_HOST}
       - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
       - MYSQL_DATABASE=${MYSQL_DATABASE}
-      - LOG_LEVEL=${LOG_LEVEL}
-      - ENV=${ENV}
-      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
-      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
-      - REDIS_URL=${REDIS_URL}
+      - BODY_LIMIT=${BODY_LIMIT:-10mb}
       - TZ=${TIMEZONE}
     depends_on:
       mysql:
@@ -198,9 +212,8 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - cache_data:/app/cache
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/status/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -208,22 +221,24 @@ services:
       - trading_net
     labels:
       - "traefik.enable=true"
-      # Router: https://api.trading.expovin.it/dbmanager/...
-      - "traefik.http.routers.dbmanager.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/dbmanager`)"
-      - "traefik.http.routers.dbmanager.entrypoints=websecure"
-      - "traefik.http.routers.dbmanager.tls.certresolver=le"
-      # Service: porta interna del container
-      - "traefik.http.services.dbmanager.loadbalancer.server.port=3002"
-      - "traefik.http.middlewares.dbmanager-stripprefix.stripPrefix.prefixes=/dbmanager"
-      # 🔐 protetto via forwardAuth → /auth/validate
-      - "traefik.http.routers.dbmanager.middlewares=dbmanager-stripprefix,cors-default@docker,auth-forward@docker"
-      # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
-      - "traefik.http.routers.dbmanager-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/dbmanager`) && Method(`OPTIONS`)"
-      - "traefik.http.routers.dbmanager-preflight.entrypoints=websecure"
-      - "traefik.http.routers.dbmanager-preflight.tls.certresolver=le"
-      - "traefik.http.routers.dbmanager-preflight.priority=10000"
-      - "traefik.http.routers.dbmanager-preflight.service=dbmanager"
-      - "traefik.http.routers.dbmanager-preflight.middlewares=dbmanager-stripprefix,cors-default@docker"
+      - "traefik.http.routers.datahub.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/datahub`)"
+      - "traefik.http.routers.datahub.entrypoints=websecure"
+      - "traefik.http.routers.datahub.tls.certresolver=le"
+      - "traefik.http.services.datahub.loadbalancer.server.port=3000"
+      - "traefik.http.middlewares.datahub-stripprefix.stripPrefix.prefixes=/datahub"
+      - "traefik.http.routers.datahub.middlewares=datahub-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.datahub-settings.rule=Host(`api.trading.expovin.it`) && Path(`/datahub/settings`)"
+      - "traefik.http.routers.datahub-settings.entrypoints=websecure"
+      - "traefik.http.routers.datahub-settings.tls.certresolver=le"
+      - "traefik.http.routers.datahub-settings.priority=10000"
+      - "traefik.http.routers.datahub-settings.service=datahub"
+      - "traefik.http.routers.datahub-settings.middlewares=datahub-stripprefix,cors-default@docker"
+      - "traefik.http.routers.datahub-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/datahub`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.datahub-preflight.entrypoints=websecure"
+      - "traefik.http.routers.datahub-preflight.tls.certresolver=le"
+      - "traefik.http.routers.datahub-preflight.priority=10000"
+      - "traefik.http.routers.datahub-preflight.service=datahub"
+      - "traefik.http.routers.datahub-preflight.middlewares=datahub-stripprefix,cors-default@docker"
 
   # ======================
   # MICROSERVIZI ABILITABILI (via profiles)
@@ -233,7 +248,7 @@ services:
     image: expovin/cachemanager:${CACHEMANAGER_VERSION}
     restart: unless-stopped
     environment:
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
@@ -243,9 +258,10 @@ services:
       - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
       - FMP_API_KEY=${FMP_API_KEY}
       - IBKR_BRIDGE_URL=${IBKRBRIDGE_URL}
+      - L3_USAGE_ALERT_PERCENT=${L3_USAGE_ALERT_PERCENT:-95}
       - TZ=${TIMEZONE}
     depends_on:
-      dbmanager:
+      datahub:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -279,7 +295,7 @@ services:
     image: expovin/decision-engine:${DECISIONENGINE_VERSION}
     restart: unless-stopped
     environment:
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - CACHEMANAGER_URL=${CACHEMANAGER_URL}
       - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
       - REDIS_URL=${REDIS_URL}
@@ -291,7 +307,7 @@ services:
       - INTERNAL_JWT_PUBLIC_KEY=${INTERNAL_JWT_PUBLIC_KEY}
       - TZ=${TIMEZONE}
     depends_on:
-      dbmanager:
+      datahub:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -326,7 +342,7 @@ services:
     image: expovin/market-data-service:${MARKETDATASERVICE_VERSION}
     restart: unless-stopped
     environment:
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - REDIS_URL=${REDIS_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
@@ -339,7 +355,7 @@ services:
       - IBKR_BRIDGE_URL=${IBKR_BRIDGE_URL}
       - TZ=${TIMEZONE}
     depends_on:
-      dbmanager:
+      datahub:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -375,7 +391,7 @@ services:
     restart: unless-stopped
     environment:
       - REDIS_URL=${REDIS_URL}
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
@@ -417,13 +433,13 @@ services:
       - "traefik.http.routers.redis-ws-bridge-ws.tls.certresolver=le"
       - "traefik.http.routers.redis-ws-bridge-ws.priority=10001"
       - "traefik.http.routers.redis-ws-bridge-ws.service=redis-ws-bridge"
-      - "traefik.http.routers.redis-ws-bridge-ws.middlewares=redis-ws-bridge-stripprefix,cors-default@docker"
+      - "traefik.http.routers.redis-ws-bridge-ws.middlewares=redis-ws-bridge-stripprefix"
 
   ibkr-bridge:
     image: expovin/ibkr-bridge:${IBKRBRIDGE_VERSION}
     restart: unless-stopped
     environment:
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - REDIS_URL=${REDIS_URL}
       - LOG_LEVEL=${LOG_LEVEL}
       - ENV=${ENV}
@@ -437,7 +453,7 @@ services:
       - IBKR_SSODH_INIT_INTERVAL_MS=${IBKR_SSODH_INIT_INTERVAL_MS}
       - TZ=${TIMEZONE}
     depends_on:
-      dbmanager:
+      datahub:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -472,12 +488,12 @@ services:
     image: expovin/alertingservice:${ALERTINGSERVICE_VERSION}
     restart: unless-stopped
     depends_on:
-      - dbmanager
+      - datahub
     networks:
       - trading_net
     profiles: ["alertingservice"]
     environment:
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - LOG_LEVEL=${LOG_LEVEL}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
@@ -519,13 +535,13 @@ services:
     image: expovin/scheduler:${SCHEDULER_VERSION}
     restart: unless-stopped
     depends_on:
-      dbmanager:
+      datahub:
           condition: service_healthy
     networks:
       - trading_net
     profiles: ["scheduler"]
     environment:
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - CACHEMANAGER_URL=${CACHEMANAGER_URL}
       - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
       - REDIS_URL=${REDIS_URL}
@@ -564,7 +580,7 @@ services:
     image: expovin/tickerscanner:${TICKERSCANNER_VERSION}
     restart: unless-stopped
     environment:
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - CACHEMANAGER_URL=${CACHEMANAGER_URL}
       - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
       - REDIS_URL=${REDIS_URL}
@@ -574,9 +590,11 @@ services:
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
       - FMP_API_KEY=${FMP_API_KEY}
       - INTERNAL_JWT_PUBLIC_KEY=${INTERNAL_JWT_PUBLIC_KEY}
+      - DEFAULT_JOB_TIMEZONE=America/New_York
+      - SCHEDULER_TIMEZONE=America/New_York
       - TZ=${TIMEZONE}
     depends_on:
-      dbmanager:
+      datahub:
           condition: service_healthy
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -615,7 +633,7 @@ services:
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - REDIS_URL=${REDIS_URL}
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - CACHEMANAGER_URL=${CACHEMANAGER_URL}
       - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
       - TICKERSCANNER_URL=${TICKERSCANNER_URL}
@@ -623,7 +641,7 @@ services:
       - AUTHSERVICE_URL=${AUTHSERVICE_URL}
       - TZ=${TIMEZONE}
     depends_on:
-      dbmanager:
+      datahub:
           condition: service_healthy
       redis:
           condition: service_healthy
@@ -658,7 +676,7 @@ services:
       - "traefik.http.routers.tickerscanner-preflight.priority=10000"
       - "traefik.http.routers.tickerscanner-preflight.service=tickerscanner"
       - "traefik.http.routers.tickerscanner-preflight.middlewares=tickerscanner-stripprefix,cors-default@docker"
-  authservice:
+  authService:
     image: expovin/authservice:${AUTHSERVICE_VERSION}
     restart: unless-stopped
     environment:
@@ -666,16 +684,18 @@ services:
       - ENV=${ENV}
       - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
       - ENABLE_DB_LOG=${ENABLE_DB_LOG}
-      - DBMANAGER_URL=${DBMANAGER_URL}
+      - DATAHUB_URL=http://datahub:3000
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - TZ=${TIMEZONE}
     networks:
-      - trading_net
+      trading_net:
+        aliases:
+          - authservice
     depends_on:
-      dbmanager:
-          condition: service_healthy
+      datahub:
+        condition: service_healthy
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -716,6 +736,238 @@ services:
       - "traefik.http.services.auth-svc.loadbalancer.server.port=3015"
 
 
+  liquidity-manager:
+    image: expovin/liquidity-manager:${LIQUIDITYMANAGER_VERSION:-latest}
+    restart: unless-stopped
+    profiles: ["liquidity-manager"]
+    environment:
+      - DATAHUB_URL=http://datahub:3000
+      - REDIS_URL=${REDIS_URL}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - FRED_API_KEY=${FRED_API_KEY}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - CACHEMANAGER_URL=${CACHEMANAGER_URL}
+      - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
+      - TICKERSCANNER_URL=${TICKERSCANNER_URL}
+      - SCHEDULER_URL=${SCHEDULER_URL}
+      - AUTHSERVICE_URL=http://authService:3015
+      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - IBKRBRIDGE_URL=${IBKRBRIDGE_URL}
+      - DECISIONENGINE_URL=${DECISIONENGINE_URL}
+      - IBKRKEEPALIVE_URL=${IBKRKEEPALIVE_URL}
+      - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
+      - TZ=${TIMEZONE}
+    depends_on:
+      datahub:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.liquidity-manager.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/liquidity-manager`)"
+      - "traefik.http.routers.liquidity-manager.entrypoints=websecure"
+      - "traefik.http.routers.liquidity-manager.tls.certresolver=le"
+      - "traefik.http.services.liquidity-manager.loadbalancer.server.port=3001"
+      - "traefik.http.middlewares.liquidity-manager-stripprefix.stripPrefix.prefixes=/liquidity-manager"
+      - "traefik.http.routers.liquidity-manager.middlewares=liquidity-manager-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.liquidity-manager-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/liquidity-manager`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.liquidity-manager-preflight.entrypoints=websecure"
+      - "traefik.http.routers.liquidity-manager-preflight.tls.certresolver=le"
+      - "traefik.http.routers.liquidity-manager-preflight.priority=10000"
+      - "traefik.http.routers.liquidity-manager-preflight.service=liquidity-manager"
+      - "traefik.http.routers.liquidity-manager-preflight.middlewares=liquidity-manager-stripprefix,cors-default@docker"
+
+  broker-executor-ibkr:
+    image: expovin/broker-executor-ibkr:${BROKER_EXECUTOR_IBKR_VERSION:-latest}
+    restart: unless-stopped
+    profiles: ["broker-executor-ibkr"]
+    environment:
+      - DATAHUB_URL=http://datahub:3000
+      - REDIS_URL=${REDIS_URL}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - CACHEMANAGER_URL=${CACHEMANAGER_URL}
+      - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
+      - TICKERSCANNER_URL=${TICKERSCANNER_URL}
+      - SCHEDULER_URL=${SCHEDULER_URL}
+      - AUTHSERVICE_URL=http://authService:3015
+      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - IBKRBRIDGE_URL=${IBKRBRIDGE_URL}
+      - DECISIONENGINE_URL=${DECISIONENGINE_URL}
+      - IBKRKEEPALIVE_URL=${IBKRKEEPALIVE_URL}
+      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
+      - IBKRGW_BASE_URL=${IBKRGW_BASE_URL}
+      - IBKR_EXECUTOR_USE_BRIDGE=true
+      - TZ=${TIMEZONE}
+    depends_on:
+      datahub:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.broker-executor-ibkr.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/broker-executor-ibkr`)"
+      - "traefik.http.routers.broker-executor-ibkr.entrypoints=websecure"
+      - "traefik.http.routers.broker-executor-ibkr.tls.certresolver=le"
+      - "traefik.http.services.broker-executor-ibkr.loadbalancer.server.port=3003"
+      - "traefik.http.middlewares.broker-executor-ibkr-stripprefix.stripPrefix.prefixes=/broker-executor-ibkr"
+      - "traefik.http.routers.broker-executor-ibkr.middlewares=broker-executor-ibkr-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.broker-executor-ibkr-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/broker-executor-ibkr`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.broker-executor-ibkr-preflight.entrypoints=websecure"
+      - "traefik.http.routers.broker-executor-ibkr-preflight.tls.certresolver=le"
+      - "traefik.http.routers.broker-executor-ibkr-preflight.priority=10000"
+      - "traefik.http.routers.broker-executor-ibkr-preflight.service=broker-executor-ibkr"
+      - "traefik.http.routers.broker-executor-ibkr-preflight.middlewares=broker-executor-ibkr-stripprefix,cors-default@docker"
+
+  mcp-gateway:
+    image: expovin/mcp-gateway:${MCP_GATEWAY_VERSION:-latest}
+    restart: unless-stopped
+    profiles: ["mcp-gateway"]
+    environment:
+      - DATAHUB_URL=http://datahub:3000
+      - REDIS_URL=${REDIS_URL}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - CACHEMANAGER_URL=${CACHEMANAGER_URL}
+      - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
+      - TICKERSCANNER_URL=${TICKERSCANNER_URL}
+      - SCHEDULER_URL=${SCHEDULER_URL}
+      - AUTHSERVICE_URL=http://authService:3015
+      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - IBKRBRIDGE_URL=${IBKRBRIDGE_URL}
+      - DECISIONENGINE_URL=${DECISIONENGINE_URL}
+      - IBKRKEEPALIVE_URL=${IBKRKEEPALIVE_URL}
+      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
+      - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
+      - TZ=${TIMEZONE}
+    depends_on:
+      datahub:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3004/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mcp-gateway.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/mcp-gateway`)"
+      - "traefik.http.routers.mcp-gateway.entrypoints=websecure"
+      - "traefik.http.routers.mcp-gateway.tls.certresolver=le"
+      - "traefik.http.services.mcp-gateway.loadbalancer.server.port=3004"
+      - "traefik.http.middlewares.mcp-gateway-stripprefix.stripPrefix.prefixes=/mcp-gateway"
+      - "traefik.http.routers.mcp-gateway.middlewares=mcp-gateway-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.mcp-gateway-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/mcp-gateway`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.mcp-gateway-preflight.entrypoints=websecure"
+      - "traefik.http.routers.mcp-gateway-preflight.tls.certresolver=le"
+      - "traefik.http.routers.mcp-gateway-preflight.priority=10000"
+      - "traefik.http.routers.mcp-gateway-preflight.service=mcp-gateway"
+      - "traefik.http.routers.mcp-gateway-preflight.middlewares=mcp-gateway-stripprefix,cors-default@docker"
+
+  capital-manager:
+    image: expovin/capital-manager:${CAPITAL_MANAGER_VERSION:-latest}
+    restart: unless-stopped
+    profiles: ["capital-manager"]
+    environment:
+      - DATAHUB_URL=http://datahub:3000
+      - REDIS_URL=${REDIS_URL}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - CACHEMANAGER_URL=${CACHEMANAGER_URL}
+      - ALERTINGSERVICE_URL=${ALERTINGMANAGER_URL}
+      - TICKERSCANNER_URL=${TICKERSCANNER_URL}
+      - SCHEDULER_URL=${SCHEDULER_URL}
+      - AUTHSERVICE_URL=http://authService:3015
+      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - IBKRBRIDGE_URL=${IBKRBRIDGE_URL}
+      - DECISIONENGINE_URL=${DECISIONENGINE_URL}
+      - IBKRKEEPALIVE_URL=${IBKRKEEPALIVE_URL}
+      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
+      - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
+      - MCPGATEWAY_URL=http://mcp-gateway:3004
+      - TZ=${TIMEZONE}
+      - IBKR_BRIDGE_URL=${IBKRBRIDGE_URL}
+      - LIQUIDITY_MANAGER_URL=http://liquidity-manager:3001
+      - RESERVATION_TTL_SEC=${RESERVATION_TTL_SEC:-180}
+      - VOL_SCALE=${VOL_SCALE:-100}
+      - FALLBACK_RESERVED_CASH_PCT=${FALLBACK_RESERVED_CASH_PCT:-0.60}
+      - MIN_ORDER_NOTIONAL=${MIN_ORDER_NOTIONAL:-50}
+    depends_on:
+      datahub:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - trading_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3010/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.capital-manager.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/capital-manager`)"
+      - "traefik.http.routers.capital-manager.entrypoints=websecure"
+      - "traefik.http.routers.capital-manager.tls.certresolver=le"
+      - "traefik.http.services.capital-manager.loadbalancer.server.port=3010"
+      - "traefik.http.middlewares.capital-manager-stripprefix.stripPrefix.prefixes=/capital-manager"
+      - "traefik.http.routers.capital-manager.middlewares=capital-manager-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.capital-manager-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/capital-manager`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.capital-manager-preflight.entrypoints=websecure"
+      - "traefik.http.routers.capital-manager-preflight.tls.certresolver=le"
+      - "traefik.http.routers.capital-manager-preflight.priority=10000"
+      - "traefik.http.routers.capital-manager-preflight.service=capital-manager"
+      - "traefik.http.routers.capital-manager-preflight.middlewares=capital-manager-stripprefix,cors-default@docker"
+
+
   astraai-frontend:
     image: expovin/astraai-frontend:${ASTRAAI_VERSION}
     restart: unless-stopped
@@ -737,6 +989,23 @@ services:
       #- "traefik.http.routers.astraai-frontend-web.rule=Host(`trading.expovin.it`)"
       #- "traefik.http.routers.astraai-frontend-web.entrypoints=web"
       - "traefik.http.routers.astraai-frontend-web.middlewares=cors-default@docker"
+
+  help-trading:
+    image: expovin/help-trading:${HELPTRADING_VERSION:-latest}
+    restart: unless-stopped
+    profiles: ["frontend"]
+    networks:
+      - trading_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${NETWORK}"
+      - "traefik.http.routers.help-trading.rule=Host(`help.trading.expovin.it`)"
+      - "traefik.http.routers.help-trading.entrypoints=websecure"
+      - "traefik.http.routers.help-trading.tls=true"
+      - "traefik.http.routers.help-trading.tls.certresolver=le"
+      - "traefik.http.routers.help-trading.tls.domains[0].main=trading.expovin.it"
+      - "traefik.http.routers.help-trading.tls.domains[0].sans=api.trading.expovin.it,help.trading.expovin.it"
+      - "traefik.http.services.help-trading.loadbalancer.server.port=80"
 
 
 volumes:

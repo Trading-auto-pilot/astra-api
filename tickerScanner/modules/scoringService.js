@@ -243,8 +243,10 @@ class ScoringService {
   }
 
   // -------- total --------
-  aggregateScores({ valuationScore, qualityScore, riskScore, momentumScore }) {
-    const w = { valuation: 0.3, quality: 0.4, risk: 0.2, momentum: 0.1 };
+  // customWeights: oggetto opzionale { valuation?, quality?, risk?, momentum? }
+  // Se non passato usa i pesi standard per stock.
+  aggregateScores({ valuationScore, qualityScore, riskScore, momentumScore }, customWeights = null) {
+    const w = customWeights || { valuation: 0.3, quality: 0.4, risk: 0.2, momentum: 0.1 };
     const pieces = [];
 
     if (valuationScore != null)
@@ -267,22 +269,41 @@ class ScoringService {
   /**
    * Calcola tutti gli score per UN ticker.
    * momentumScore per ora opzionale (null → solo fondamentali).
+   *
+   * Per gli ETF (fmpData.profile.isEtf === true):
+   *  - valuation_score e quality_score vengono saltati (metriche aziendali non applicabili)
+   *  - risk_score calcolato solo da beta (Debt/Equity e Altman Z saranno null)
+   *  - total_score calcolato con pesi ETF: risk 50%, momentum 50%
    */
   scoreSymbol(fmpData, { momentumScore = null } = {}) {
-    const valuation = this.computeValuationScore(fmpData);
-    const quality = this.computeQualityScore(fmpData);
+    const isEtf = fmpData.profile?.isEtf === true;
+
+    // Per gli ETF saltiamo valuation e quality: le metriche fondamentali
+    // (PE, PB, DCF, ROE, ROA, margine, Piotroski, Altman Z) non hanno senso
+    // per strumenti che non sono aziende.
+    const EMPTY_VALUATION = {
+      score: null,
+      components: { pe: null, pb: null, dcfUpside: null, peScore: null, pbScore: null, dcfScore: null, ratingScore: null },
+    };
+    const EMPTY_QUALITY = {
+      score: null,
+      components: { roe: null, roa: null, opMargin: null, piotroski: null, roeScore: null, roaScore: null, opMarginScore: null, piotScore: null },
+    };
+
+    const valuation = isEtf ? EMPTY_VALUATION : this.computeValuationScore(fmpData);
+    const quality   = isEtf ? EMPTY_QUALITY   : this.computeQualityScore(fmpData);
     const risk = this.computeRiskScore(fmpData);
 
-    const totalScore = this.aggregateScores({
-      valuationScore: valuation.score,
-      qualityScore: quality.score,
-      riskScore: risk.score,
-      momentumScore,
-    });
+    // Pesi ETF: solo beta (risk) e momentum tecnico sono significativi
+    const etfWeights = { risk: 0.5, momentum: 0.5 };
+    const totalScore = this.aggregateScores(
+      { valuationScore: valuation.score, qualityScore: quality.score, riskScore: risk.score, momentumScore },
+      isEtf ? etfWeights : null,
+    );
 
     // 🔥 record piatto da mandare al DB
     const flat = {
-      // valuation
+      // valuation (null per ETF)
       pe: valuation.components.pe,
       pe_score: valuation.components.peScore,
       pb: valuation.components.pb,
@@ -290,7 +311,7 @@ class ScoringService {
       dcf_upside: valuation.components.dcfUpside,
       dcf_score: valuation.components.dcfScore,
 
-      // quality
+      // quality (null per ETF)
       roe: quality.components.roe,
       roe_score: quality.components.roeScore,
       roa: quality.components.roa,
@@ -300,7 +321,7 @@ class ScoringService {
       piotroski: quality.components.piotroski,
       piotroski_score: quality.components.piotScore,
 
-      // risk
+      // risk (beta valido per ETF, debt_equity e altman_z saranno null)
       beta: risk.components.beta,
       beta_score: risk.components.betaScore,
       debt_equity: risk.components.debtEq,
@@ -309,6 +330,7 @@ class ScoringService {
       altman_z_score: risk.components.altmanScore,
 
       // aggregati
+      is_etf: isEtf,
       valuation_score: valuation.score,
       quality_score: quality.score,
       risk_score: risk.score,
@@ -321,15 +343,15 @@ class ScoringService {
       sector: fmpData.profile?.sector || null,
       industry: fmpData.profile?.industry || null,
       country: fmpData.profile?.country || null,
+      isEtf,
       flat,
       scores: {
         valuation,
         quality,
         risk,
-        momentum: {
-          score: momentumScore,
-        },
+        momentum: { score: momentumScore },
         totalScore,
+        isEtf,
       },
     };
   }

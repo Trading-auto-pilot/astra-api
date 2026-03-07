@@ -2,6 +2,7 @@
 "use strict";
 
 const axios = require("axios");
+const { createDatahubAdapter } = require("../../shared/datahubAdapter");
 
 /**
  * Client verso DBManager per gestione delle API keys e dei loro permessi.
@@ -11,10 +12,10 @@ const axios = require("axios");
  * @param {string} deps.dbManagerUrl - es: "http://dbmanager:3002"
  */
 function createApiKeysClient({ logger, dbManagerUrl }) {
-  const http = axios.create({
+  const http = createDatahubAdapter(axios.create({
     baseURL: dbManagerUrl,
     timeout: 5000,
-  });
+  }));
 
   async function get(path, config = {}) {
     logger.log(`[ApiKeysClient] GET ${dbManagerUrl}${path}`);
@@ -88,59 +89,75 @@ function createApiKeysClient({ logger, dbManagerUrl }) {
   // API KEYS CRUD
   // ==============
 
-  function listApiKeys() {
-    return get("/auth/api-keys");
+  async function listApiKeys() {
+    // Usa endpoint dinamico di datahub per api_keys
+    // createDatahubAdapter automatically converts { ok, data: [...] } to { items: [...] }
+    const response = await get("/api/table/api_keys");
+    return response.items || response;
   }
 
-  function getApiKeyById(id) {
-    return get(`/auth/api-keys/${encodeURIComponent(id)}`);
+  async function getApiKeyById(id) {
+    // Usa endpoint dinamico di datahub per api_keys
+    // createDatahubAdapter automatically extracts data for single record
+    const response = await get(`/api/table/api_keys/${encodeURIComponent(id)}`);
+    return response;
   }
 
   function createApiKey(payload) {
-    return post("/auth/api-keys", payload);
+    // Usa endpoint dinamico di datahub per api_keys
+    return post("/api/table/api_keys", payload);
   }
 
   function updateApiKey(id, payload) {
-    return put(`/auth/api-keys/${encodeURIComponent(id)}`, payload);
+    // Usa endpoint dinamico di datahub per api_keys
+    return put(`/api/table/api_keys/${encodeURIComponent(id)}`, payload);
   }
 
   function deleteApiKey(id) {
-    return del(`/auth/api-keys/${encodeURIComponent(id)}`);
+    // Usa endpoint dinamico di datahub per api_keys
+    return del(`/api/table/api_keys/${encodeURIComponent(id)}`);
   }
 
-  function findByValue(apiKeyValue) {
-    return get(`/auth/api-keys/lookup?api_key=${encodeURIComponent(apiKeyValue)}`);
+  async function findByValue(apiKeyValue) {
+    // Usa endpoint dinamico di datahub per cercare per api_key
+    // createDatahubAdapter automatically converts { ok, data: [...] } to { items: [...] }
+    const response = await get(`/api/table/api_keys?api_key=${encodeURIComponent(apiKeyValue)}`);
+    const results = response.items || response;
+    // Restituisce il primo risultato o null
+    return results && results.length > 0 ? results[0] : null;
   }
 
   // ==========================
   // PERMISSIONS per API KEY
   // ==========================
 
-  function listPermissionsForApiKey(apiKeyId) {
-    return get(`/auth/api-keys/${encodeURIComponent(apiKeyId)}/permissions`);
+  async function listPermissionsForApiKey(apiKeyId) {
+    // Usa endpoint dinamico di datahub per user_permissions filtrato per api_key_id
+    // createDatahubAdapter automatically converts { ok, data: [...] } to { items: [...] }
+    const response = await get(`/api/table/user_permissions?api_key_id=${encodeURIComponent(apiKeyId)}`);
+    return response.items || response;
   }
 
   function addPermissionToApiKey(apiKeyId, payload) {
+    // Usa endpoint dinamico di datahub per inserire in user_permissions
     return post(
-      `/auth/api-keys/${encodeURIComponent(apiKeyId)}/permissions`,
-      payload
+      `/api/table/user_permissions`,
+      { ...payload, api_key_id: apiKeyId }
     );
   }
 
   function updatePermissionForApiKey(apiKeyId, permId, payload) {
+    // Usa endpoint dinamico di datahub per aggiornare user_permissions
     return put(
-      `/auth/api-keys/${encodeURIComponent(
-        apiKeyId
-      )}/permissions/${encodeURIComponent(permId)}`,
+      `/api/table/user_permissions/${encodeURIComponent(permId)}`,
       payload
     );
   }
 
   function deletePermissionForApiKey(apiKeyId, permId) {
+    // Usa endpoint dinamico di datahub per eliminare da user_permissions
     return del(
-      `/auth/api-keys/${encodeURIComponent(
-        apiKeyId
-      )}/permissions/${encodeURIComponent(permId)}`
+      `/api/table/user_permissions/${encodeURIComponent(permId)}`
     );
   }
 

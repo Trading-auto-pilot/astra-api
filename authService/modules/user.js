@@ -2,6 +2,7 @@
 "use strict";
 
 const axios = require("axios");
+const { createDatahubAdapter } = require("../../shared/datahubAdapter");
 
 /**
  * Client verso DBManager per gestione utenti e permessi.
@@ -11,10 +12,10 @@ const axios = require("axios");
  * @param {string} deps.dbManagerUrl - es: "http://dbmanager:3002"
  */
 function createUserClient({ logger, dbManagerUrl }) {
-  const http = axios.create({
+  const http = createDatahubAdapter(axios.create({
     baseURL: dbManagerUrl,
     timeout: 5000,
-  });
+  }));
 
   async function get(path, config = {}) {
     logger.log(`[UserClient] GET ${dbManagerUrl}${path}`);
@@ -85,107 +86,124 @@ function createUserClient({ logger, dbManagerUrl }) {
   }
 
   // ======================
-  // USERS (proxy puro verso DBManager /auth/users...)
+  // USERS (usa endpoint dinamici datahub)
   // ======================
 
   async function listUsers() {
-    return get("/auth/users");
+    // createDatahubAdapter automatically converts { ok, data: [...] } to { items: [...] }
+    const response = await get("/api/table/users");
+    return response.items || response;
   }
 
   async function getUserById(id) {
-    return get(`/auth/users/${encodeURIComponent(id)}`);
+    // createDatahubAdapter automatically extracts data for single record
+    const response = await get(`/api/table/users/${encodeURIComponent(id)}`);
+    return response;
   }
 
   async function getUserScoreWeights(id, pipeId = null) {
+    // Usa endpoint dinamico per user_score_weights filtrato per user_id
+    // createDatahubAdapter automatically converts { ok, data: [...] } to { items: [...] }
+    const response = await get(`/api/table/user_score_weights?user_id=${encodeURIComponent(id)}`);
+    const results = response.items || response;
     if (pipeId !== null && pipeId !== undefined) {
-      return get(`/auth/users/${encodeURIComponent(id)}/score-weights/${encodeURIComponent(pipeId)}`);
+      return results.find(r => r.pipe_id === pipeId) || null;
     }
-    return get(`/auth/users/${encodeURIComponent(id)}/score-weights`);
+    return results;
   }
 
   async function createUser(payload) {
-    // routing puro: passa tutto a DBManager
-    return post("/auth/users", payload);
+    return post("/api/table/users", payload);
   }
 
   async function updateUser(id, payload) {
-    return put(`/auth/users/${encodeURIComponent(id)}`, payload);
+    return put(`/api/table/users/${encodeURIComponent(id)}`, payload);
   }
 
   async function updateUserScoreWeights(id, payload) {
-    return put(`/auth/users/${encodeURIComponent(id)}/score-weights`, payload);
+    // Aggiorna o inserisce in user_score_weights
+    // createDatahubAdapter automatically converts { ok, data: [...] } to { items: [...] }
+    const response = await get(`/api/table/user_score_weights?user_id=${encodeURIComponent(id)}`);
+    const existing = response.items || response;
+    if (existing && existing.length > 0) {
+      // For PUT, adapter returns the data object directly
+      const updateResponse = await put(`/api/table/user_score_weights/${existing[0].id}`, { ...payload, user_id: id });
+      return updateResponse;
+    } else {
+      // For POST, adapter returns the data object with id
+      const createResponse = await post(`/api/table/user_score_weights`, { ...payload, user_id: id });
+      return createResponse;
+    }
   }
 
   async function deleteUser(id) {
-    return del(`/auth/users/${encodeURIComponent(id)}`);
+    return del(`/api/table/users/${encodeURIComponent(id)}`);
   }
 
   async function touchLastLoginAt(userId) {
-    return post(
-      `/auth/users/${encodeURIComponent(userId)}/last-login`,
-      {}
+    // Aggiorna il campo last_login_at nella tabella users
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    return put(
+      `/api/table/users/${encodeURIComponent(userId)}`,
+      { last_login_at: now }
     );
   }
 
 
   // ======================
-  // USER CLIENT NAVIGATION (proxy verso DBManager /auth/users/:id/client-nav...)
+  // USER CLIENT NAVIGATION (usa endpoint dinamici datahub)
   // ======================
 
   async function listUserClientNavigation(userId) {
-    return get(`/auth/users/${encodeURIComponent(userId)}/client-nav`);
+    // createDatahubAdapter automatically converts { ok, data: [...] } to { items: [...] }
+    const response = await get(`/api/table/user_client_navigation?user_id=${encodeURIComponent(userId)}`);
+    return response.items || response;
   }
 
   async function addUserClientNavigation(userId, payload) {
-    return post(`/auth/users/${encodeURIComponent(userId)}/client-nav`, payload);
+    return post(`/api/table/user_client_navigation`, { ...payload, user_id: userId });
   }
 
   async function updateUserClientNavigation(userId, navId, payload) {
     return put(
-      `/auth/users/${encodeURIComponent(userId)}/client-nav/${encodeURIComponent(
-        navId
-      )}`,
+      `/api/table/user_client_navigation/${encodeURIComponent(navId)}`,
       payload
     );
   }
 
   async function deleteUserClientNavigation(userId, navId) {
     return del(
-      `/auth/users/${encodeURIComponent(userId)}/client-nav/${encodeURIComponent(
-        navId
-      )}`
+      `/api/table/user_client_navigation/${encodeURIComponent(navId)}`
     );
   }
 
   // ======================
-  // PERMISSIONS (proxy verso DBManager /auth/users/:id/permissions...)
+  // PERMISSIONS (usa endpoint dinamici datahub)
   // ======================
 
   async function listUserPermissions(userId) {
-    return get(`/auth/users/${encodeURIComponent(userId)}/permissions`);
+    // createDatahubAdapter automatically converts { ok, data: [...] } to { items: [...] }
+    const response = await get(`/api/table/user_permissions?user_id=${encodeURIComponent(userId)}`);
+    return response.items || response;
   }
 
   async function addUserPermission(userId, payload) {
     return post(
-      `/auth/users/${encodeURIComponent(userId)}/permissions`,
-      payload
+      `/api/table/user_permissions`,
+      { ...payload, user_id: userId }
     );
   }
 
   async function updateUserPermission(userId, permId, payload) {
     return put(
-      `/auth/users/${encodeURIComponent(
-        userId
-      )}/permissions/${encodeURIComponent(permId)}`,
+      `/api/table/user_permissions/${encodeURIComponent(permId)}`,
       payload
     );
   }
 
   async function deleteUserPermission(userId, permId) {
     return del(
-      `/auth/users/${encodeURIComponent(
-        userId
-      )}/permissions/${encodeURIComponent(permId)}`
+      `/api/table/user_permissions/${encodeURIComponent(permId)}`
     );
   }
 

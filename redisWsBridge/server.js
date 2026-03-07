@@ -7,6 +7,7 @@ const { WebSocketServer } = require('ws');
 const createLogger = require('../shared/logger');
 
 const { RedisBus } = require('../shared/redisBus');   // <— riuso libreria
+const { publishEventsManifest } = require('../shared/eventsManifestRegistry');
 const buildStatusRouter = require('./status');
 const { makeWsHub } = require('./wsHub');
 const { loadConfig } = require('./config');
@@ -22,7 +23,8 @@ const MODULE_VERSION = '1.0';
 
 (async () => {
   const cfg = loadConfig();
-  const dbmanagerUrl = process.env.DBMANAGER_URL || 'http://dbmanager:3002';
+  // Support both DATAHUB_URL (preferred) and DBMANAGER_URL (backward compat)
+  const dbmanagerUrl = process.env.DATAHUB_URL || process.env.DBMANAGER_URL || 'http://datahub:3000';
   let settingsReady = false;
 
   async function getReleaseInfo() {
@@ -126,6 +128,12 @@ app.use(
     defaultIntervalMs: 500
   });
   await bus.connect();
+  await publishEventsManifest({
+    bus,
+    logger,
+    microserviceName: MICROSERVICE,
+    serviceRootDir: __dirname,
+  });
   logger.info('[bridge] BUS status:', JSON.stringify(bus.status())); // deve mostrare subIsOpen: true
 
   for (const pat of cfg.redisPatterns) {

@@ -8,6 +8,7 @@ const axios = require("axios");
 const MainModule = require("./modules/main");
 const createLogger = require("../shared/logger");
 const buildStatusRouter = require("./status"); // router standard /status/*
+const { createSchedulerJobsClient } = require("./modules/schedulerJobsClient");
 
 dotenv.config();
 
@@ -24,6 +25,14 @@ const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, logLevel)
 
 const app = express();
 app.use(express.json());
+
+// DEBUG: Log all PUT requests
+app.use((req, res, next) => {
+  if (req.method === 'PUT') {
+    logger.log(`[DEBUG] ${req.method} ${req.path} | body: ${JSON.stringify(req.body)}`);
+  }
+  next();
+});
 
 // -------------------------------------------------------
 // CORS: singola origin o lista separata da virgole
@@ -57,6 +66,92 @@ app.use(
 
 const port = process.env.PORT || DEFAULT_PORT;
 let serviceInstance;
+
+// -------------------------------------------------------
+// Helper: Transform frontend job format to DB schema
+// -------------------------------------------------------
+/**
+ * Convert a raw DB row (snake_case) to the camelCase format expected by the frontend.
+ * Mirrors the old DBManager response format.
+ */
+function dbRowToJob(row) {
+  if (!row) return row;
+  return {
+    id:          row.id,
+    jobKey:      row.job_key ?? row.jobKey ?? null,
+    description: row.description ?? null,
+    enabled:     row.enabled === 1 || row.enabled === true,
+    method:      row.method || "GET",
+    url:         row.url ?? null,
+    headers:     row.headers ?? null,
+    body:        row.body ?? null,
+    timeoutMs:   row.timeout_ms ?? row.timeoutMs ?? 15000,
+    retry: {
+      maxAttempts: row.retry_max_attempts ?? row.retry?.maxAttempts ?? 1,
+      backoffMs:   row.retry_backoff_ms   ?? row.retry?.backoffMs   ?? 5000,
+    },
+    timezone:    row.timezone || "UTC",
+    rules:       row.rules ?? [],
+    lastRunAt:   row.last_run_at  ?? row.lastRunAt  ?? null,
+    lastStatus:  row.last_status  ?? row.lastStatus  ?? null,
+    lastError:   row.last_error   ?? row.lastError   ?? null,
+    createdAt:   row.created_at   ?? row.createdAt   ?? null,
+    updatedAt:   row.updated_at   ?? row.updatedAt   ?? null,
+  };
+}
+
+// -------------------------------------------------------
+/**
+ * Convert a raw scheduler_rules DB row to the camelCase format used by engine and frontend.
+ * days_of_week is a MySQL SET type returned as comma-separated string "MON,TUE".
+ */
+function normalizeRule(row) {
+  if (!row) return null;
+  return {
+    id:          row.id,
+    ruleType:    row.rule_type    ?? row.ruleType    ?? "daily",
+    daysOfWeek:  row.days_of_week
+      ? String(row.days_of_week).split(",").map(s => s.trim()).filter(Boolean)
+      : (Array.isArray(row.daysOfWeek) ? row.daysOfWeek : []),
+    daysOfMonth: row.days_of_month ?? row.daysOfMonth ?? [],
+    time:        row.time_hhmm    ?? row.time        ?? "00:00",
+  };
+}
+
+// -------------------------------------------------------
+/**
+ * Transform frontend job format to database schema format
+ * Frontend sends: { job: {...}, rules: [] }
+ * Database expects: { description, enabled, method, url, ... }
+ */
+function transformJobDataForDB(requestBody) {
+  const jobData = requestBody.job || requestBody;
+  const transformedData = {};
+
+  // Direct mappings
+  if (jobData.job_key !== undefined) transformedData.job_key = jobData.job_key;
+  if (jobData.jobKey !== undefined) transformedData.job_key = jobData.jobKey;
+  if (jobData.description !== undefined) transformedData.description = jobData.description;
+  if (jobData.enabled !== undefined) transformedData.enabled = jobData.enabled;
+  if (jobData.method !== undefined) transformedData.method = jobData.method;
+  if (jobData.url !== undefined) transformedData.url = jobData.url;
+  if (jobData.headers !== undefined) transformedData.headers = jobData.headers;
+  if (jobData.body !== undefined) transformedData.body = jobData.body;
+  if (jobData.timezone !== undefined) transformedData.timezone = jobData.timezone;
+
+  // CamelCase to snake_case mappings
+  // NOTE: market_aware and market_exchanges columns do not exist in scheduler_jobs table
+  if (jobData.timeoutMs !== undefined) transformedData.timeout_ms = jobData.timeoutMs;
+  if (jobData.timeout_ms !== undefined) transformedData.timeout_ms = jobData.timeout_ms;
+
+  // Flatten retry object
+  if (jobData.retry) {
+    if (jobData.retry.maxAttempts !== undefined) transformedData.retry_max_attempts = jobData.retry.maxAttempts;
+    if (jobData.retry.backoffMs !== undefined) transformedData.retry_backoff_ms = jobData.retry.backoffMs;
+  }
+
+  return transformedData;
+}
 
 // -------------------------------------------------------
 // init asincrono del modulo principale
@@ -338,6 +433,18 @@ app.post("/reload", async (req, res) => {
   }
 });
 
+// Helper: join rules (from scheduler_rules) into job list
+async function attachRulesToJobs(items, client) {
+  const allRules = await client.listAllRules();
+  const rulesByJobId = {};
+  for (const r of allRules) {
+    const jid = String(r.job_id);
+    if (!rulesByJobId[jid]) rulesByJobId[jid] = [];
+    rulesByJobId[jid].push(normalizeRule(r));
+  }
+  return items.map(job => ({ ...job, rules: rulesByJobId[String(job.id)] ?? [] }));
+}
+
 // Per vedere lo stato attuale dei job
 app.get("/jobs", async (req, res) => {
   const includeDisabled =
@@ -347,9 +454,10 @@ app.get("/jobs", async (req, res) => {
     req.query.includeDisabled === "true";
   if (includeDisabled) {
     try {
-      const url = `${serviceInstance.dbmanagerUrl}/scheduler/jobs?include_disabled=1`;
-      const resp = await axios.get(url, { timeout: 15000 });
-      return res.json(resp.data);
+      const client = createSchedulerJobsClient(serviceInstance.dbmanagerUrl, serviceInstance.getLogger());
+      const items = await client.list(true);
+      const itemsWithRules = await attachRulesToJobs(items, client);
+      return res.json({ ok: true, items: itemsWithRules.map(dbRowToJob) });
     } catch (e) {
       const details = JSON.stringify({
         status: e?.response?.status || 500,
@@ -365,10 +473,10 @@ app.get("/jobs", async (req, res) => {
   if (!core) {
     return res.status(500).json({ ok: false, error: "SchedulerCore non inizializzato" });
   }
-  return res.json({ ok: true, items: core.getJobsSnapshot() });
+  return res.json({ ok: true, items: core.getJobsSnapshot().map(dbRowToJob) });
 });
 
-// Crea/aggiorna un job nello scheduler (pass-through verso dbManager)
+// Crea/aggiorna un job nello scheduler (pass-through verso datahub)
 app.post("/jobs", async (req, res) => {
   try {
     const core = serviceInstance.getSchedulerCore();
@@ -376,14 +484,28 @@ app.post("/jobs", async (req, res) => {
       return res.status(500).json({ ok: false, error: "SchedulerCore non inizializzato" });
     }
 
-    // giro la richiesta al dbManager (servizio interno)
-    const url = `${serviceInstance.dbmanagerUrl}/scheduler/jobs`;
-    const resp = await axios.post(url, req.body, { timeout: 15000 });
+    // Transform frontend format to database format
+    const transformedData = transformJobDataForDB(req.body);
+
+    serviceInstance.getLogger().log(
+      `[POST /jobs] Transformed to DB format with fields: ${Object.keys(transformedData).join(", ")}`
+    );
+
+    // Create job via datahub
+    const client = createSchedulerJobsClient(serviceInstance.dbmanagerUrl, serviceInstance.getLogger());
+    const result = await client.create(transformedData);
+
+    // Save rules to scheduler_rules table
+    const incomingRules = req.body?.rules ?? req.body?.job?.rules ?? [];
+    const newJobId = result?.id ?? result?.insertedId;
+    if (newJobId && Array.isArray(incomingRules)) {
+      await client.replaceRules(newJobId, incomingRules);
+    }
 
     // dopo la creazione ricarico i job nello scheduler
     await core.reloadJobs();
 
-    return res.json(resp.data);
+    return res.json({ ok: true, ...result });
   } catch (e) {
     const status = e?.response?.status || 500;
     const data = e?.response?.data ?? null;
@@ -400,7 +522,7 @@ app.post("/jobs", async (req, res) => {
   }
 });
 
-// Aggiorna un job nello scheduler (pass-through verso dbManager)
+// Aggiorna un job nello scheduler (pass-through verso datahub)
 app.put("/jobs/:id", async (req, res) => {
   try {
     const core = serviceInstance.getSchedulerCore();
@@ -409,12 +531,31 @@ app.put("/jobs/:id", async (req, res) => {
     }
 
     const { id } = req.params;
-    const url = `${serviceInstance.dbmanagerUrl}/scheduler/jobs/${id}`;
-    const resp = await axios.put(url, req.body, { timeout: 15000 });
+
+    // Log incoming request body for debugging
+    serviceInstance.getLogger().log(
+      `[PUT /jobs/${id}] Received body with fields: ${Object.keys(req.body).join(", ")}`
+    );
+
+    // Transform frontend format to database format
+    const transformedData = transformJobDataForDB(req.body);
+
+    serviceInstance.getLogger().log(
+      `[PUT /jobs/${id}] Transformed to DB format with fields: ${Object.keys(transformedData).join(", ")}`
+    );
+
+    const client = createSchedulerJobsClient(serviceInstance.dbmanagerUrl, serviceInstance.getLogger());
+    const result = await client.update(id, transformedData);
+
+    // Save rules to scheduler_rules table
+    const incomingRules = req.body?.rules ?? req.body?.job?.rules ?? [];
+    if (Array.isArray(incomingRules)) {
+      await client.replaceRules(id, incomingRules);
+    }
 
     await core.reloadJobs();
 
-    return res.json(resp.data);
+    return res.json({ ok: true, ...result });
   } catch (e) {
     const details = JSON.stringify({
       status: e?.response?.status || 500,
@@ -431,7 +572,7 @@ app.put("/jobs/:id", async (req, res) => {
   }
 });
 
-// Aggiorna last_run / last_status (pass-through verso dbManager)
+// Aggiorna last_run / last_status (pass-through verso datahub)
 app.put("/jobs/:id/last-run", async (req, res) => {
   try {
     const core = serviceInstance.getSchedulerCore();
@@ -440,12 +581,12 @@ app.put("/jobs/:id/last-run", async (req, res) => {
     }
 
     const { id } = req.params;
-    const url = `${serviceInstance.dbmanagerUrl}/scheduler/jobs/${id}/last-run`;
-    const resp = await axios.put(url, req.body, { timeout: 15000 });
+    const client = createSchedulerJobsClient(serviceInstance.dbmanagerUrl, serviceInstance.getLogger());
+    const result = await client.updateLastRun(id, req.body);
 
     await core.reloadJobs();
 
-    return res.json(resp.data);
+    return res.json({ ok: true, ...result });
   } catch (e) {
     const details = JSON.stringify({
       status: e?.response?.status || 500,
@@ -462,7 +603,7 @@ app.put("/jobs/:id/last-run", async (req, res) => {
   }
 });
 
-// Cancella un job nello scheduler (pass-through verso dbManager)
+// Cancella un job nello scheduler (pass-through verso datahub)
 app.delete("/job/:id", async (req, res) => {
   try {
     const core = serviceInstance.getSchedulerCore();
@@ -471,12 +612,12 @@ app.delete("/job/:id", async (req, res) => {
     }
 
     const { id } = req.params;
-    const url = `${serviceInstance.dbmanagerUrl}/scheduler/jobs/${id}`;
-    const resp = await axios.delete(url, { timeout: 15000 });
+    const client = createSchedulerJobsClient(serviceInstance.dbmanagerUrl, serviceInstance.getLogger());
+    const result = await client.delete(id);
 
     await core.reloadJobs();
 
-    return res.json(resp.data);
+    return res.json({ ok: true, ...result });
   } catch (e) {
     serviceInstance.getLogger().error("[DELETE /scheduler/job/:id] errore", e.message || e);
     return res.status(500).json({

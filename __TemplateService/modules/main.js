@@ -7,6 +7,7 @@ const fs = require("fs/promises");
 const createLogger = require("../../shared/logger");
 const { initializeSettings, getSetting, reloadSettings } = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
+const { publishEventsManifest } = require("../../shared/eventsManifestRegistry");
 const { asBool, asInt } = require("../../shared/helpers");
 
 // =========================================================
@@ -37,6 +38,7 @@ class __CLASS_NAME__ {
     this.redisStatusChannel   = `${this.env}.${MICROSERVICE}.status`;
     this.redisDataChannel     = `${this.env}.${MICROSERVICE}.data`;
     this.redisLogsChannel     = `${this.env}.${MICROSERVICE}.logs`;
+    this.redisEventsChannel   = `${this.env}.${MICROSERVICE}.events`;
 
     // Stato del modulo
     this._status       = "STARTING";
@@ -50,6 +52,7 @@ class __CLASS_NAME__ {
       metrics:   { on: true, params: { intervalsMs: 1000 } },
       data:      { on: true, params: { intervalsMs: 0    } },
       logs:      { on: true, params: { intervalsMs: 0    } },
+      events:    { on: true, params: { intervalsMs: 0    } },
     };
 
     // =====================================================
@@ -92,6 +95,12 @@ class __CLASS_NAME__ {
     // 1) CONNECT REDIS BUS
     await this.bus.connect();
     this.logger.attachBus(this.bus);
+    await publishEventsManifest({
+      bus: this.bus,
+      logger: this.logger,
+      microserviceName: MICROSERVICE,
+      serviceRootDir: path.resolve(__dirname, ".."),
+    });
 
     // STATUS: STARTING
     await this.bus.publish(this.redisStatusChannel, {
@@ -246,6 +255,7 @@ class __CLASS_NAME__ {
       metrics:   norm("metrics"),
       data:      norm("data"),
       logs:      norm("logs"),
+      events:    norm("events"),
     };
   }
 
@@ -261,9 +271,10 @@ class __CLASS_NAME__ {
     this.bus.setChannelConfig("metrics",   cfg.metrics);
     this.bus.setChannelConfig("data",      cfg.data);
     this.bus.setChannelConfig("logs",      cfg.logs);
+    this.bus.setChannelConfig("events",    cfg.events);
 
     this.logger.info(
-      `[channels] telemetry=${cfg.telemetry.on} metrics=${cfg.metrics.on} data=${cfg.data.on} logs=${cfg.logs.on}`
+      `[channels] telemetry=${cfg.telemetry.on} metrics=${cfg.metrics.on} data=${cfg.data.on} logs=${cfg.logs.on} events=${cfg.events.on}`
     );
 
     return { ok: true, channels: cfg };
@@ -286,6 +297,7 @@ class __CLASS_NAME__ {
         status:    this.redisStatusChannel,
         data:      this.redisDataChannel,
         logs:      this.redisLogsChannel,
+        events:    this.redisEventsChannel,
       },
     };
   }

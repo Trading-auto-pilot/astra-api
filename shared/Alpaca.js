@@ -5,7 +5,8 @@ const { initializeSettings, getSetting } = require('./loadSettings');
 const createLogger = require('./logger');
 const { publishCommand } = require('./redisPublisher');
 
-dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
+// Support both DATAHUB_URL (preferred) and DBMANAGER_URL (backward compat)
+dbManagerUrl = process.env.DATAHUB_URL || process.env.DBMANAGER_URL || 'http://datahub:3000';
 
 
 const MICROSERVICE = 'Shared';

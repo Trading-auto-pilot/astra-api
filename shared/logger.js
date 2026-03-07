@@ -5,7 +5,8 @@ const axios = require('axios');
 // livelli supportati (ordine di severità)
 const levels = ['trace', 'log', 'info', 'warning', 'error'];
 
-const dbManagerUrl = process.env.DBMANAGER_URL || 'http://localhost:3002';
+// Support both DATAHUB_URL (preferred) and DBMANAGER_URL (backward compat)
+const dbManagerUrl = process.env.DATAHUB_URL || process.env.DBMANAGER_URL || 'http://datahub:3000';
 const serviceRelease = (() => {
   try {
     const rel = require(path.resolve(process.cwd(), "release.json"));

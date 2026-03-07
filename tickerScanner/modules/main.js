@@ -1,14 +1,10 @@
-// modules/main.js — TEMPLATE DEFINITIVO
 "use strict";
 
-const path = require("path");
 const crypto = require("crypto");
-require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
-const fs = require("fs").promises;
-const createLogger = require("../../shared/logger");
-const { initializeSettings, getSetting, reloadSettings, getAllSettings, setSetting } = require("../../shared/loadSettings");
-const { RedisBus } = require("../../shared/redisBus");
-const { asBool, asInt } = require("../../shared/helpers");
+const axios = require("axios");
+const { asBool } = require("../../shared/helpers");
+const { createDatahubAdapter } = require("../../shared/datahubAdapter");
+const BaseService = require("../../shared/BaseService");
 
 const {
   createScanJob,
@@ -16,8 +12,23 @@ const {
   getScanJob,
   getActiveJobs,
   cancelScanJob,
-  buildFundamentalsRecord
+  buildFundamentalsRecord,
 } = require("./scanJob");
+
+const { createMarketDailyService } = require("../lib/marketDailyService");
+const { createUserDailyService } = require("../lib/userDailyService");
+const { createUniverseScanService } = require("../lib/universeService");
+const { reportJobDone } = require("../../shared/jobReporter");
+
+const ScreenerService = require("./screenerService");
+const FmpFundamentalsService = require("./fmpFundamentalsService");
+const ScoringService = require("./scoringService");
+const MomentumCalculator = require("./momentumCalculator");
+const FundamentalsService = require("./fundamentalsService");
+
+const { getSetting } = require("../../shared/loadSettings");
+
+// ---- helpers ----
 
 const numOrNull = (v) => {
   const n = Number(v);
@@ -48,26 +59,8 @@ function buildHistoryVersionHash(rec) {
     rec?.is_adr ?? "",
     rec?.is_fund ?? "",
   ];
-  const payload = fields.join("|");
-  return crypto.createHash("sha256").update(payload).digest("hex"); // alfanumerico hex
+  return crypto.createHash("sha256").update(fields.join("|")).digest("hex");
 }
-
-const ScreenerService = require("./screenerService");
-const FmpFundamentalsService = require("./fmpFundamentalsService");
-const ScoringService = require("./scoringService");
-const MomentumCalculator = require("./momentumCalculator");
-const FundamentalsService = require("./fundamentalsService");
-
-
-
-// =========================================================
-// PLACEHOLDER da sostituire via script di scaffolding
-// =========================================================
-const MICROSERVICE    = "tickerScanner";
-const MODULE_NAME     = "main";
-const MODULE_VERSION  = "0.1.0";    // e.g. "0.1.0"
-
-
 
 function chunkArray(arr, size) {
   const out = [];
@@ -77,25 +70,38 @@ function chunkArray(arr, size) {
   return out;
 }
 
-// Converte una riga della tabella fundamentals in un record come quelli di scoringService
+/**
+ * Run async tasks with bounded concurrency.
+ * Returns an array of results in the same order as `items`.
+ * Individual errors are caught and stored as-is (caller decides how to handle).
+ */
+async function runConcurrent(items, fn, limit) {
+  if (!items.length) return [];
+  const results = new Array(items.length);
+  let nextIdx = 0;
+  const worker = async () => {
+    while (nextIdx < items.length) {
+      const i = nextIdx++;
+      try {
+        results[i] = await fn(items[i], i);
+      } catch (err) {
+        results[i] = { __error: err };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 function mapDbRowToScoredRecord(row) {
-
   let momentum = {};
-
   if (row.momentum_json) {
     if (typeof row.momentum_json === "string") {
-      // è una stringa JSON, la parsiamo
-      try {
-        momentum = JSON.parse(row.momentum_json);
-      } catch (e) {
-        momentum = {};
-      }
+      try { momentum = JSON.parse(row.momentum_json); } catch { momentum = {}; }
     } else {
-      // è già un oggetto (tipo JSON MySQL)
       momentum = row.momentum_json;
     }
   }
-
   return {
     symbol: row.symbol,
     sector: row.sector,
@@ -104,39 +110,15 @@ function mapDbRowToScoredRecord(row) {
     scores: {
       valuation: {
         score: row.valuation_score,
-        components: {
-          pe: row.pe,
-          pb: row.pb,
-          dcfUpside: row.dcf_upside,
-          peScore: row.pe_score,
-          pbScore: row.pb_score,
-          dcfScore: row.dcf_score,
-          ratingScore: row.rating_score,
-        },
+        components: { pe: row.pe, pb: row.pb, dcfUpside: row.dcf_upside, peScore: row.pe_score, pbScore: row.pb_score, dcfScore: row.dcf_score, ratingScore: row.rating_score },
       },
       quality: {
         score: row.quality_score,
-        components: {
-          roe: row.roe,
-          roa: row.roa,
-          opMargin: row.op_margin,
-          piotroski: row.piotroski,
-          roeScore: row.roe_score,
-          roaScore: row.roa_score,
-          opMarginScore: row.op_margin_score,
-          piotScore: row.piot_score,
-        },
+        components: { roe: row.roe, roa: row.roa, opMargin: row.op_margin, piotroski: row.piotroski, roeScore: row.roe_score, roaScore: row.roa_score, opMarginScore: row.op_margin_score, piotScore: row.piot_score },
       },
       risk: {
         score: row.risk_score,
-        components: {
-          beta: row.beta,
-          debtEq: row.debt_equity,
-          altmanZ: row.altman_z,
-          betaScore: row.beta_score,
-          debtEqScore: row.debt_equity_score,
-          altmanScore: row.altman_z_score,
-        },
+        components: { beta: row.beta, debtEq: row.debt_equity, altmanZ: row.altman_z, betaScore: row.beta_score, debtEqScore: row.debt_equity_score, altmanScore: row.altman_z_score },
       },
       momentum,
       marketRiskScore: row.market_risk_score ?? null,
@@ -146,281 +128,75 @@ function mapDbRowToScoredRecord(row) {
   };
 }
 
-
-class TickerScanner {
+// =========================================================
+// TickerScanner — extends BaseService
+// =========================================================
+class TickerScanner extends BaseService {
   constructor() {
-
-    // =====================================================
-    // URL DI TUTTI I MICROSERVIZI STANDARD DEL SISTEMA
-    // =====================================================
-
-    //     // Auto-generated service URLs from doc/ports.json
-    this.dbmanagerUrl = process.env.DBMANAGER_URL || "http://dbmanager:3002";
-    this.marketsimulatorUrl = process.env.MARKETSIMULATOR_URL || "http://marketsimulator:3003";
-    this.ordersimulatorUrl = process.env.ORDERSIMULATOR_URL || "http://ordersimulator:3004";
-    this.orderlistnerUrl = process.env.ORDERLISTNER_URL || "http://orderlistner:3005";
-    this.cachemanagerUrl = process.env.CACHEMANAGER_URL || "http://cachemanager:3006";
-    this.strategyUtilsUrl = process.env.STRATEGYUTILS_URL || "http://strategyUtils:3007";
-    this.alertingserviceUrl = process.env.ALERTINGSERVICE_URL || "http://alertingservice:3008";
-    this.capitalmanagerUrl = process.env.CAPITALMANAGER_URL || "http://capitalmanager:3009";
-    this.smaUrl = process.env.SMA_URL || "http://sma:3010";
-    this.sltpUrl = process.env.SLTP_URL || "http://sltp:3011";
-    this.livemarketlistnerUrl = process.env.LIVEMARKETLISTNER_URL || "http://livemarketlistner:3012";
-    this.tickerscannerUrl = process.env.TICKERSCANNER_URL || "http://tickerscanner:3013";
-
-
-    // =====================================================
-    // Ambiente
-    // =====================================================
-    this.env = process.env.ENV || "DEV";
-
-    // =====================================================
-    // Canali Redis standard
-    // =====================================================
-    this.redisTelemetyChannel = `${this.env}.${MICROSERVICE}.telemetry`;
-    this.redisStatusChannel   = `${this.env}.${MICROSERVICE}.status`;
-    this.redisDataChannel     = `${this.env}.${MICROSERVICE}.data`;
-    this.redisLogsChannel     = `${this.env}.${MICROSERVICE}.logs`;
-
-    // Stato del modulo
-    this._status       = "STARTING";
-    this.statusDetails = null;
-
-    // =====================================================
-    // Configurazione standard dei canali del Redis Bus
-    // =====================================================
-    this.communicationChannels = {
-      telemetry: { on: true, params: { intervalsMs: 1000 } },
-      metrics:   { on: true, params: { intervalsMs: 1000 } },
-      data:      { on: true, params: { intervalsMs: 0    } },
-      logs:      { on: true, params: { intervalsMs: 0    } },
-    };
-
-    // =====================================================
-    // Redis BUS
-    // =====================================================
-    this.bus = new RedisBus({
-      channels: this.communicationChannels,
-      name: MICROSERVICE
+    super({
+      microservice: "tickerScanner",
+      moduleName: "main",
+      moduleVersion: "0.1.0",
+      defaultPort: 3013,
     });
 
-    // =====================================================
-    // LOGGER
-    // =====================================================
-    this.logger = createLogger(
-      MICROSERVICE,
-      MODULE_NAME,
-      MODULE_VERSION,
-      process.env.LOG_LEVEL || "info",
-      {
-        bus: null,
-        busTopicPrefix: this.env,
-        console: true,
-        enqueueDb: true,
-      }
-    );
-
-    this.bus.setLogger(this.logger);
-
-    // Mini storage per metriche locali
-    this.metrics = [];
-
-
-    this.fmpFundamentals = new FmpFundamentalsService({
-      logger: this.logger,
-      getSetting,
-    });
-
-    this.screener = new ScreenerService({
-      logger: this.logger,
-      getSetting,
-    });
-
-
-    this.scoringService = new ScoringService({
-      logger: this.logger,
-    });
-
+    // Sub-services (all instantiated in constructor since this.logger and this.dbmanagerUrl are available from super())
+    this.fmpFundamentals = new FmpFundamentalsService({ logger: this.logger, getSetting });
+    this.screener = new ScreenerService({ logger: this.logger, getSetting });
+    this.scoringService = new ScoringService({ logger: this.logger });
     this.momentumCalculator = new MomentumCalculator({
-      logger: this.logger,                // o this.logger.forModule('momentum')
+      logger: this.logger,
       cachemanagerUrl: this.cachemanagerUrl,
       tf: process.env.MOMENTUM_TF || "1Day",
-      lookbackDays: Number(
-        process.env.MOMENTUM_LOOKBACK_DAYS || 365
-      ),
+      lookbackDays: Number(process.env.MOMENTUM_LOOKBACK_DAYS || 365),
     });
+    this.fundamentalService = new FundamentalsService({ logger: this.logger, dbmanagerUrl: this.dbmanagerUrl });
 
-    this.fundamentalService = new FundamentalsService({
-      logger: this.logger,                // o this.logger.forModule('momentum')
-      dbmanagerUrl: this.dbmanagerUrl
-    });
+    // Job services — shared singletons accessible from route files via getService()
+    const datahubAxios = createDatahubAdapter(axios.create({ baseURL: this.dbmanagerUrl, timeout: 8000 }));
+    this.datahubAxios = datahubAxios;
+    this.marketDailySvc = createMarketDailyService({ logger: this.logger, dbmanagerUrl: this.dbmanagerUrl, datahubAxios });
+    this.userDailySvc = createUserDailyService({ logger: this.logger, dbmanagerUrl: this.dbmanagerUrl, datahubAxios });
 
-  }
-
-  // =========================================================
-  // init(): logger + redis + settings dal DB
-  // =========================================================
-  async init() {
-    this.logger.info("[init] Initializing...");
-
-    // 1) CONNECT REDIS BUS
-    await this.bus.connect();
-    this.logger.attachBus(this.bus);
-
-    // STATUS: STARTING
-    await this.bus.publish(this.redisStatusChannel, {
-      status: "STARTING",
-      details: "Loading DB settings"
-    });
-
-    // 2) LOAD SETTINGS DAL DB
-    const ok = await initializeSettings(this.dbmanagerUrl);
-    if (!ok) {
-      this._status = "ERROR";
-      this.statusDetails = "DB unreachable";
-      await this.bus.publish(this.redisStatusChannel, {
-        status: this._status,
-        details: this.statusDetails
-      });
-
-      this.logger.error("[init] Failed DB initialization");
-      process.exit(1);
-    }
-
-    // 3) APPLY COMMON SETTINGS
-    this.delayBetweenMessages = asInt(
-      getSetting("PROCESS_DELAY_BETWEEN_MESSAGES"),
-      500
-    );
-
-    this.logger.info(
-      `[init] Settings loaded: delayBetweenMessages=${this.delayBetweenMessages}`
-    );
-
-    // 4) HOOK EVENTUALE
-    await this.afterInit();
-
-    // 5) READY
-    this._status = "READY";
-    this.statusDetails = "Initialization complete";
-
-    await this.bus.publish(this.redisStatusChannel, {
-      status: this._status,
-      details: this.statusDetails
+    // Phase 1 — Universe scan service
+    this.universeSvc = createUniverseScanService({
+      logger:          this.logger,
+      datahubAxios,
+      fmpFundamentals: this.fmpFundamentals,
+      screener:        this.screener,
     });
   }
 
   // =========================================================
-  // Hook custom per ogni microservizio (override)
+  // Custom init hook (called by BaseService.init() after settings load)
   // =========================================================
-  async afterInit() {
-    this.logger.info("[afterInit] No custom logic implemented (template).");
-  }
-
-  async  getReleaseInfo() {
-    const filePath = path.resolve(__dirname, "..", "release.json");
-    console.log(filePath)
-    try {
-      const raw = await fs.readFile(filePath, "utf8");
-      return JSON.parse(raw);
-    } catch (err) {
-      throw new Error(`Errore lettura release.json: ${err.message}`);
-    }
-  }
-  
-  /**
-   * Ricarica i settings da DB senza riavviare il servizio.
-   */
-  async reloadSettings() {
-    this.logger.info("[reloadSettings] Reloading settings from DB...");
-    const ok = await reloadSettings(this.dbmanagerUrl);
-    if (!ok) {
-      this.logger.error("[reloadSettings] Failed to reload settings from DB");
-      throw new Error("reloadSettings failed");
-    }
-
-    this.delayBetweenMessages = asInt(
-      getSetting("PROCESS_DELAY_BETWEEN_MESSAGES"),
-      500
-    );
-
-    this.logger.info(
-      `[reloadSettings] Settings reloaded: delayBetweenMessages=${this.delayBetweenMessages}`
-    );
-
-    if (typeof this.afterSettingsReload === "function") {
-      await this.afterSettingsReload();
-    }
-
-    return {
-      ok: true,
-      delayBetweenMessages: this.delayBetweenMessages,
-    };
+  async _onInit() {
+    this.logger.info("[_onInit] tickerScanner ready");
   }
 
   // =========================================================
-  // Log level API (usata da /status/logLevel)
+  // SCAN JOB MANAGEMENT
   // =========================================================
-  getLogLevel() {
-    if (typeof this.logger.getLevel === "function") {
-      const lvl = this.logger.getLevel();
-      return lvl || process.env.LOG_LEVEL;
-    }
-    return process.env.LOG_LEVEL;
-  }
 
-  setLogLevel(level) {
-    if (typeof this.logger.setLevel === "function") {
-      this.logger.setLevel(level);
-      return { level };
-    }
-    this.logger.warning("[setLogLevel] Not supported by this logger | ", { level });
-    return { level: process.env.LOG_LEVEL || null };
-  }
-
-  getAllSettings() {
-    return getAllSettings();
-  }
-
-  setSetting(key, value) {
-    return setSetting(key, value);
-  }
-
-  /**
-   * Avvia uno scan asincrono:
-   * - chiama solo lo screener per sapere quanti ticker grezzi ci sono
-   * - crea un job in stato queued
-   * - lancia in background l’elaborazione completa (scanAndScoreUniverse)
-   * - ritorna subito jobId + totalRawTickers
-   */
   async startScanJob(filterOverrides = {}, options = {}) {
     const forceRefresh = !!options.forceRefresh;
-    const overrides = { ...filterOverrides }; // detach from req.query
+    const overrides = { ...filterOverrides };
     const screener = await this.runScreener(overrides);
     const data = screener?.data || [];
     const totalRaw = data.length;
 
     const job = createScanJob(totalRaw);
     updateScanJob(job.id, { params: { overrides, forceRefresh } });
-    this.logger.info(
-      `[tickScanner] Scan job ${job.id} created with ${totalRaw} raw tickers (forceRefresh=${forceRefresh})`
-    );
+    this.logger.info(`[tickScanner] Scan job ${job.id} created with ${totalRaw} raw tickers (forceRefresh=${forceRefresh})`);
 
-    // esecuzione in background (fire & forget)
     setImmediate(() => {
       this._runScanJob(job.id, overrides, { forceRefresh }).catch((err) => {
-        this.logger.error(
-          `[tickScanner] Scan job ${job.id} failed: ${err.message}`
-        );
+        this.logger.error(`[tickScanner] Scan job ${job.id} failed: ${err.message}`);
         updateScanJob(job.id, { status: "error", error: err.message });
       });
     });
 
-    return {
-      jobId: job.id,
-      totalRawTickers: totalRaw,
-      status: job.status,
-    };
+    return { jobId: job.id, totalRawTickers: totalRaw, status: job.status };
   }
 
   async persistScanJobRecord(jobId) {
@@ -440,34 +216,18 @@ class TickerScanner {
       finished_at: toSqlDateTime(job.finishedAt),
     };
     try {
-      const url = `${this.dbmanagerUrl}/fundamentals/ticker-scan-jobs`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        this.logger.warning(
-          `[tickScanner] persist scan job ${jobId} failed: ${res.status} - ${text}`
-        );
-        return;
-      }
+      await this.datahubAxios.post(`/api/table/ticker_scan_jobs`, payload);
       job.persisted = true;
     } catch (err) {
-      this.logger.warning(
-        `[tickScanner] persist scan job ${jobId} error: ${err?.message || String(err)}`
-      );
+      this.logger.error(`[tickScanner] persist scan job ${jobId} error: ${err?.response?.data?.error || err?.message || String(err)}`);
     }
   }
 
   async _runScanJob(jobId, filterOverrides = {}, options = {}) {
     const startedAt = new Date().toISOString();
     updateScanJob(jobId, { status: "running", startedAt });
-
     try {
-      const result = await this.scanAndScoreUniverse(filterOverrides, { ...options, jobId }); // la funzione che abbiamo già
-
+      const result = await this.scanAndScoreUniverse(filterOverrides, { ...options, jobId });
       const finalJob = getScanJob(jobId);
       if (finalJob?.cancel || finalJob?.status === "cancelled") {
         updateScanJob(jobId, { status: "cancelled", finishedAt: new Date().toISOString() });
@@ -475,18 +235,8 @@ class TickerScanner {
         await this.persistScanJobRecord(jobId);
         return;
       }
-
-      updateScanJob(jobId, {
-        status: "completed",
-        totalProcessed: result.count,
-        dbHits: result.dbHits,
-        newCalculated: result.newCalculated,
-        finishedAt: new Date().toISOString(),
-      });
-
-      this.logger.info(
-        `[tickScanner] Scan job ${jobId} completed: total=${result.count}, dbHits=${result.dbHits}, new=${result.newCalculated}`
-      );
+      updateScanJob(jobId, { status: "completed", totalProcessed: result.count, dbHits: result.dbHits, newCalculated: result.newCalculated, finishedAt: new Date().toISOString() });
+      this.logger.info(`[tickScanner] Scan job ${jobId} completed: total=${result.count}, dbHits=${result.dbHits}, new=${result.newCalculated}`);
       await this.persistScanJobRecord(jobId);
     } catch (err) {
       if (err?.code === "CANCELLED") {
@@ -495,11 +245,7 @@ class TickerScanner {
         await this.persistScanJobRecord(jobId);
         return;
       }
-      updateScanJob(jobId, {
-        status: "error",
-        error: err?.message || String(err),
-        finishedAt: new Date().toISOString(),
-      });
+      updateScanJob(jobId, { status: "error", error: err?.message || String(err), finishedAt: new Date().toISOString() });
       this.logger.error(`[tickScanner] Scan job ${jobId} error: ${err?.message || String(err)}`);
       await this.persistScanJobRecord(jobId);
     }
@@ -507,26 +253,17 @@ class TickerScanner {
 
   getScanStatus(jobId) {
     const job = getScanJob(jobId);
-    if (!job) {
-      const err = new Error("Job not found");
-      err.code = "NOT_FOUND";
-      throw err;
-    }
+    if (!job) { const err = new Error("Job not found"); err.code = "NOT_FOUND"; throw err; }
     return job;
   }
 
   getRunningScanJobs() {
-    // queued + running
     return getActiveJobs();
   }
 
   cancelScanJob(jobId) {
     const job = cancelScanJob(jobId);
-    if (!job) {
-      const err = new Error("Job not found");
-      err.code = "NOT_FOUND";
-      throw err;
-    }
+    if (!job) { const err = new Error("Job not found"); err.code = "NOT_FOUND"; throw err; }
     if (!job.finishedAt) {
       updateScanJob(jobId, { status: "cancelled", finishedAt: new Date().toISOString() });
       this.persistScanJobRecord(jobId);
@@ -534,37 +271,123 @@ class TickerScanner {
     return job;
   }
 
+  // =========================================================
+  // UNIVERSE SCAN (Phase 1 — bi-weekly)
+  // =========================================================
+
   /**
-  * Esegue lo screener usando i parametri letti da DB (getSetting)
-  * e restituisce il risultato dell'API FMP.
-  * */
+   * Crea un job in-memory e avvia lo scan dell'universo in background.
+   * Scrive solo dati fondamentali FMP nella tabella `universe`.
+   */
+  async startUniverseScan(filterOverrides = {}, options = {}) {
+    const forceRefresh = !!options.forceRefresh;
+    const job = createScanJob(0);   // totalRawTickers sarà aggiornato durante lo scan
+    updateScanJob(job.id, { type: "universe", params: { filterOverrides, forceRefresh } });
+
+    this.logger.info(
+      `[tickerScanner] Universe scan job ${job.id} creato (forceRefresh=${forceRefresh})`
+    );
+
+    setImmediate(() => {
+      this._runUniverseScanJob(job.id, filterOverrides, { forceRefresh }).catch((err) => {
+        this.logger.error(`[tickerScanner] Universe scan job ${job.id} failed: ${err.message}`);
+        updateScanJob(job.id, { status: "error", error: err.message });
+      });
+    });
+
+    return { jobId: job.id, status: job.status };
+  }
+
+  async _runUniverseScanJob(jobId, filterOverrides = {}, options = {}) {
+    const startedAt = new Date().toISOString();
+    updateScanJob(jobId, { status: "running", startedAt });
+    try {
+      const result = await this.universeSvc.scanUniverse(filterOverrides, { ...options, jobId });
+
+      const job = getScanJob(jobId);
+      if (job?.cancel || job?.status === "cancelled") {
+        updateScanJob(jobId, { status: "cancelled", finishedAt: new Date().toISOString() });
+        this.logger.info(`[tickerScanner] Universe scan job ${jobId} cancelled`);
+        await reportJobDone(this.bus, this.redisStatusChannel, jobId, { status: "CANCELLED" });
+        return;
+      }
+
+      updateScanJob(jobId, {
+        status:         "completed",
+        totalProcessed: result.count,
+        dbHits:         result.skipped,
+        newCalculated:  result.inserted + result.updated,
+        finishedAt:     new Date().toISOString(),
+        errors:         result.errors,
+      });
+      this.logger.info(
+        `[tickerScanner] Universe scan job ${jobId} completed: ` +
+        `total=${result.count}, inserted=${result.inserted}, updated=${result.updated}, skipped=${result.skipped}`
+      );
+      await reportJobDone(this.bus, this.redisStatusChannel, jobId, {
+        status: "COMPLETED",
+        summary: { count: result.count, inserted: result.inserted, updated: result.updated, skipped: result.skipped },
+      });
+    } catch (err) {
+      if (err?.code === "CANCELLED") {
+        updateScanJob(jobId, { status: "cancelled", finishedAt: new Date().toISOString() });
+        this.logger.info(`[tickerScanner] Universe scan job ${jobId} cancelled`);
+        await reportJobDone(this.bus, this.redisStatusChannel, jobId, { status: "CANCELLED" });
+        return;
+      }
+      updateScanJob(jobId, {
+        status:     "error",
+        error:      err?.message || String(err),
+        finishedAt: new Date().toISOString(),
+      });
+      this.logger.error(`[tickerScanner] Universe scan job ${jobId} error: ${err?.message || String(err)}`);
+      await reportJobDone(this.bus, this.redisStatusChannel, jobId, { status: "FAILED", error: err?.message || String(err) });
+    }
+  }
+
+  getUniverseScanStatus(jobId) {
+    const job = getScanJob(jobId);
+    if (!job) { const e = new Error("Job not found"); e.code = "NOT_FOUND"; throw e; }
+    return job;
+  }
+
+  getActiveUniverseJobs() {
+    // Restituisce solo i job di tipo universe attivi
+    return getActiveJobs().filter((j) => j.type === "universe");
+  }
+
+  cancelUniverseScanJob(jobId) {
+    const job = getScanJob(jobId);
+    if (!job) { const e = new Error("Job not found"); e.code = "NOT_FOUND"; throw e; }
+    cancelScanJob(jobId);
+    if (!job.finishedAt) {
+      updateScanJob(jobId, { status: "cancelled", finishedAt: new Date().toISOString() });
+    }
+    return getScanJob(jobId);
+  }
+
+  // =========================================================
+  // SCREENER
+  // =========================================================
+
   async runScreener(filterOverrides = {}) {
     return this.screener.runScreener(filterOverrides);
   }
 
-  /**
-  * /scan:
-  * 1) screener FMP -> lista simboli
-  * 2) GET DBManager /fundamentals -> cosa ho già
-  * 3) per i ticker mancanti:
-   *    - chiamo FMP
-   *    - calcolo score
-   *    - salvo su DB via /fundamentals/bulk (batch da 50)
-   * 4) ritorno tutti i risultati (DB + nuovi)
-  */
+  // =========================================================
+  // SCAN AND SCORE UNIVERSE
+  // =========================================================
+
   async scanAndScoreUniverse(filterOverrides = {}, options = {}) {
     const forceRefresh = !!options.forceRefresh;
     const jobId = options.jobId;
     let processedCount = 0;
     let dbHitsCount = 0;
     let newCalculatedCount = 0;
+
     const syncJobProgress = () => {
       if (!jobId) return;
-      updateScanJob(jobId, {
-        totalProcessed: processedCount,
-        dbHits: dbHitsCount,
-        newCalculated: newCalculatedCount,
-      });
+      updateScanJob(jobId, { totalProcessed: processedCount, dbHits: dbHitsCount, newCalculated: newCalculatedCount });
     };
     const abortIfCancelled = () => {
       if (!jobId) return;
@@ -577,52 +400,29 @@ class TickerScanner {
     };
 
     abortIfCancelled();
-    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    // 1) screener
+    const today = new Date().toISOString().slice(0, 10);
+
     const screener = await this.runScreener(filterOverrides);
     abortIfCancelled();
     const data = screener?.data || [];
-    const symbols = data.map(d => d.symbol).filter(Boolean);
+    const symbols = data.map((d) => d.symbol).filter(Boolean);
 
     if (!symbols.length) {
       this.logger.warning("[scanAndScoreUniverse] Nessun simbolo dallo screener");
-      return {
-        count: 0,
-        dbHits: 0,
-        newCalculated: 0,
-        results: [],
-      };
+      return { count: 0, dbHits: 0, newCalculated: 0, results: [] };
     }
 
-    this.logger.info(
-      `[scanAndScoreUniverse] Screener ha restituito ${symbols.length} simboli`
-    );
+    this.logger.info(`[scanAndScoreUniverse] Screener ha restituito ${symbols.length} simboli`);
 
-    // 2) leggo dal DB tutto ciò che esiste in fundamentals
     let existingRows = [];
     try {
-      const url = `${this.dbmanagerUrl}/fundamentals`;
-      this.logger.info(`[scanAndScoreUniverse] GET ${url}`);
-      const res = await fetch(url);
-      if (res.ok) {
-        existingRows = await res.json();
-      } else {
-        const text = await res.text().catch(() => "");
-        this.logger.error(
-          `[scanAndScoreUniverse] DBManager /fundamentals errore: ${res.status} - ${text}`
-        );
-      }
+      const resp = await axios.get(`${this.dbmanagerUrl}/fundamentals`, { timeout: 15000 });
+      existingRows = Array.isArray(resp.data) ? resp.data : [];
     } catch (e) {
-      this.logger.error(
-        `[scanAndScoreUniverse] Errore chiamando DBManager /fundamentals: ${e.message}`
-      );
+      this.logger.error(`[scanAndScoreUniverse] Errore GET /fundamentals: ${e.message}`);
     }
 
-    const existingMap = new Map();
-    for (const row of existingRows) {
-      if (row.symbol) existingMap.set(row.symbol, row);
-    }
-
+    const existingMap = new Map(existingRows.filter((r) => r.symbol).map((r) => [r.symbol, r]));
     const existingRecords = [];
     const missingSymbols = [];
 
@@ -640,136 +440,155 @@ class TickerScanner {
     }
     syncJobProgress();
 
-    this.logger.info(
-      `[scanAndScoreUniverse] Trovati ${existingRecords.length} simboli in DB, mancanti: ${missingSymbols.length} (forceRefresh=${forceRefresh})`
-    );
-
-    // 3) per i mancanti: FMP + scoring + salvataggio bulk
-    const newScoredRecords = [];
+    this.logger.info(`[scanAndScoreUniverse] Trovati ${existingRecords.length} in DB, mancanti: ${missingSymbols.length} (forceRefresh=${forceRefresh})`);
 
     const batchSizeRaw = Number(process.env.SCAN_MISSING_BATCH);
     const batchSize = Number.isFinite(batchSizeRaw) && batchSizeRaw > 0 ? Math.floor(batchSizeRaw) : 50;
     const bulkSizeRaw = Number(process.env.SCAN_BULK_SIZE);
     const bulkSize = Number.isFinite(bulkSizeRaw) && bulkSizeRaw > 0 ? Math.floor(bulkSizeRaw) : 200;
     const fmpConcurrencyRaw = Number(process.env.SCAN_FMP_CONCURRENCY);
-    const fmpConcurrency =
-      Number.isFinite(fmpConcurrencyRaw) && fmpConcurrencyRaw > 0 ? Math.floor(fmpConcurrencyRaw) : 3;
+    const fmpConcurrency = Number.isFinite(fmpConcurrencyRaw) && fmpConcurrencyRaw > 0 ? Math.floor(fmpConcurrencyRaw) : 3;
+    const momentumConcurrencyRaw = Number(process.env.SCAN_MOMENTUM_CONCURRENCY);
+    const momentumConcurrency = Number.isFinite(momentumConcurrencyRaw) && momentumConcurrencyRaw > 0 ? Math.floor(momentumConcurrencyRaw) : 5;
+    const upsertConcurrencyRaw = Number(process.env.SCAN_UPSERT_CONCURRENCY);
+    const upsertConcurrency = Number.isFinite(upsertConcurrencyRaw) && upsertConcurrencyRaw > 0 ? Math.floor(upsertConcurrencyRaw) : 5;
 
-    this.logger.info(
-      `[scanAndScoreUniverse] batchSize=${batchSize} bulkSize=${bulkSize} fmpConcurrency=${fmpConcurrency}`
-    );
-
+    const newScoredRecords = [];
     const batches = chunkArray(missingSymbols, batchSize);
+
     for (const batch of batches) {
       abortIfCancelled();
-      this.logger.info(
-        `[scanAndScoreUniverse] Processing batch di ${batch.length} simboli mancanti`
-      );
 
-      // fundamentals da FMP
-      const fundamentalsBatch =
-        await this.fmpFundamentals.getFundamentalsForSymbols(batch, { concurrency: fmpConcurrency });
+      // Phase 1 — FMP fundamentals (rate-limited, concurrency controlled by SCAN_FMP_CONCURRENCY)
+      const fundamentalsBatch = await this.fmpFundamentals.getFundamentalsForSymbols(batch, { concurrency: fmpConcurrency });
+      abortIfCancelled();
 
-      const scoredBatch = [];
-      const fundamentalsRecords = [];   // 👈 record piatti per la tabella fundamentals
-
-      for (const fmpData of fundamentalsBatch) {
+      // Phase 2 — Momentum (cacheManager calls, not FMP-rate-limited → higher concurrency)
+      const momentumResults = await runConcurrent(fundamentalsBatch, async (fmpData) => {
         abortIfCancelled();
-        const symbol = fmpData.symbol;
+        const momentum = await this.momentumCalculator.calculateForSymbol(fmpData.symbol);
+        const technicals = this.momentumCalculator.computeTechnicals(momentum._candles || [], { symbol: fmpData.symbol });
+        return { fmpData, momentum, technicals };
+      }, momentumConcurrency);
+      abortIfCancelled();
 
-        // momentum completo (score + components)
-        const momentum = await this.momentumCalculator.calculateForSymbol(symbol);
-
-        // lo scoring usa SOLO il valore numerico
-        const scored = this.scoringService.scoreSymbol(fmpData, {
-          momentumScore: momentum?.score ?? null,
-        });
-
-        this.logger.info(
-          "[DEBUG scored]",
-          {
-            symbol,
-            valuation: scored.scores?.valuation,
-            quality: scored.scores?.quality,
-            risk: scored.scores?.risk,
-            momentum: scored.scores?.momentum,
-            totalScore: scored.scores?.totalScore
-          }
-        );
-        // usato per la risposta combinata (DB + nuovi)
+      // Phase 3 — Scoring (pure computation, synchronous)
+      const scoredBatch = [];
+      const historyItems = [];
+      for (const item of momentumResults) {
+        if (item?.__error) {
+          this.logger.error(`[scanAndScoreUniverse] Errore momentum: ${item.__error?.message || String(item.__error)}`);
+          continue;
+        }
+        const { fmpData, momentum, technicals } = item;
+        const scored = this.scoringService.scoreSymbol(fmpData, { momentumScore: momentum?.score ?? null });
         scoredBatch.push(scored);
-
-        // usato per il salvataggio in tabella fundamentals
         const fundamentalsRecord = buildFundamentalsRecord(scored, momentum);
-        fundamentalsRecords.push(fundamentalsRecord);
+        // Enrich with ETF flag from FMP profile (not available in scored object)
+        fundamentalsRecord.is_etf = fmpData?.profile?.isEtf ? 1 : 0;
+        historyItems.push({ symbol: fmpData.symbol, fundamentalsRecord, fmpData, technicals, scored });
+      }
 
-        // salvataggio storico SCD2 (fundamentals_history)
-        await this.upsertFundamentalsHistory(symbol, fundamentalsRecord, {
-          fmpData,
-          today,
-        }).catch((err) => {
-          this.logger.error(
-            `[scanAndScoreUniverse] Errore fundamentals_history ${symbol}: ${err?.message || String(err)}`
-          );
+      // Phase 4 — Upsert fundamentals_history (datahub calls, no FMP limits → parallelise)
+      await runConcurrent(historyItems, async ({ symbol, fundamentalsRecord, fmpData, technicals }) => {
+        abortIfCancelled();
+        await this.upsertFundamentalsHistory(symbol, fundamentalsRecord, { fmpData, today, technicals }).catch((err) => {
+          this.logger.error(`[scanAndScoreUniverse] Errore fundamentals_history ${symbol}: ${err?.message || String(err)}`);
         });
-
         processedCount += 1;
         newCalculatedCount += 1;
         if (processedCount % 10 === 0) syncJobProgress();
-      }
-      syncJobProgress();
+      }, upsertConcurrency);
 
+      syncJobProgress();
       newScoredRecords.push(...scoredBatch);
 
-
-      // salvataggio su DB via bulk
-      const bulkChunks = chunkArray(fundamentalsRecords, bulkSize);
-      for (const chunk of bulkChunks) {
+      // Phase 5 — Bulk upsert to /fundamentals (unchanged)
+      const fundamentalsRecords = historyItems.map((h) => h.fundamentalsRecord);
+      for (const chunk of chunkArray(fundamentalsRecords, bulkSize)) {
         try {
-          const url = `${this.dbmanagerUrl}/fundamentals/bulk`;
-          const payload = {
-            ok: true,
-            count: chunk.length,
-            results: chunk,
-          };
-
-          const res = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-
-          if (!res.ok) {
-            const text = await res.text().catch(() => "");
-            this.logger.error(
-              `[scanAndScoreUniverse] Errore POST /fundamentals/bulk: ${res.status} - ${text}`
-            );
-          } else {
-            this.logger.info(
-              `[scanAndScoreUniverse] Salvati ${chunk.length} fundamentals su DB`
-            );
-          }
+          const resp = await axios.post(`${this.dbmanagerUrl}/fundamentals/bulk`, { ok: true, count: chunk.length, results: chunk }, { timeout: 30000 });
+          if (resp.data?.ok === false) this.logger.error(`[scanAndScoreUniverse] POST /fundamentals/bulk failed: ${resp.data.error}`);
+          else this.logger.info(`[scanAndScoreUniverse] Salvati ${chunk.length} fundamentals`);
         } catch (e) {
-          this.logger.error(
-            `[scanAndScoreUniverse] Errore chiamando POST /fundamentals/bulk: ${e.message}`
-          );
+          this.logger.error(`[scanAndScoreUniverse] Errore POST /fundamentals/bulk: ${e.message}`);
+        }
+      }
+
+      // Phase 5b — Upsert ticker_fundamentals_history (scored snapshot per FMP report period)
+      // PK: (symbol, as_of_date) — as_of_date is the quarterly FMP report date.
+      // market_score/short_risk_score/volume_score/growth_probability are per-user and live in
+      // scores_daily; they are intentionally omitted here.
+      const tickerHistoryRecords = historyItems
+        .map(({ symbol, fundamentalsRecord: fr, fmpData: fd, scored: sc }) => {
+          const as_of_date = fd?.asOfDate || fd?.as_of_date || null;
+          if (!as_of_date) return null;
+          const profile = fd?.profile || {};
+          const ratios = fd?.ratios || fd?.stableRatios || {};
+          return {
+            symbol,
+            as_of_date,
+            price:                 numOrNull(profile.price),
+            beta:                  fr.beta,
+            pe:                    fr.pe,
+            pb:                    fr.pb,
+            roe:                   fr.roe,
+            roa:                   fr.roa,
+            op_margin:             fr.op_margin,
+            debt_equity:           fr.debt_equity,
+            altman_z:              fr.altman_z,
+            piotroski:             fr.piotroski,
+            dcf_upside:            fr.dcf_upside,
+            valuation_score:       fr.valuation_score,
+            quality_score:         fr.quality_score,
+            risk_score:            fr.risk_score,
+            momentum_score:        fr.momentum_score,
+            momentum_short_score:  fr.momentum_short_score,
+            momentum_volume_score: fr.momentum_volume_score,
+            total_score:           fr.total_score,
+            momentum_json:         fr.momentum_json ? JSON.parse(fr.momentum_json) : null,
+            profile_json:          profile,
+            ratios_json:           ratios,
+            scores_json:           sc?.scores || null,
+            dcf_json:              fd?.dcf || null,
+          };
+        })
+        .filter(Boolean);
+
+      if (tickerHistoryRecords.length > 0) {
+        for (const chunk of chunkArray(tickerHistoryRecords, bulkSize)) {
+          try {
+            const resp = await axios.post(`${this.dbmanagerUrl}/fundamentals/history`, { records: chunk }, { timeout: 30000 });
+            if (resp.data?.ok === false) this.logger.error(`[scanAndScoreUniverse] POST /fundamentals/history failed: ${resp.data.error}`);
+            else this.logger.info(`[scanAndScoreUniverse] Salvati ${chunk.length} ticker_fundamentals_history`);
+          } catch (e) {
+            this.logger.error(`[scanAndScoreUniverse] Errore POST /fundamentals/history: ${e.message}`);
+          }
         }
       }
     }
 
-    // 4) combinazione risultati (DB + nuovi)
-    const results = [...existingRecords, ...newScoredRecords];
+    // Touch last_touch_date for symbols returned from DB cache (not re-scanned)
+    if (existingRecords.length > 0) {
+      const dbHitSymbols = existingRecords.map((r) => r.symbol).filter(Boolean);
+      for (const chunk of chunkArray(dbHitSymbols, 500)) {
+        try {
+          await axios.put(`${this.dbmanagerUrl}/fundamentals/touch`, { symbols: chunk }, { timeout: 10000 });
+        } catch (e) {
+          this.logger.warning(`[scanAndScoreUniverse] PUT /fundamentals/touch failed: ${e?.message}`);
+        }
+      }
+    }
 
-    return {
-      count: results.length,
-      dbHits: existingRecords.length,
-      newCalculated: newScoredRecords.length,
-      results,
-    };
+    const results = [...existingRecords, ...newScoredRecords];
+    return { count: results.length, dbHits: existingRecords.length, newCalculated: newScoredRecords.length, results };
   }
 
-  async upsertFundamentalsHistory(symbol, fundamentalsRecord, { fmpData = {}, today } = {}) {
-    // prepara payload SCD2
+  // =========================================================
+  // FUNDAMENTALS HISTORY (SCD2)
+  // =========================================================
+
+  async upsertFundamentalsHistory(symbol, fundamentalsRecord, { fmpData = {}, today, technicals = {} } = {}) {
     const ratios = fmpData?.ratios || fmpData?.stableRatios || {};
     const kmRaw = fmpData?.keyMetrics || fmpData?.stable || {};
     const km = Array.isArray(kmRaw) ? kmRaw[0] || {} : kmRaw;
@@ -778,50 +597,21 @@ class TickerScanner {
     const is = Array.isArray(isRaw) ? isRaw[0] || {} : isRaw || {};
     const bsRaw = fmpData?.balanceSheet;
     const bs = Array.isArray(bsRaw) ? bsRaw[0] || {} : bsRaw || {};
-    const period_end =
-      is?.date ||
-      km?.date ||
-      fmpData?.periodEnd ||
-      fmpData?.period_end ||
-      null;
+    const period_end = is?.date || km?.date || fmpData?.periodEnd || fmpData?.period_end || null;
     const as_of_date = fmpData?.asOfDate || fmpData?.as_of_date || null;
     const netIncome = numOrNull(is?.netIncome ?? is?.net_income);
     const totalEquity = numOrNull(bs?.totalStockholdersEquity ?? bs?.totalEquity ?? bs?.total_stockholders_equity);
     const totalAssets = numOrNull(bs?.totalAssets ?? bs?.total_assets);
     const roeDerived = netIncome !== null && totalEquity ? (totalEquity !== 0 ? netIncome / totalEquity : null) : null;
     const roaDerived = netIncome !== null && totalAssets ? (totalAssets !== 0 ? netIncome / totalAssets : null) : null;
-    const roe =
-      roeDerived ??
-      numOrNull(ratios?.returnOnEquity) ??
-      numOrNull(km?.returnOnEquity) ??
-      fundamentalsRecord?.roe ??
-      null;
-    const roa =
-      roaDerived ??
-      numOrNull(ratios?.returnOnAssets) ??
-      numOrNull(km?.returnOnAssets) ??
-      fundamentalsRecord?.roa ??
-      null;
+    const roe = roeDerived ?? numOrNull(ratios?.returnOnEquity) ?? numOrNull(km?.returnOnEquity) ?? fundamentalsRecord?.roe ?? null;
+    const roa = roaDerived ?? numOrNull(ratios?.returnOnAssets) ?? numOrNull(km?.returnOnAssets) ?? fundamentalsRecord?.roa ?? null;
     const operating_income = numOrNull(is?.operatingIncome ?? is?.operating_income);
     const revenue = numOrNull(is?.revenue);
-    const op_margin_raw =
-      numOrNull(ratios?.operatingProfitMargin) ??
-      numOrNull(km?.operatingProfitMargin) ??
-      fundamentalsRecord?.op_margin ??
-      null;
-    const op_margin_derived =
-      operating_income !== null && revenue
-        ? revenue !== 0
-          ? operating_income / revenue
-          : null
-        : null;
+    const op_margin_raw = numOrNull(ratios?.operatingProfitMargin) ?? numOrNull(km?.operatingProfitMargin) ?? fundamentalsRecord?.op_margin ?? null;
+    const op_margin_derived = operating_income !== null && revenue ? (revenue !== 0 ? operating_income / revenue : null) : null;
     const op_margin = op_margin_raw ?? op_margin_derived ?? null;
-    const debt_equity =
-      numOrNull(ratios?.debtToEquityRatio) ??
-      numOrNull(km?.debtToEquityRatio ?? km?.debtToEquity) ??
-      numOrNull(ratios?.debtEquityRatio) ??
-      fundamentalsRecord?.debt_equity ??
-      null;
+    const debt_equity = numOrNull(ratios?.debtToEquityRatio) ?? numOrNull(km?.debtToEquityRatio ?? km?.debtToEquity) ?? numOrNull(ratios?.debtEquityRatio) ?? fundamentalsRecord?.debt_equity ?? null;
     const toTinyInt = (v) => (v === null || v === undefined ? null : asBool(v) ? 1 : 0);
     const market_cap = numOrNull(profile?.marketCap ?? fundamentalsRecord?.market_cap ?? fundamentalsRecord?.marketCap);
     const beta = numOrNull(profile?.beta ?? fundamentalsRecord?.beta);
@@ -830,312 +620,108 @@ class TickerScanner {
     const cusip = profile?.cusip ?? fundamentalsRecord?.cusip ?? null;
     const exchange_full_name = profile?.exchangeFullName ?? fundamentalsRecord?.exchange_full_name ?? null;
     const is_etf = toTinyInt(profile?.isEtf ?? fundamentalsRecord?.is_etf ?? fundamentalsRecord?.isEtf);
-    const is_actively_trading = toTinyInt(
-      profile?.isActivelyTrading ?? fundamentalsRecord?.is_actively_trading ?? fundamentalsRecord?.isActivelyTrading
-    );
+    const is_actively_trading = toTinyInt(profile?.isActivelyTrading ?? fundamentalsRecord?.is_actively_trading ?? fundamentalsRecord?.isActivelyTrading);
     const is_adr = toTinyInt(profile?.isAdr ?? fundamentalsRecord?.is_adr ?? fundamentalsRecord?.isAdr);
     const is_fund = toTinyInt(profile?.isFund ?? fundamentalsRecord?.is_fund ?? fundamentalsRecord?.isFund);
-    const version_hash = buildHistoryVersionHash({
-      ...fundamentalsRecord,
-      market_cap,
-      beta,
-      is_etf,
-      is_actively_trading,
-      is_adr,
-      is_fund,
-    });
-    const payload = {
-      symbol,
-      valid_from: today,
-      valid_to: null,
-      period_end,
-      as_of_date,
-      last_seen_at: today,
-      version_hash,
-      sector: fundamentalsRecord?.sector ?? null,
-      industry: fundamentalsRecord?.industry ?? null,
-      country: fundamentalsRecord?.country ?? null,
-      market_cap,
-      beta,
-      cik,
-      isin,
-      cusip,
-      exchange_full_name,
-      is_etf,
-      is_actively_trading,
-      is_adr,
-      is_fund,
-      roe,
-      roa,
-      op_margin,
-      piotroski: fundamentalsRecord?.piotroski ?? null,
-      debt_equity,
-      altman_z: fundamentalsRecord?.altman_z ?? null,
+    const version_hash = buildHistoryVersionHash({ ...fundamentalsRecord, market_cap, beta, is_etf, is_actively_trading, is_adr, is_fund });
+
+    // Technical indicators — price-based, valid for both equities and ETFs.
+    // All values are numbers or null; undefined is coerced to null.
+    const tech = technicals || {};
+    const technicalPayload = {
+      ret_1d:        numOrNull(tech.ret_1d),
+      ret_5d:        numOrNull(tech.ret_5d),
+      ret_20d:       numOrNull(tech.ret_20d),
+      ret_60d:       numOrNull(tech.ret_60d),
+      sma_10:        numOrNull(tech.sma_10),
+      sma_20:        numOrNull(tech.sma_20),
+      sma_50:        numOrNull(tech.sma_50),
+      sma_200:       numOrNull(tech.sma_200),
+      sma_20_slope:  numOrNull(tech.sma_20_slope),
+      sma_50_slope:  numOrNull(tech.sma_50_slope),
+      atr_14:        numOrNull(tech.atr_14),
+      atr_14_pct:    numOrNull(tech.atr_14_pct),
+      rsi_14:        numOrNull(tech.rsi_14),
+      avg_gap_20:    numOrNull(tech.avg_gap_20),
+      max_dd_60:     numOrNull(tech.max_dd_60),
+      dollar_vol_20d: numOrNull(tech.dollar_vol_20d),
     };
 
-    // leggi gli esistenti per il simbolo
-    const urlGet = `${this.dbmanagerUrl}/fundamentals/history/records?symbol=${encodeURIComponent(symbol)}`;
-    const existingResp = await fetch(urlGet);
-    const existingData = existingResp.ok ? await existingResp.json().catch(() => ({})) : {};
+    const payload = {
+      symbol, valid_from: today, valid_to: null, period_end, as_of_date, last_seen_at: today, version_hash,
+      sector: fundamentalsRecord?.sector ?? null, industry: fundamentalsRecord?.industry ?? null, country: fundamentalsRecord?.country ?? null,
+      market_cap, beta, cik, isin, cusip, exchange_full_name, is_etf, is_actively_trading, is_adr, is_fund,
+      roe, roa, op_margin, piotroski: fundamentalsRecord?.piotroski ?? null, debt_equity, altman_z: fundamentalsRecord?.altman_z ?? null,
+      ...technicalPayload,
+    };
+
+    const existingResp = await axios.get(`${this.dbmanagerUrl}/fundamentals/history/records?symbol=${encodeURIComponent(symbol)}`, { timeout: 8000 });
+    const existingData = existingResp.data || {};
     const existing = Array.isArray(existingData?.data) ? existingData.data : Array.isArray(existingData) ? existingData : [];
     const openRecord = existing.find((r) => r.valid_to === null || r.valid_to === undefined);
 
     if (openRecord) {
-      const existingHash =
-        typeof openRecord.version_hash === "string"
-          ? openRecord.version_hash
-          : openRecord.version_hash?.toString?.("hex") || null;
-      const sameHash = existingHash === version_hash;
-      if (sameHash) {
-        // aggiorna solo last_seen_at
-        const urlPut = `${this.dbmanagerUrl}/fundamentals/history/records/${openRecord.id}`;
-        await fetch(urlPut, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ last_seen_at: today }),
-        });
+      const existingHash = typeof openRecord.version_hash === "string" ? openRecord.version_hash : openRecord.version_hash?.toString?.("hex") || null;
+      if (existingHash === version_hash) {
+        // Fundamentals unchanged — only refresh last_seen_at and update technicals (daily price data)
+        await axios.put(`${this.dbmanagerUrl}/fundamentals/history/records/${openRecord.id}`, { last_seen_at: today, ...technicalPayload }, { timeout: 8000 });
         return;
       }
-
-      // chiudi record precedente
-      const urlClose = `${this.dbmanagerUrl}/fundamentals/history/records/${openRecord.id}`;
-      await fetch(urlClose, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ valid_to: today }),
-      });
+      await axios.put(`${this.dbmanagerUrl}/fundamentals/history/records/${openRecord.id}`, { valid_to: today }, { timeout: 8000 });
     }
 
-    // inserisci nuovo record
-    const urlPost = `${this.dbmanagerUrl}/fundamentals/history/records`;
-    await fetch(urlPost, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    await axios.post(`${this.dbmanagerUrl}/fundamentals/history/records`, payload, { timeout: 8000 });
   }
 
-async refreshMomentumAll() {
-  // 1) leggo i simboli dal DBManager
-  const urlSymbols = `${this.dbmanagerUrl}/fundamentals`;
-  this.logger.info(`[momentumRefresh] GET ${urlSymbols}`);
+  // =========================================================
+  // MOMENTUM REFRESH
+  // =========================================================
 
-  const res = await fetch(urlSymbols);
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(
-      `Errore lettura symbols: ${res.status} - ${text}`
-    );
-  }
+  async refreshMomentumAll() {
+    const resp = await axios.get(`${this.dbmanagerUrl}/fundamentals`, { timeout: 15000 });
+    const rows = Array.isArray(resp.data) ? resp.data : [];
+    const symbols = [...new Set(rows.map((r) => r.symbol).filter(Boolean))];
+    this.logger.info(`[momentumRefresh] Trovati ${symbols.length} simboli`);
 
-  const payload = await res.json();
-  let symbols = payload || [];
-  this.logger.info(
-    `[momentumRefresh] Trovati ${symbols.length} simboli in fundamentals`
-  );
+    const batchSize = 50;
+    let totalUpdated = 0;
 
-  // payload è un array di righe [{ symbol, sector, ... }, ...]
-  const rows = Array.isArray(payload) ? payload : [];
-  symbols = [...new Set(rows.map(r => r.symbol).filter(Boolean))];
-
-  const batchSize = 50;
-  let totalUpdated = 0;
-
-  for (let i = 0; i < symbols.length; i += batchSize) {
-    const batch = symbols.slice(i, i + batchSize);
-    this.logger.info(
-      `[momentumRefresh] Batch ${i / batchSize + 1} (${batch.length} simboli)`
-    );
-
-    const results = [];
-
-    for (const sym of batch) {
-      const momentum = await this.momentumCalculator.calculateForSymbol(sym);
-      results.push({ symbol:sym, momentum });
+    for (let i = 0; i < symbols.length; i += batchSize) {
+      const batch = symbols.slice(i, i + batchSize);
+      this.logger.info(`[momentumRefresh] Batch ${i / batchSize + 1} (${batch.length} simboli)`);
+      const results = [];
+      for (const sym of batch) {
+        const momentum = await this.momentumCalculator.calculateForSymbol(sym);
+        results.push({ symbol: sym, momentum });
+      }
+      try {
+        const r2 = await axios.put(`${this.dbmanagerUrl}/fundamentals/bulk`, { ok: true, count: results.length, results }, { timeout: 30000 });
+        this.logger.info(`[momentumRefresh] Aggiornato momentum per batch: ${r2.data?.updated ?? "?"} simboli`);
+        totalUpdated += r2.data?.updated ?? 0;
+      } catch (err) {
+        this.logger.error(`[momentumRefresh] Errore PUT /fundamentals/bulk: ${err?.message}`);
+      }
     }
 
-    // 3) aggiorno momentum su DB in bulk
-    const urlBulk = `${this.dbmanagerUrl}/fundamentals/bulk`;
-    const body = { ok: true, count: results.length, results };
-
-    const r2 = await fetch(urlBulk, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!r2.ok) {
-      const t = await r2.text().catch(() => "");
-      this.logger.error(
-        `[momentumRefresh] Errore POST momentum/bulk: ${r2.status} - ${t}`
-      );
-    } else {
-      const rj = await r2.json().catch(() => ({}));
-      this.logger.info(
-        `[momentumRefresh] Aggiornato momentum per batch: ${rj.updated ?? "?"} simboli`
-      );
-      totalUpdated += rj.updated ?? 0;
-    }
+    return { totalSymbols: symbols.length, totalUpdated };
   }
 
-  return { totalSymbols: symbols.length, totalUpdated };
-}
-
-
-  /**
-   * Ricalcola il momentum (incluso momentumShort) per una lista di simboli,
-   * accettando opzionalmente i dati dell'ultima candela (solo per logging).
-   * Riutilizza il momentumCalculator esistente.
-   */
   async recalcMomentumForLastCandles(items = []) {
     if (!Array.isArray(items)) return [];
-
     const output = [];
     for (const item of items) {
       const symbol = item?.symbol ? String(item.symbol).toUpperCase() : null;
-      if (!symbol) {
-        output.push({ symbol: item?.symbol ?? null, error: "symbol missing" });
-        continue;
-      }
+      if (!symbol) { output.push({ symbol: item?.symbol ?? null, error: "symbol missing" }); continue; }
       try {
         const momentum = await this.momentumCalculator.calculateForSymbol(symbol);
-        output.push({
-          symbol,
-          lastCandle: item.lastCandle ?? null,
-          momentum,
-        });
+        output.push({ symbol, lastCandle: item.lastCandle ?? null, momentum });
       } catch (err) {
-        this.logger.error(
-          `[recalcMomentumForLastCandles] ${symbol} errore: ${err?.message || String(err)}`
-        );
+        this.logger.error(`[recalcMomentumForLastCandles] ${symbol} errore: ${err?.message || String(err)}`);
         output.push({ symbol, error: err?.message || "recalc error" });
       }
     }
-
     return output;
   }
-
-
-  // =========================================================
-  // METRICHE GENERICHE
-  // =========================================================
-  getMetricsSnapshot(max = 100) {
-    return this.metrics.slice(-max);
-  }
-
-  pushMetric(metric) {
-    metric.ts = Date.now();
-    this.metrics.push(metric);
-    if (this.metrics.length > 2000) this.metrics.shift();
-  }
-
-  // =========================================================
-  // Aggiornamento dinamico dei channel config
-  // =========================================================
-  normalizeChannels(inCfg = {}, prev = {}) {
-    const ms = (v, d = 500) => Number(v ?? d) || d;
-
-    const norm = (k) => ({
-      on: !!inCfg?.[k]?.on ?? prev?.[k]?.on ?? true,
-      params: {
-        intervalsMs: ms(
-          inCfg?.[k]?.params?.intervalsMs ??
-          prev?.[k]?.params?.intervalsMs ??
-          500
-        ),
-      },
-    });
-
-    return {
-      telemetry: norm("telemetry"),
-      metrics:   norm("metrics"),
-      data:      norm("data"),
-      logs:      norm("logs"),
-    };
-  }
-
-  async updateCommunicationChannel(newConf) {
-    const cfg = this.normalizeChannels(newConf, this.communicationChannels);
-
-    this.communicationChannels = cfg;
-
-    // applica config al BUS
-    await this.bus.applyChannels?.(cfg);
-
-    this.bus.setChannelConfig("telemetry", cfg.telemetry);
-    this.bus.setChannelConfig("metrics",   cfg.metrics);
-    this.bus.setChannelConfig("data",      cfg.data);
-    this.bus.setChannelConfig("logs",      cfg.logs);
-
-    this.logger.info(
-      `[channels] telemetry=${cfg.telemetry.on} metrics=${cfg.metrics.on} data=${cfg.data.on} logs=${cfg.logs.on}`
-    );
-
-    return { ok: true, channels: cfg };
-  }
-
-  // =========================================================
-  // GET INFO STANDARDIZZATO
-  // =========================================================
-  getInfo() {
-    return {
-      MICROSERVICE,
-      MODULE_NAME,
-      MODULE_VERSION,
-      STATUS: this._status,
-      STATUS_DETAILS: this.statusDetails,
-      ENV: this.env,
-      communicationChannels: this.communicationChannels,
-      BusChannels: {
-        telemetry: this.redisTelemetyChannel,
-        status:    this.redisStatusChannel,
-        data:      this.redisDataChannel,
-        logs:      this.redisLogsChannel,
-      },
-    };
-  }
-
-  // =========================================================
-  // SHUTDOWN
-  // =========================================================
-  async disconnect() {
-    this.logger.info("[disconnect] Shutting down...");
-
-    try {
-      await this.bus.close();
-    } catch (e) {
-      this.logger.error("[disconnect] Error closing RedisBus", e);
-    }
-
-    this._status = "STOPPED";
-    return this._status;
-  }
-
-  // =========================================================
-  // DB Logger API (usata da /dbLogger nel server.js)
-  // =========================================================
-  getDbLogStatus() {
-    // Se il logger supporta questa API, la usiamo
-    if (typeof this.logger.getDbLogStatus === "function") {
-      return this.logger.getDbLogStatus();
-    }
-    // Fallback neutro
-    return { dbLogEnabled: false };
-  }
-
-  setDbLogStatus(status) {
-    if (typeof this.logger.setDbLogStatus === "function") {
-      return this.logger.setDbLogStatus(status);
-    }
-    this.logger.warning("[setDbLogStatus] Not supported by this logger", { status });
-    return { dbLogEnabled: false };
-  }
-
-
-  // Accesso diretto
-  getBus()    { return this.bus; }
-  getLogger() { return this.logger; }
-  get status() { return this._status; }
 }
 
 module.exports = TickerScanner;

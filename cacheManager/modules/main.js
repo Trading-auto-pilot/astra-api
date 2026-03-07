@@ -2,11 +2,13 @@
 "use strict";
 
 const path = require("path");
+const { randomUUID } = require("crypto");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const createLogger = require("../../shared/logger");
 const { initializeSettings, getSetting, reloadSettings, getAllSettings, setSetting } = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
+const { publishEventsManifest } = require("../../shared/eventsManifestRegistry");
 const { asBool, asInt } = require("../../shared/helpers");
 const { AlpacaProvider } = require("./alpaca");
 const { FmpProvider } = require("./fmp");
@@ -29,7 +31,8 @@ class CacheManager {
     // =====================================================
 
     //     // Auto-generated service URLs from doc/ports.json
-    this.dbmanagerUrl = process.env.DBMANAGER_URL || "http://dbmanager:3002";
+    // Support both DATAHUB_URL (preferred) and DBMANAGER_URL (backward compat)
+    this.dbmanagerUrl = process.env.DATAHUB_URL || process.env.DBMANAGER_URL || "http://datahub:3000";
     this.marketsimulatorUrl = process.env.MARKETSIMULATOR_URL || "http://marketsimulator:3003";
     this.ordersimulatorUrl = process.env.ORDERSIMULATOR_URL || "http://ordersimulator:3004";
     this.orderlistnerUrl = process.env.ORDERLISTNER_URL || "http://orderlistner:3005";
@@ -60,6 +63,7 @@ class CacheManager {
     this.redisStatusChannel   = `${this.env}.${MICROSERVICE}.status`;
     this.redisDataChannel     = `${this.env}.${MICROSERVICE}.data`;
     this.redisLogsChannel     = `${this.env}.${MICROSERVICE}.logs`;
+    this.redisEventsChannel   = `${this.env}.${MICROSERVICE}.events`;
 
     // Stato del modulo
     this._status       = "STARTING";
@@ -73,6 +77,7 @@ class CacheManager {
       metrics:   { on: true, params: { intervalsMs: 1000 } },
       data:      { on: true, params: { intervalsMs: 0    } },
       logs:      { on: true, params: { intervalsMs: 0    } },
+      events:    { on: true, params: { intervalsMs: 0    } },
     };
 
     // =====================================================
@@ -103,6 +108,7 @@ class CacheManager {
 
     // Mini storage per metriche locali
     this.metrics = [];
+    this._l3ThresholdAlertActive = false;
 
     this.providerType = (process.env.HISTORICAL_PROVIDER || "FMP").toUpperCase();
 
@@ -139,6 +145,12 @@ class CacheManager {
     // 1) CONNECT REDIS BUS
     await this.bus.connect();
     this.logger.attachBus(this.bus);
+    await publishEventsManifest({
+      bus: this.bus,
+      logger: this.logger,
+      microserviceName: MICROSERVICE,
+      serviceRootDir: path.resolve(__dirname, ".."),
+    });
 
     // STATUS: STARTING
     await this.bus.publish(this.redisStatusChannel, {
@@ -279,6 +291,76 @@ class CacheManager {
     if (this.metrics.length > 2000) this.metrics.shift();
   }
 
+  async _publishEvent(eventId, payload = {}, severity = "info", correlationId = null) {
+    if (!this.bus || typeof this.bus.publish !== "function") return;
+    const cid = correlationId || randomUUID();
+    const event = {
+      eventKey: `${MICROSERVICE}.${eventId}`,
+      eventId,
+      service: MICROSERVICE,
+      env: this.env,
+      ts: new Date().toISOString(),
+      severity,
+      correlationId: cid,
+      payload,
+    };
+    try {
+      await this.bus.publish(this.redisEventsChannel, event);
+    } catch (err) {
+      this.logger.warning(
+        `[events] publish failed eventId=${eventId}: ${err?.message || String(err)}`
+      );
+    }
+  }
+
+  async _checkL3UsageThreshold() {
+    if (!this.bus?.pub || !this.bus.pub.isOpen) return;
+
+    const rawThreshold = Number(process.env.L3_USAGE_ALERT_PERCENT ?? 95);
+    const thresholdPct =
+      Number.isFinite(rawThreshold) && rawThreshold > 0 && rawThreshold <= 100
+        ? rawThreshold
+        : 95;
+
+    try {
+      const memoryInfo = await this.bus.pub.info("memory");
+      if (!memoryInfo || typeof memoryInfo !== "string") return;
+
+      const usedMatch = memoryInfo.match(/^used_memory:(\d+)$/m);
+      const maxMatch = memoryInfo.match(/^maxmemory:(\d+)$/m);
+
+      const usedBytes = Number(usedMatch?.[1] || 0);
+      const maxBytes = Number(maxMatch?.[1] || 0);
+
+      if (!Number.isFinite(usedBytes) || !Number.isFinite(maxBytes) || maxBytes <= 0) {
+        return;
+      }
+
+      const usagePct = (usedBytes / maxBytes) * 100;
+
+      if (usagePct >= thresholdPct && !this._l3ThresholdAlertActive) {
+        this._l3ThresholdAlertActive = true;
+        await this._publishEvent(
+          "CACHE.L3.THRESHOLD.REACHED",
+          {
+            reason: "L3 Redis usage reached threshold",
+            thresholdPercent: thresholdPct,
+            usedBytes,
+            maxBytes,
+            usagePercent: Number(usagePct.toFixed(2)),
+          },
+          "warning"
+        );
+      } else if (usagePct < thresholdPct) {
+        this._l3ThresholdAlertActive = false;
+      }
+    } catch (err) {
+      this.logger.warning(
+        `[L3] Threshold check failed: ${err?.message || String(err)}`
+      );
+    }
+  }
+
   // =========================================================
   // Aggiornamento dinamico dei channel config
   // =========================================================
@@ -301,6 +383,7 @@ class CacheManager {
       metrics:   norm("metrics"),
       data:      norm("data"),
       logs:      norm("logs"),
+      events:    norm("events"),
     };
   }
 
@@ -316,9 +399,10 @@ class CacheManager {
     this.bus.setChannelConfig("metrics",   cfg.metrics);
     this.bus.setChannelConfig("data",      cfg.data);
     this.bus.setChannelConfig("logs",      cfg.logs);
+    this.bus.setChannelConfig("events",    cfg.events);
 
     this.logger.info(
-      `[channels] telemetry=${cfg.telemetry.on} metrics=${cfg.metrics.on} data=${cfg.data.on} logs=${cfg.logs.on}`
+      `[channels] telemetry=${cfg.telemetry.on} metrics=${cfg.metrics.on} data=${cfg.data.on} logs=${cfg.logs.on} events=${cfg.events.on}`
     );
 
     return { ok: true, channels: cfg };
@@ -349,6 +433,7 @@ class CacheManager {
         status:    this.redisStatusChannel,
         data:      this.redisDataChannel,
         logs:      this.redisLogsChannel,
+        events:    this.redisEventsChannel,
       },
     };
   }
@@ -569,6 +654,39 @@ class CacheManager {
 
   _buildL3Key(symbol, tf) {
     return `candles:${symbol}:${tf}`;
+  }
+
+  /**
+   * Returns the most recent candle for the given symbol/timeframe from L3 (Redis).
+   * Does not fetch from provider — returns null on cache miss.
+   */
+  async getLatestCandle(symbol, tf) {
+    if (!symbol || !tf) return null;
+    const key = this._buildL3Key(symbol, tf);
+    let raw;
+    try {
+      raw = await this.bus.get(key);
+    } catch (err) {
+      this.logger.error(`[getLatestCandle] Redis error key=${key}: ${err.message}`);
+      return null;
+    }
+    if (!raw) return null;
+    let data;
+    try {
+      data = typeof raw === "string" ? JSON.parse(raw) : raw;
+    } catch {
+      return null;
+    }
+    if (!Array.isArray(data) || !data.length) return null;
+    // Sort descending by t, return the latest
+    const sorted = data
+      .filter((c) => c && (c.t || c.timestamp || c.time || c.date))
+      .sort((a, b) => {
+        const ta = this._toTimestampMs(a.t ?? a.timestamp ?? a.time ?? a.date) ?? 0;
+        const tb = this._toTimestampMs(b.t ?? b.timestamp ?? b.time ?? b.date) ?? 0;
+        return tb - ta;
+      });
+    return sorted[0] ?? null;
   }
 
   _toTimestampMs(value) {
@@ -934,6 +1052,7 @@ class CacheManager {
       this.logger.info(
         `[L3] Memorizzate ${merged.length} candele in cache L3 (key=${key})`
       );
+      await this._checkL3UsageThreshold();
     } catch (err) {
       this.logger.error(
         `[L3] Errore scrittura Redis per key=${key}: ${err.message}`
@@ -1191,21 +1310,48 @@ class CacheManager {
       if (total <= maxBytes) return;
 
       const toMb = (v) => `${(v / 1024 / 1024).toFixed(1)} MB`;
+      const beforeBytes = total;
       this.logger.warning(
         `[L2] Cache L2 oltre limite (${toMb(total)} > ${toMb(maxBytes)}), rimozione file più vecchi`
       );
 
       files.sort((a, b) => (a.mtimeMs || 0) - (b.mtimeMs || 0));
+      const removedFiles = [];
+      const touchedSymbols = new Set();
 
       for (const file of files) {
         if (total <= maxBytes) break;
         try {
           await fsp.unlink(file.path);
           total -= file.size || 0;
+          removedFiles.push({
+            path: file.path,
+            size: file.size || 0,
+            mtimeMs: file.mtimeMs || null,
+          });
+          const rel = path.relative(baseDir, file.path);
+          const parts = rel.split(path.sep).filter(Boolean);
+          if (parts.length > 0) touchedSymbols.add(parts[0]);
           this.logger.info(`[L2] Rimosso file ${file.path} (size=${file.size}) per rientrare nel limite`);
         } catch (err) {
           this.logger.error(`[L2] Errore cancellando file ${file.path}: ${err.message}`);
         }
+      }
+
+      if (removedFiles.length > 0) {
+        await this._publishEvent(
+          "CACHE.L2.CLEANING",
+          {
+            reason: "L2 cache exceeded MAX_L2_CACHE_MB",
+            limitMb: maxMb,
+            beforeBytes,
+            afterBytes: total,
+            removedFilesCount: removedFiles.length,
+            touchedSymbols: Array.from(touchedSymbols),
+            removedFiles,
+          },
+          "warning"
+        );
       }
 
       // Rimuovi directory vuote (dal fondo)

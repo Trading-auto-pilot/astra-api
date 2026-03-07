@@ -12,5 +12,10 @@
     "ibkr-bridge": 3017,
     "decision-engine": 3018,
     "ibkr-keepalive": 3019,
-    "market-data-service": 3020
+    "liquidity-manager": 3001,
+    "market-data-service": 3020,
+    "broker-executor-ibkr": 3003,
+    "datahub": 3000,
+    "mcp-gateway": 3004,
+    "capital-manager": 3005
 }

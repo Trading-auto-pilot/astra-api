@@ -30,6 +30,8 @@ const {
   persistSpotFinderSnapshot,
   newJobId,
   fetchUserFundamentalsTickers,
+  buildRankingDailyParams,
+  fetchRankingDailyTickers,
   applyPipeLimit,
   startAsyncJob,
 } = require("./job-manager");
@@ -75,11 +77,11 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
     process.env.DECISIONENGINE_URL ||
     "http://decision-engine:3018"
   ).replace(/\/+$/, "");
-  const alertingserviceUrl = (
-    service?.alertingserviceUrl ||
-    process.env.ALERTINGSERVICE_URL ||
-    "http://alertingservice:3008"
-  ).replace(/\/+$/, "");
+  const serviceName = process.env.MICROSERVICE_NAME || "decision-engine";
+  const envName = process.env.ENV || process.env.APP_ENV || "DEV";
+  const eventsChannel =
+    service?.redisEventsChannel ||
+    `${envName}.${serviceName}.events`;
   const marketdataserviceUrl = (
     service?.marketdataserviceUrl ||
     process.env.MARKETDATASERVICE_URL ||
@@ -138,7 +140,9 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
       const snapshotDate = resolveSnapshotDate(dateParamRaw);
       const headers = pickAuthHeaders(req);
       const tickers = applyPipeLimit(
-        await fetchUserFundamentalsTickers(tickerscannerUrl, pipeId, headers, dateParam, tickerscannerTimeoutMs, logger),
+        pipeId === C.RANKING_DAILY_PIPE_ID
+          ? await fetchRankingDailyTickers(tickerscannerUrl, dateParam, tickerscannerTimeoutMs, logger)
+          : await fetchUserFundamentalsTickers(tickerscannerUrl, pipeId, headers, dateParam, tickerscannerTimeoutMs, logger),
         req.query
       );
       if (!tickers.length) {
@@ -178,16 +182,20 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
         const entry = tickers[index++];
         const ticker = entry?.ticker || entry;
         const exchange = entry?.exchange || null;
+        const extraParams = pipeId === C.RANKING_DAILY_PIPE_ID
+          ? buildRankingDailyParams(entry?.meta)
+          : {};
         try {
-          let data = await runSpotFinderForTicker(ticker, req.query, req, exchange);
+          let data = await runSpotFinderForTicker(ticker, req.query, req, exchange, false, extraParams);
           if (data?.ok === false && isSupportNotAvailable(data)) {
-            data = await runSpotFinderForTicker(ticker, req.query, req, exchange, true);
+            data = await runSpotFinderForTicker(ticker, req.query, req, exchange, true, extraParams);
           }
           const errorMessage =
             data?.ok === false ? data?.error || data?.message || "spot-finder failed" : null;
           results.push({
             ticker,
             exchange,
+            asset_type: entry?.asset_type ?? null,
             currentPrice: data?.priceRef ?? null,
             levels: {
               retracement: data?.levels?.retracement ?? null,
@@ -390,8 +398,8 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
 
   router._internalSpotFinderLiveStop = [requireInternalToken, internalSpotFinderLiveStopHandler];
 
-  const runSpotFinderForTicker = async (ticker, query, req, exchangeOverride, relaxed) => {
-    const params = { ...query, ticker };
+  const runSpotFinderForTicker = async (ticker, query, req, exchangeOverride, relaxed, extraParams = {}) => {
+    const params = { ...query, ticker, ...extraParams };
     if (exchangeOverride && !params.exchange) params.exchange = exchangeOverride;
     if (relaxed) Object.assign(params, relaxedSpotFinderParams);
     const headers = pickAuthHeaders(req);
@@ -470,10 +478,39 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
 
   // --- Market data handler setup -------------------------------------------
   if (service?.addMarketDataHandler && !service.__liveMarketHandlerAttached) {
+    const hooksChannel = `${envName}.hooks`;
+    const liquidityManagerUrl = (
+      service?.liquidityManagerUrl ||
+      process.env.LIQUIDITYMANAGER_URL ||
+      "http://liquidity-manager:3001"
+    ).replace(/\/+$/, "");
+    const brokerExecutorUrl = (
+      service?.brokerExecutorUrl ||
+      process.env.BROKER_EXECUTOR_URL ||
+      "http://broker-executor-ibkr:3003"
+    ).replace(/\/+$/, "");
+    const capitalManagerUrl = (
+      service?.capitalmanagerUrl ||
+      process.env.CAPITALMANAGER_URL ||
+      ""
+    ).replace(/\/+$/, "") || null;
+    const ibkrBridgeUrl = (
+      service?.ibkrbridgeUrl ||
+      process.env.IBKRBRIDGE_URL ||
+      "http://ibkr-bridge:3017"
+    ).replace(/\/+$/, "");
     const handler = createMarketDataHandler({
       bus: service?.bus,
-      alertingserviceUrl,
+      eventsChannel,
+      hooksChannel,
+      serviceName,
+      envName,
       logger,
+      liquidityManagerUrl,
+      cachemanagerUrl,
+      brokerExecutorUrl,
+      capitalManagerUrl,
+      ibkrBridgeUrl,
     });
     service.addMarketDataHandler(handler);
     service.__liveMarketHandlerAttached = true;

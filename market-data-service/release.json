@@ -1,11 +1,8 @@
 {
-  "lastUpdate": "02/02/2026", 
-  "version": "1.0.2",
+  "lastUpdate": "07/03/2026",
+  "version": "1.0.0",
   "microservice": "market-data-service",
-
   "note": [
-    "v.1.0.0 market-data-service: Initial scaffolding generated from template.",
-    "v.1.0.1 Fix general setting logs",
-    "v.1.0.2 Fix richiesta dati live"
+    "v.1.0.0 Initial release using BaseService"
   ]
 }

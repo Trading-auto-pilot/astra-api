@@ -14,7 +14,6 @@
 #   ENV_TRADING : ${{ vars.ENV_TRADING }}
 #   LOG_LEVEL : ${{ vars.LOG_LEVEL }}
 
-
 services:
   mysql:
     image: mysql:8.0
@@ -235,7 +234,6 @@ services:
       - APCA_API_KEY_ID=${APCA_API_KEY_ID}
       - APCA_API_SECRET_KEY=${APCA_API_SECRET_KEY}
 
-
   sma:
     image: expovin/sma:${SMA_VERSION}
     container_name: sma
@@ -285,7 +283,6 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
-
 
   # Sezione docker per la simulazione
 
@@ -576,6 +573,45 @@ services:
       timeout: 10s
       retries: 5
 
+  liquidity-manager:
+    image: expovin/liquidity-manager:${LIQUIDITY-MANAGER_VERSION}
+    container_name: liquidity-manager
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    networks:
+      - trading-net
+    depends_on:
+      dbmanager:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - REDIS_URL=redis://redis:6379
+      - DBMANAGER_URL=http://dbmanager:3002
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - STRATEGYUTILS_URL=http://strategyUtils:3007
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
+      - TICKERSCANNER_URL=http://tickerscanner:3013
+      - SCHEDULER_URL=http://scheduler:3014
+      - AUTHSERVICE_URL=http://authService:3015
+      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - IBKRBRIDGE_URL=http://ibkr-bridge:3017
+      - DECISIONENGINE_URL=http://decision-engine:3018
+      - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
+      - MARKETDATASERVICE_URL=http://market-data-service:3020
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/status/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
   market-data-service:
     image: expovin/market-data-service:${MARKET-DATA-SERVICE_VERSION}
     container_name: market-data-service
@@ -598,16 +634,9 @@ services:
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - REDIS_URL=redis://redis:6379
       - DBMANAGER_URL=http://dbmanager:3002
-      - MARKETSIMULATOR_URL=http://marketsimulator:3003
-      - ORDERSIMULATOR_URL=http://ordersimulator:3004
-      - ORDERLISTNER_URL=http://orderlistner:3005
       - CACHEMANAGER_URL=http://cachemanager:3006
       - STRATEGYUTILS_URL=http://strategyUtils:3007
       - ALERTINGSERVICE_URL=http://alertingservice:3008
-      - CAPITALMANAGER_URL=http://capitalmanager:3009
-      - SMA_URL=http://sma:3010
-      - SLTP_URL=http://sltp:3011
-      - LIVEMARKETLISTNER_URL=http://livemarketlistner:3012
       - TICKERSCANNER_URL=http://tickerscanner:3013
       - SCHEDULER_URL=http://scheduler:3014
       - AUTHSERVICE_URL=http://authService:3015
@@ -615,8 +644,180 @@ services:
       - IBKRBRIDGE_URL=http://ibkr-bridge:3017
       - DECISIONENGINE_URL=http://decision-engine:3018
       - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
+      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3020/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3020/status/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  broker-executor-ibkr:
+    image: expovin/broker-executor-ibkr:${BROKER-EXECUTOR-IBKR_VERSION}
+    container_name: broker-executor-ibkr
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    networks:
+      - trading-net
+    depends_on:
+      dbmanager:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - REDIS_URL=redis://redis:6379
+      - DBMANAGER_URL=http://dbmanager:3002
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - STRATEGYUTILS_URL=http://strategyUtils:3007
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
+      - TICKERSCANNER_URL=http://tickerscanner:3013
+      - SCHEDULER_URL=http://scheduler:3014
+      - AUTHSERVICE_URL=http://authService:3015
+      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - IBKRBRIDGE_URL=http://ibkr-bridge:3017
+      - DECISIONENGINE_URL=http://decision-engine:3018
+      - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
+      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - MARKETDATASERVICE_URL=http://market-data-service:3020
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/status/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  datahub:
+    image: expovin/datahub:${DATAHUB_VERSION}
+    container_name: datahub
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    networks:
+      - trading-net
+    depends_on:
+      dbmanager:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - REDIS_URL=redis://redis:6379
+      - REDIS_CACHE_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_KEY_PREFIX=datahub
+      - DBMANAGER_URL=http://dbmanager:3002
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - STRATEGYUTILS_URL=http://strategyUtils:3007
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
+      - TICKERSCANNER_URL=http://tickerscanner:3013
+      - SCHEDULER_URL=http://scheduler:3014
+      - AUTHSERVICE_URL=http://authService:3015
+      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - IBKRBRIDGE_URL=http://ibkr-bridge:3017
+      - DECISIONENGINE_URL=http://decision-engine:3018
+      - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
+      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - MARKETDATASERVICE_URL=http://market-data-service:3020
+      - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/status/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  mcp-gateway:
+    image: expovin/mcp-gateway:${MCP_GATEWAY_VERSION}
+    container_name: mcp-gateway
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+    networks:
+      - trading-net
+    depends_on:
+      dbmanager:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - REDIS_URL=redis://redis:6379
+      - DBMANAGER_URL=http://dbmanager:3002
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - STRATEGYUTILS_URL=http://strategyUtils:3007
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
+      - TICKERSCANNER_URL=http://tickerscanner:3013
+      - SCHEDULER_URL=http://scheduler:3014
+      - AUTHSERVICE_URL=http://authService:3015
+      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - IBKRBRIDGE_URL=http://ibkr-bridge:3017
+      - DECISIONENGINE_URL=http://decision-engine:3018
+      - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
+      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - MARKETDATASERVICE_URL=http://market-data-service:3020
+      - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
+      - DATAHUB_URL=http://datahub:3000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3004/status/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  capital-manager:
+    image: expovin/capital-manager:${CAPITAL_MANAGER_VERSION}
+    container_name: capital-manager
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    networks:
+      - trading-net
+    depends_on:
+      dbmanager:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - REDIS_URL=redis://redis:6379
+      - DBMANAGER_URL=http://dbmanager:3002
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - STRATEGYUTILS_URL=http://strategyUtils:3007
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
+      - TICKERSCANNER_URL=http://tickerscanner:3013
+      - SCHEDULER_URL=http://scheduler:3014
+      - AUTHSERVICE_URL=http://authService:3015
+      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - IBKRBRIDGE_URL=http://ibkr-bridge:3017
+      - DECISIONENGINE_URL=http://decision-engine:3018
+      - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
+      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - MARKETDATASERVICE_URL=http://market-data-service:3020
+      - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
+      - DATAHUB_URL=http://datahub:3000
+      - MCPGATEWAY_URL=http://mcp-gateway:3004
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3005/status/health"]
       interval: 10s
       timeout: 10s
       retries: 5

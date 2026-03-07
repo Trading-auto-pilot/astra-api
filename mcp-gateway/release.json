@@ -1,0 +1,8 @@
+{
+  "lastUpdate": "07/03/2026",
+  "version": "1.0.0",
+  "microservice": "mcp-gateway",
+  "note": [
+    "v.1.0.0 Initial release using BaseService. Funziona solo in locale con Claud Desktop"
+  ]
+}

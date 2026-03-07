@@ -3,22 +3,26 @@
 
 const { Router } = require("express");
 const axios = require("axios");
+const { convertPathToDatahub, adaptDatahubResponse } = require("../shared/datahubAdapter");
 
-const DEFAULT_DBMANAGER_URL = "http://dbmanager:3002";
+const DEFAULT_DATAHUB_URL = "http://datahub:3000"; // Updated from dbmanager to datahub
 
 function buildProxy({ logger, getDbManagerUrl }) {
   const router = Router();
 
   const resolveBaseUrl = () =>
     (typeof getDbManagerUrl === "function" ? getDbManagerUrl() : null) ||
+    process.env.DATAHUB_URL ||
     process.env.DBMANAGER_URL ||
-    DEFAULT_DBMANAGER_URL;
+    DEFAULT_DATAHUB_URL;
 
   const forward = async (req, res, targetPath) => {
     const baseUrl = resolveBaseUrl();
-    const url = `${baseUrl}${targetPath}`;
+    // Convert DBManager path format to datahub format (e.g., /alerting-rules -> /api/table/alerting_rules)
+    const datahubPath = convertPathToDatahub(targetPath);
+    const url = `${baseUrl}${datahubPath}`;
 
-    logger?.debug?.(
+    logger?.info?.(
       `[alertingRulesProxy] ${req.method} ${req.originalUrl} -> ${url}`
     );
 
@@ -35,14 +39,18 @@ function buildProxy({ logger, getDbManagerUrl }) {
         validateStatus: () => true,
       });
 
-      return res.status(response.status).json(response.data);
+      // Convert datahub response format to DBManager format for frontend compatibility
+      // Datahub: {ok: true, data: [...], count: N} → DBManager: {items: [...], count: N}
+      const adaptedData = adaptDatahubResponse(response.data);
+
+      return res.status(response.status).json(adaptedData);
     } catch (err) {
       logger?.error?.(
         `[alertingRulesProxy] ${req.method} ${req.originalUrl} failed: ${err?.message || String(err)}`
       );
       return res.status(502).json({
         ok: false,
-        error: "DBManager proxy error",
+        error: "Datahub proxy error",
         message: err?.message || String(err),
       });
     }

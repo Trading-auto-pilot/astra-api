@@ -2,8 +2,8 @@ const { Router } = require('express');
 
 module.exports = ({ cfg, hub, bus }) => {
   const r = Router();
-  const allowedKeys = ['telemetry', 'metrics', 'data', 'logs'];
-  const defaultIntervals = { telemetry: 1000, metrics: 1000, data: 0, logs: 0 };
+  const allowedKeys = ['telemetry', 'metrics', 'data', 'logs', 'events'];
+  const defaultIntervals = { telemetry: 1000, metrics: 1000, data: 0, logs: 0, events: 0 };
   r.get('/health', (_req, res) => res.json({ ok: true, service: 'redis-ws-bridge', env: cfg.env, ts: new Date().toISOString() }));
   r.get('/clients', (_req, res) => res.json(hub.getClientsSnapshot()));
   r.get('/metrics', (_req, res) => res.json(hub.getMetrics()));

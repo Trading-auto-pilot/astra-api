@@ -1,320 +1,67 @@
-// server.js (TEMPLATE)
+// server.js
 "use strict";
 
-const express = require("express");
-const dotenv = require("dotenv");
-const cors = require("cors");
-
-const MainModule = require("./modules/main");
-const createLogger = require("../shared/logger");
-const buildStatusRouter = require("./status"); // router standard /status/*
+const { createMicroserviceServer } = require("../shared/serverFactory");
+const marketDataServiceService = require("./modules/main");
 const ibkrMarketDataModule = require("./modules/ibkrMarketData");
 
-dotenv.config();
+/**
+ * market-data-service REST Server
+ *
+ * Uses serverFactory which provides:
+ * - Express setup with JSON middleware
+ * - CORS configuration (Traefik-compatible)
+ * - Service initialization
+ * - requireReady middleware
+ * - Standard routes (/release, /settings, /connect, /dbLogger)
+ * - Status router (/status/*)
+ * - Graceful shutdown
+ */
 
-// =======================================================
-// PLACEHOLDER che verranno sostituiti dallo script
-// =======================================================
-const MICROSERVICE   = "market-data-service";   // es. "marketListener"
-const MODULE_NAME    = "RESTServer";    // es. "RESTServer"
-const MODULE_VERSION = "0.1.0";      // es. "1.0.0"
-const DEFAULT_PORT   = 3020;                  // es. 3012 (numero)
+const { app, getService, logger } = createMicroserviceServer({
+  ServiceClass: marketDataServiceService,
+  microservice: "market-data-service",
+  moduleName: "RESTServer",
+  moduleVersion: "1.0.0",
+  defaultPort: 3020,
 
-let logLevel = process.env.LOG_LEVEL || "info";
-const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, logLevel);
-process.env.MICROSERVICE_NAME = process.env.MICROSERVICE_NAME || MICROSERVICE;
+  // Custom routes (add your API endpoints here)
+  routes: [
+    // Example:
+    // { path: '/api', router: apiRouter, protected: true }
+  ]
+});
 
-const app = express();
-app.use(express.json());
-
-// -------------------------------------------------------
-// CORS: singola origin o lista separata da virgole
-// -------------------------------------------------------
-const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
-
-app.use(
-  cors({
-    origin(origin, cb) {
-      if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-      return cb(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-  })
-);
-
-const port = process.env.PORT || DEFAULT_PORT;
-let serviceInstance;
+// Initialize and start IBKR Market Data module
 let ibkrMarketData;
 
-// -------------------------------------------------------
-// init asincrono del modulo principale
-// -------------------------------------------------------
 (async () => {
   try {
-    serviceInstance = new MainModule();
-    await serviceInstance.init();
+    // Wait for service to be initialized
+    let service;
+    await new Promise((resolve) => {
+      const checkReady = setInterval(() => {
+        service = getService();
+        if (service && service.status === "READY") {
+          clearInterval(checkReady);
+          resolve();
+        }
+      }, 100);
+    });
+
     ibkrMarketData = await ibkrMarketDataModule.init({
       app,
-      redisClient: serviceInstance.bus,
-      redisBus: serviceInstance.bus,
-      redisDataChannel: serviceInstance.redisDataChannel,
+      redisClient: service.bus,
+      redisBus: service.bus,
+      redisDataChannel: service.redisDataChannel,
       logger,
     });
+
     await ibkrMarketData.start();
-    logger.info("[main] Service initialized successfully");
+    logger.info("[market-data-service] IBKR Market Data module initialized successfully");
   } catch (err) {
     logger.error(
-      `[main] Error during initialization: ${err?.message || String(err)}`
+      `[market-data-service] Error initializing IBKR Market Data: ${err?.message || String(err)}`
     );
-    process.exit(1);
   }
 })();
-
-// -------------------------------------------------------
-// middleware: verifica che l'istanza sia pronta
-// -------------------------------------------------------
-function requireReady(req, res, next) {
-  if (!serviceInstance) {
-    return res.status(503).json({
-      error: "Service not initialized yet",
-    });
-  }
-
-  const status = serviceInstance.status;
-
-  // Logica generica: se esiste uno stato "ERROR" o "STOPPED" lo blocchiamo
-  if (status === "ERROR" || status === "STOPPED") {
-    return res.status(503).json({
-      error: "Service not running",
-      status,
-    });
-  }
-
-  next();
-}
-
-/* -------------------------- ROUTES: OPERATIVE -------------------------- */
-
-// GET /release → ritorna release.json
-app.get("/release", async (req, res) => {
-  try {
-    const data = await serviceInstance.getReleaseInfo();
-    return res.json(data);
-  } catch (err) {
-    logger.error("[GET /release] Errore:", err.message);
-    return res.status(500).json({ error: "Impossibile leggere release.json" });
-  }
-});
-
-// GET /settings → ritorna i settings caricati
-app.get("/settings", requireReady, (req, res) => {
-  try {
-    const data = serviceInstance.getAllSettings?.() || null;
-    if (!data) return res.status(404).json({ error: "Settings non disponibili" });
-    return res.json({ ok: true, data });
-  } catch (err) {
-    logger.error("[GET /settings] Errore:", err.message);
-    return res.status(500).json({ error: "Impossibile leggere i settings" });
-  }
-});
-
-// PUT /settings → aggiorna un setting in cache (non persistente)
-app.put("/settings", requireReady, (req, res) => {
-  const body = req.body || {};
-  // supporta sia { setting, value } sia { SOME_KEY: "value" }
-  let setting = body.setting;
-  let value = body.value;
-  if (!setting) {
-    const keys = Object.keys(body);
-    if (keys.length === 1) {
-      setting = keys[0];
-      value = body[setting];
-    }
-  }
-
-  if (typeof setting !== "string" || setting.trim() === "") {
-    return res.status(400).json({ ok: false, error: "Parametro 'setting' obbligatorio" });
-  }
-
-  try {
-    const next = serviceInstance.setSetting(setting, value);
-    return res.json({ ok: true, data: next });
-  } catch (err) {
-    logger.error("[PUT /settings] Errore:", err.message);
-    return res.status(500).json({ ok: false, error: "Impossibile aggiornare il setting" });
-  }
-});
-
-/**
- * PUT /connect
- * Route generica per avviare una connessione "live" (es. websocket/market).
- * Il modulo `main` deve esporre `async connect()`.
- */
-app.put("/connect", async (_req, res) => {
-  if (!serviceInstance?.connect) {
-    return res.status(501).json({
-      success: false,
-      error: "connect() not implemented in this microservice",
-    });
-  }
-
-  try {
-    const status = await serviceInstance.connect();
-    const ok = status === "LISTENING" || status === "CONNECTED" || status === "READY";
-
-    return res.json({ success: ok, status });
-  } catch (err) {
-    logger.error(
-      `[PUT /connect] Error during connect: ${err?.message || String(err)}`
-    );
-    return res
-      .status(500)
-      .json({ success: false, error: "Error during connect" });
-  }
-});
-
-/**
- * DELETE /connect
- * Route generica per chiudere la connessione live.
- * Il modulo `main` deve esporre `async disconnect()`.
- */
-app.delete("/connect", requireReady, async (_req, res) => {
-  if (!serviceInstance?.disconnect) {
-    return res.status(501).json({
-      success: false,
-      error: "disconnect() not implemented in this microservice",
-    });
-  }
-
-  try {
-    const status = await serviceInstance.disconnect();
-    const ok =
-      status === "DISCONNECTED" ||
-      status === "NOT CONNECTED" ||
-      status === "STOPPED";
-
-    return res.json({ success: ok, status });
-  } catch (err) {
-    logger.error(
-      `[DELETE /connect] Error during disconnect: ${err?.message || String(err)}`
-    );
-    return res
-      .status(500)
-      .json({ success: false, error: "Error during disconnect" });
-  }
-});
-
-/**
- * GET /dbLogger
- * Restituisce lo stato del logging su DB, se il modulo lo supporta.
- */
-app.get("/dbLogger", async (_req, res) => {
-  if (!serviceInstance?.getDbLogStatus) {
-    return res.status(501).json({
-      ok: false,
-      error: "getDbLogStatus() not implemented in this microservice",
-    });
-  }
-
-  try {
-    const data = await serviceInstance.getDbLogStatus();
-    res.json({ ok: true, data });
-  } catch (e) {
-    logger.error(
-      `[GET /dbLogger] Error: ${e?.message || String(e)}`
-    );
-    res.status(500).json({ ok: false, error: e?.message || String(e) });
-  }
-});
-
-/**
- * PUT /dbLogger/:status
- * Abilita/disabilita il logging su DB (on/off), se supportato.
- */
-app.put("/dbLogger/:status", async (req, res) => {
-  if (!serviceInstance?.setDbLogStatus) {
-    return res.status(501).json({
-      ok: false,
-      error: "setDbLogStatus() not implemented in this microservice",
-    });
-  }
-
-  const raw = String(req.params.status ?? "").trim();
-  const normalized = raw.toLowerCase();
-
-  let enable;
-  if (normalized === "on") enable = true;
-  else if (normalized === "off") enable = false;
-  else {
-    return res.status(400).json({
-      ok: false,
-      error: "Invalid status. Use 'on' or 'off'.",
-      received: raw,
-      allowed: ["on", "off"],
-    });
-  }
-
-  try {
-    const data = await serviceInstance.setDbLogStatus(enable);
-    if (data == null) {
-      return res.status(404).json({ ok: false, error: "not found" });
-    }
-    return res.json({ ok: true, status: enable ? "on" : "off", data });
-  } catch (e) {
-    logger.error(
-      `[PUT /dbLogger/:status] Error: ${e?.message || String(e)}`
-    );
-    return res
-      .status(500)
-      .json({ ok: false, error: e?.message || String(e) });
-  }
-});
-
-/**
- * POST /settings/reload
- * Ricarica i settings da DB senza riavviare il servizio.
- */
-app.post("/settings/reload", requireReady, async (_req, res) => {
-  if (!serviceInstance?.reloadSettings) {
-    return res.status(501).json({
-      ok: false,
-      error: "reloadSettings() not implemented in this microservice",
-    });
-  }
-
-  try {
-    const data = await serviceInstance.reloadSettings();
-    return res.json({ ok: true, ...data });
-  } catch (e) {
-    logger.error(
-      `[POST /settings/reload] Error: ${e?.message || String(e)}`
-    );
-    return res.status(500).json({
-      ok: false,
-      error: e?.message || String(e),
-    });
-  }
-});
-
-/* --------------------------- ROUTES: STATUS ---------------------------- */
-/**
- * Router generico /status/*
- * Il modulo `status.js` deve usare `serviceInstance.getInfo()` se disponibile.
- */
-app.use(
-  "/status",
-  requireReady,
-  buildStatusRouter({
-    service: serviceInstance,
-    logger,
-    moduleName: MODULE_NAME,
-  })
-);
-
-/* ----------------------------- STARTUP -------------------------------- */
-app.listen(port, () => {
-  logger.info(`REST API for ${MICROSERVICE} listening on port ${port}`);
-});

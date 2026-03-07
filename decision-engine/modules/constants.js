@@ -21,6 +21,26 @@ const MIN_CONCURRENCY = 1;
 const DEFAULT_JOB_LIMIT = 0; // 0 = unlimited
 const MAX_JOB_LIMIT = 0;
 
+// --- Virtual pipe IDs -------------------------------------------------------
+// pipeId=0 is reserved for the ranking-daily virtual pipe:
+// reads tickers from AST_RANKING_DAILY via GET /fundamentals/ranking/daily
+const RANKING_DAILY_PIPE_ID = 0;
+
+// --- Ranking Daily pipe pre-filter -----------------------------------------
+// Applied in fetchRankingDailyTickers before calling spot-finder
+const RANKING_DAILY_MAX_ATR_PCT    = 8.0;   // skip if atr_14_pct missing or > this
+const RANKING_DAILY_REQUIRE_SMA50  = false; // if true: skip if price < SMA50
+const RANKING_DAILY_REQUIRE_SMA200 = false; // if true: skip if SMA50 < SMA200
+
+// --- Volatility tiers (atr_14_pct %) ----------------------------------------
+const VOL_TIER_LOW_THRESHOLD  = 1.5; // atr_14_pct < 1.5  → LOW
+const VOL_TIER_HIGH_THRESHOLD = 4.0; // atr_14_pct >= 4.0 → HIGH (else NORMAL)
+
+// --- Adaptive spot-finder params per tier ----------------------------------
+const RANKING_DAILY_VOL_LOW    = { maxLevelDistanceAtr: 2, volatilityK: 1.0, flagAtrK: 1.1 };
+const RANKING_DAILY_VOL_NORMAL = { maxLevelDistanceAtr: 3, volatilityK: 1.2, flagAtrK: 1.3 };
+const RANKING_DAILY_VOL_HIGH   = { maxLevelDistanceAtr: 4, volatilityK: 1.5, flagAtrK: 1.6 };
+
 // --- Lookback defaults (per timeframe) -------------------------------------
 const DEFAULT_LOOKBACK_DAYS = 120;
 const DEFAULT_LOOKBACK_BARS = 90;
@@ -117,6 +137,17 @@ module.exports = {
   MIN_CONCURRENCY,
   DEFAULT_JOB_LIMIT,
   MAX_JOB_LIMIT,
+
+  // Virtual pipes
+  RANKING_DAILY_PIPE_ID,
+  RANKING_DAILY_MAX_ATR_PCT,
+  RANKING_DAILY_REQUIRE_SMA50,
+  RANKING_DAILY_REQUIRE_SMA200,
+  VOL_TIER_LOW_THRESHOLD,
+  VOL_TIER_HIGH_THRESHOLD,
+  RANKING_DAILY_VOL_LOW,
+  RANKING_DAILY_VOL_NORMAL,
+  RANKING_DAILY_VOL_HIGH,
 
   // Lookback
   DEFAULT_LOOKBACK_DAYS,

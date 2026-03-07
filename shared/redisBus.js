@@ -12,7 +12,14 @@ class RedisBus {
     this.name   = opts.name || "redisBus";
     this.env    = opts.env || process.env.ENV || process.env.APP_ENV || 'DEV';
 
-    this.channelsCfg = opts.channels || {};
+    const defaultChannels = {
+      telemetry: { on: true, params: { intervalsMs: 1000 } },
+      metrics:   { on: true, params: { intervalsMs: 1000 } },
+      data:      { on: true, params: { intervalsMs: 0 } },
+      logs:      { on: true, params: { intervalsMs: 0 } },
+      events:    { on: true, params: { intervalsMs: 0 } },
+    };
+    this.channelsCfg = { ...defaultChannels, ...(opts.channels || {}) };
     this.defaultIntervalMs = Number.isFinite(opts.defaultIntervalMs) ? opts.defaultIntervalMs : 500;
 
     this.pub = null;

@@ -847,21 +847,57 @@ class IbkrMarketDataModule {
   }
 
   _ensureSnapshotAutoStart() {
-    if (!this.currentSubscribedTickers.size) return;
+    if (!this.currentSubscribedTickers.size) {
+      this.logger?.info?.("[ibkrMarketData] _ensureSnapshotAutoStart: no tickers subscribed, snapshot loop not started");
+      return;
+    }
     const interval = this.snapshotIntervalMs || DEFAULT_SNAPSHOT_INTERVAL_MS;
     if (!this.snapshotTimer && !this.snapshotAlignTimer) {
+      this.logger?.info?.(
+        `[ibkrMarketData] _ensureSnapshotAutoStart: starting loop intervalMs=${interval} tickers=${this.currentSubscribedTickers.size}`
+      );
       this._startSnapshotLoopAligned(interval);
+    } else {
+      this.logger?.info?.(
+        `[ibkrMarketData] _ensureSnapshotAutoStart: loop already running intervalMs=${this.snapshotIntervalMs} tickers=${this.currentSubscribedTickers.size}`
+      );
     }
   }
 
   async _fetchSnapshotOnce() {
     const tickers = Array.from(this.currentSubscribedTickers);
-    if (!tickers.length) return;
+    if (!tickers.length) {
+      this.logger?.info?.("[ibkrMarketData] snapshot skipped: no subscribed tickers");
+      return;
+    }
+
+    this.logger?.info?.(
+      `[ibkrMarketData] snapshot requested: tickers=${tickers.join(",")} count=${tickers.length}`
+    );
+
     for (const ticker of tickers) {
       await this._resolveConid(ticker);
     }
+
     const conids = Array.from(this.subscribedConids);
-    if (!conids.length) return;
+    if (!conids.length) {
+      this.logger?.warning?.(
+        `[ibkrMarketData] snapshot aborted: ${tickers.length} tickers subscribed but no conids resolved (check ibkr-bridge connectivity or secdef lookup)`
+      );
+      return;
+    }
+
+    const unresolvedTickers = tickers.filter((t) => !this.conidByTicker.has(t));
+    if (unresolvedTickers.length) {
+      this.logger?.warning?.(
+        `[ibkrMarketData] snapshot: ${unresolvedTickers.length} tickers without conid: ${unresolvedTickers.join(",")}`
+      );
+    }
+
+    this.logger?.info?.(
+      `[ibkrMarketData] snapshot request to ibkr-bridge: conids=${conids.join(",")} fields=${this.mdFields.join(",")}`
+    );
+
     const bridgeUrl = (
       process.env.IBKR_BRIDGE_URL ||
       process.env.IBKRBRIDGE_URL ||
@@ -877,15 +913,43 @@ class IbkrMarketDataModule {
       });
       const items = Array.isArray(resp?.data) ? resp.data : [];
       this.lastSnapshotAt = new Date().toISOString();
+
+      if (!items.length) {
+        this.logger?.warning?.(
+          `[ibkrMarketData] snapshot returned 0 items for ${conids.length} conids — IBKR may not have data ready yet (first request after subscribe often returns empty)`
+        );
+      } else {
+        this.logger?.info?.(
+          `[ibkrMarketData] snapshot received ${items.length} items at ${this.lastSnapshotAt}`
+        );
+      }
+
+      let published = 0;
       items.forEach((item) => {
         const conid = String(item?.conid || item?.conidEx || "");
         const ticker = this.tickerByConid.get(conid);
-        if (!ticker) return;
+        if (!ticker) {
+          this.logger?.warning?.(
+            `[ibkrMarketData] snapshot item with unknown conid=${conid}, skipping`
+          );
+          return;
+        }
         this._publishMarketData({ ticker, conid, payload: item, dataMode: "snapshot" });
+        published++;
       });
+
+      if (items.length && published === 0) {
+        this.logger?.warning?.(
+          `[ibkrMarketData] snapshot: ${items.length} items received but 0 published (no ticker matched any conid in tickerByConid map)`
+        );
+      } else if (published > 0) {
+        this.logger?.info?.(
+          `[ibkrMarketData] snapshot published ${published}/${items.length} items to channel=${this.redisDataChannel}`
+        );
+      }
     } catch (err) {
       this.logger?.warning?.(
-        `[ibkrMarketData] snapshot failed: ${err?.message || String(err)}`
+        `[ibkrMarketData] snapshot request failed: ${err?.message || String(err)}`
       );
     }
   }

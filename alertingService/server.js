@@ -293,6 +293,76 @@ app.post("/settings/reload", requireReady, async (_req, res) => {
   }
 });
 
+/**
+ * GET /events/catalog
+ * Restituisce il catalogo dei manifest eventi registrati in Redis (chiavi EVENTS:*).
+ * Query params:
+ *  - includeManifests=true|false (default: true)
+ */
+app.get("/events/catalog", requireReady, async (req, res) => {
+  const bus = serviceInstance?.bus || null;
+  const redis = bus?.pub || null;
+  if (!bus || !redis || !redis.isOpen) {
+    return res.status(503).json({
+      ok: false,
+      error: "Redis bus not connected",
+    });
+  }
+
+  const includeManifests =
+    String(req.query?.includeManifests ?? "true").toLowerCase() !== "false";
+
+  try {
+    const keys = [];
+    let cursor = "0";
+    do {
+      const reply = await redis.scan(cursor, { MATCH: "EVENTS:*", COUNT: 200 });
+      cursor = String(reply?.cursor ?? "0");
+      const batch = Array.isArray(reply?.keys) ? reply.keys : [];
+      keys.push(...batch);
+    } while (cursor !== "0");
+
+    keys.sort((a, b) => a.localeCompare(b));
+
+    if (!includeManifests) {
+      return res.json({
+        ok: true,
+        pattern: "EVENTS:*",
+        count: keys.length,
+        keys,
+      });
+    }
+
+    const items = await Promise.all(
+      keys.map(async (key) => {
+        try {
+          const manifest = await bus.get(key);
+          return { key, manifest };
+        } catch (err) {
+          return {
+            key,
+            error: err?.message || String(err),
+          };
+        }
+      })
+    );
+
+    return res.json({
+      ok: true,
+      pattern: "EVENTS:*",
+      count: keys.length,
+      keys,
+      items,
+    });
+  } catch (err) {
+    logger.error(`[GET /events/catalog] Error: ${err?.message || String(err)}`);
+    return res.status(500).json({
+      ok: false,
+      error: "Unable to read events catalog from Redis",
+    });
+  }
+});
+
 /* --------------------------- ROUTES: STATUS ---------------------------- */
 /**
  * Router generico /status/*

@@ -2,8 +2,10 @@
 
 const cron = require("node-cron");
 const axios = require("axios");
+const { randomUUID } = require("crypto");
 const { resolveText } = require("../../shared/textResolver");
 const { signInternalToken } = require("../../shared/internalAuth");
+const { createSchedulerJobsClient } = require("./schedulerJobsClient");
 
 // Mapping giorno-settimana → formati cron
 const DOW_MAP = {
@@ -33,11 +35,62 @@ class SchedulerEngine {
     this.getSetting = getSetting;
     this.bus = bus || null;
     this.env = env || process.env.ENV || "DEV";
+    this.serviceName = process.env.MICROSERVICE_NAME || "scheduler";
+    this.eventsChannel = `${this.env}.${this.serviceName}.events`;
     this.tasks = [];
 
     // Map<jobId, { job, startedAt, timeout }> per job asincroni in attesa di hook
     this.pendingAsyncJobs = new Map();
     this._hookSubscribed = false;
+  }
+
+  _sanitizeHeaders(headers) {
+    const safe = { ...(headers || {}) };
+    if (safe["x-internal-token"]) safe["x-internal-token"] = "***";
+    if (safe["X-Internal-Token"]) safe["X-Internal-Token"] = "***";
+    if (safe.authorization) safe.authorization = "***";
+    if (safe.Authorization) safe.Authorization = "***";
+    return safe;
+  }
+
+  _serializeTask(job = {}) {
+    return {
+      id: job?.id ?? null,
+      jobKey: job?.jobKey ?? null,
+      method: job?.method ?? "GET",
+      url: job?.url ?? null,
+      timeoutMs: job?.timeoutMs ?? null,
+      retry: job?.retry ?? null,
+      openMarket: !!job?.openMarket,
+      exchanges: Array.isArray(job?.exchanges) ? job.exchanges : [],
+      timezone: job?.timezone ?? this.defaultTimezone,
+      enabled: job?.enabled,
+      rules: Array.isArray(job?.rules) ? job.rules : [],
+      headers: this._sanitizeHeaders(job?.headers),
+      body: job?.body ?? null,
+      asyncTimeoutMs: job?.asyncTimeoutMs ?? null,
+    };
+  }
+
+  async _publishTaskEvent({ eventId, severity = "info", correlationId, payload = {} }) {
+    if (!this.bus || typeof this.bus.publish !== "function") return;
+    const event = {
+      eventKey: `${this.serviceName}.${eventId}`,
+      eventId,
+      service: this.serviceName,
+      env: this.env,
+      ts: new Date().toISOString(),
+      severity,
+      correlationId: correlationId || randomUUID(),
+      payload,
+    };
+    try {
+      await this.bus.publish(this.eventsChannel, event);
+    } catch (err) {
+      this.logger.warning(
+        `[_publishTaskEvent] failed eventId=${eventId}: ${err?.message || err}`
+      );
+    }
   }
 
   /**
@@ -81,6 +134,41 @@ class SchedulerEngine {
     this.logger.info(
       `[_handleHookMessage] job=${pending.job.jobKey} jobId=${jobId} status=${status} finalStatus=${finalStatus}`
     );
+
+    if (finalStatus === "completed") {
+      this._publishTaskEvent({
+        eventId: "TASK.COMPLETED",
+        severity: "info",
+        correlationId: pending.correlationId,
+        payload: {
+          task: this._serializeTask(pending.job),
+          async: {
+            jobId: String(jobId),
+            hookStatus: status || null,
+            startedAt: pending.startedAt?.toISOString?.() || null,
+            completedAt: new Date().toISOString(),
+          },
+          summary: parsed.summary || null,
+        },
+      });
+    } else if (finalStatus === "error") {
+      this._publishTaskEvent({
+        eventId: "TASK.ERROR",
+        severity: "error",
+        correlationId: pending.correlationId,
+        payload: {
+          task: this._serializeTask(pending.job),
+          async: {
+            jobId: String(jobId),
+            hookStatus: status || null,
+            startedAt: pending.startedAt?.toISOString?.() || null,
+            failedAt: new Date().toISOString(),
+          },
+          error: parsed.error || "Async hook reported failure",
+          summary: parsed.summary || null,
+        },
+      });
+    }
 
     this._updateLastRun(pending.job, finalStatus, {
       summary: parsed.summary,
@@ -251,6 +339,26 @@ class SchedulerEngine {
     const resolvedBody = body
       ? JSON.parse(resolveText(JSON.stringify(body)))
       : undefined;
+    const correlationId = randomUUID();
+
+    await this._publishTaskEvent({
+      eventId: "TASK.STARTED",
+      severity: "info",
+      correlationId,
+      payload: {
+        task: this._serializeTask(job),
+        execution: {
+          attempt,
+          maxAttempts,
+          startedAt: new Date().toISOString(),
+          resolved: {
+            url: resolvedUrl,
+            headers: this._sanitizeHeaders(resolvedHeaders),
+            body: resolvedBody ?? null,
+          },
+        },
+      },
+    });
 
     try {
       let isInternal = false;
@@ -273,6 +381,9 @@ class SchedulerEngine {
             const path = parsed.pathname || "";
             if (path.startsWith("/internal/fundamentals/user-daily-scores")) {
               internalScope = "fundamentals:update-user-daily-scores";
+              internalAud = "tickerscanner";
+            } else if (path.startsWith("/internal/universe/")) {
+              internalScope = "universe:scan";
               internalAud = "tickerscanner";
             } else if (path.startsWith("/internal/spot-finder/")) {
               internalScope = "decision-engine:spot-finder";
@@ -322,6 +433,17 @@ class SchedulerEngine {
           this.logger.warning(
             `[_runJob] job=${job.jobKey} type=async ma manca jobId nella risposta`
           );
+          await this._publishTaskEvent({
+            eventId: "TASK.ERROR",
+            severity: "error",
+            correlationId,
+            payload: {
+              task: this._serializeTask(job),
+              execution: { attempt, maxAttempts },
+              error: "Async response missing jobId",
+              response: data,
+            },
+          });
           await this._updateLastRun(job, "error");
           return;
         }
@@ -333,11 +455,24 @@ class SchedulerEngine {
             this.logger.warning(
               `[_runJob] job=${job.jobKey} jobId=${asyncJobId} async timeout dopo ${asyncTimeoutMs}ms`
             );
+            this._publishTaskEvent({
+              eventId: "TASK.ERROR",
+              severity: "error",
+              correlationId,
+              payload: {
+                task: this._serializeTask(job),
+                async: {
+                  jobId: asyncJobId,
+                  timeoutMs: asyncTimeoutMs,
+                },
+                error: `Async timeout after ${asyncTimeoutMs}ms`,
+              },
+            });
             this._updateLastRun(job, "error");
           }
         }, asyncTimeoutMs);
 
-        this.pendingAsyncJobs.set(asyncJobId, { job, startedAt: new Date(), timeout });
+        this.pendingAsyncJobs.set(asyncJobId, { job, startedAt: new Date(), timeout, correlationId });
         this.logger.info(
           `[_runJob] job=${job.jobKey} jobId=${asyncJobId} type=async, in attesa di hook`
         );
@@ -349,6 +484,19 @@ class SchedulerEngine {
       this.logger.info(
         `[_runJob] job=${job.jobKey} completato, status=${resp.status}`
       );
+      await this._publishTaskEvent({
+        eventId: "TASK.COMPLETED",
+        severity: "info",
+        correlationId,
+        payload: {
+          task: this._serializeTask(job),
+          execution: { attempt, maxAttempts },
+          response: {
+            status: resp.status,
+            data,
+          },
+        },
+      });
       await this._updateLastRun(job, "completed");
     } catch (err) {
       const errData = err?.response?.data;
@@ -361,6 +509,20 @@ class SchedulerEngine {
         `[_runJob] job=${job.jobKey} errore attempt=${attempt}: ${err.message || err} | ${JSON.stringify(errInfo)}`
         );
       await this._updateLastRun(job, "error");
+
+      if (attempt >= maxAttempts) {
+        await this._publishTaskEvent({
+          eventId: "TASK.ERROR",
+          severity: "error",
+          correlationId,
+          payload: {
+            task: this._serializeTask(job),
+            execution: { attempt, maxAttempts },
+            error: err?.message || String(err),
+            response: errInfo,
+          },
+        });
+      }
 
       if (attempt < maxAttempts) {
         setTimeout(() => this._runJob(job, attempt + 1), backoffMs);
@@ -401,14 +563,14 @@ class SchedulerEngine {
       }
     }
 
-    // Aggiorna su DB via dbManager
+    // Aggiorna su DB via datahub
     if (!this.dbmanagerUrl || !job?.id) return;
     try {
-      await axios.put(
-        `${this.dbmanagerUrl}/scheduler/jobs/${job.id}/last-run`,
-        { last_run_at: lastRunAt, last_status: status },
-        { timeout: 8000 }
-      );
+      const client = createSchedulerJobsClient(this.dbmanagerUrl, this.logger);
+      await client.updateLastRun(job.id, {
+        last_run: lastRunAt,
+        last_status: status
+      });
     } catch (err) {
       this.logger.warning(
         `[_updateLastRun] job=${job.jobKey} update failed: ${err.message || err}`

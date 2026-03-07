@@ -70,7 +70,7 @@ module.exports = function buildStatusRouter({ service, logger, moduleName }) {
 
   // /status/communicationChannels (PUT)
   router.put("/communicationChannels", async (req, res) => {
-    const allowedKeys = ["telemetry", "metrics", "data", "logs"];
+    const allowedKeys = ["telemetry", "metrics", "data", "logs", "events"];
 
     try {
       if (!service || typeof service.updateCommunicationChannel !== "function") {
