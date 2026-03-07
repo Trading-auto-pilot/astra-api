@@ -98,12 +98,12 @@ ALL_SERVICES=$(docker compose -f "$COMPOSE_FILE" \
 
 log "$ALL_SERVICES"
 
-# Debug: mostra anche l'immagine risolta per dbmanager
-log "🔍 Config dbmanager risolto da docker compose:"
+# Debug: mostra anche l'immagine risolta per datahub
+log "🔍 Config datahub risolto da docker compose:"
 docker compose -f "$COMPOSE_FILE" \
   --env-file "$ENV_FILE" \
   -p "$LOWER_PROJECT_NAME" \
-  config | sed -n '/dbmanager:/,/image/p' || true
+  config | sed -n '/datahub:/,/image/p' || true
 
 # Mostra i container attivi per quel project
 log "🐳 Container attivi per project '${LOWER_PROJECT_NAME}':"
@@ -149,11 +149,11 @@ done
 log "🧹 Pulizia immagini dangling prima del pull..."
 docker images --filter "dangling=true" -q | xargs -r docker rmi || true
 
-log "⬇️ Pull immagini CORE (mysql, redis, traefik, dbmanager)"
+log "⬇️ Pull immagini CORE (mysql, redis, traefik, datahub)"
 docker compose -f "$COMPOSE_FILE" \
   --env-file "$ENV_FILE" \
   -p "$LOWER_PROJECT_NAME" \
-  pull mysql redis traefik dbmanager
+  pull mysql redis traefik datahub
 
 if [[ -n "$PROFILES" ]]; then
   log "⬇️ Scarico immagini per profili: ${PROFILES}"

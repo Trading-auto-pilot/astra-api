@@ -286,6 +286,7 @@ jobs:
         echo "LIQUIDITY_MANAGER_URL=${{vars.LIQUIDITY_MANAGER_URL}}" >> .env
         echo "BROKEREXECUTORIBKR_URL=${{vars.BROKEREXECUTORIBKR_URL}}" >> .env
         echo "MCPGATEWAY_URL=${{vars.MCPGATEWAY_URL}}" >> .env
+         echo "IBKR_BRIDGE_URL=${{vars.IBKR_BRIDGE_URL}}" >> .env
 
     - name: Validate .env variables
       run: |
