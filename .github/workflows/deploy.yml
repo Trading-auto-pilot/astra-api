@@ -90,6 +90,8 @@ jobs:
           name=$(basename "$service" | tr '[:upper:]' '[:lower:]')
           if [[ "$service" == "redisWsBridge" ]]; then
             name="redis-ws-bridge"
+          elif [[ "$service" == "brokerExecutor-ibkr" ]]; then
+            name="broker-executor-ibkr"
           fi
           RELEASE_FILE="$service/release.json"
 
@@ -284,7 +286,7 @@ jobs:
         echo "DATAHUB_URL=${{vars.DATAHUB_URL}}" >> .env
         echo "SERVICECONTROLPLANE_URL=${{vars.SERVICECONTROLPLANE_URL}}" >> .env
         echo "LIQUIDITY_MANAGER_URL=${{vars.LIQUIDITY_MANAGER_URL}}" >> .env
-        echo "BROKEREXECUTORIBKR_URL=${{vars.BROKEREXECUTORIBKR_URL}}" >> .env
+        echo "BROKER_EXECUTOR_IBKR_VERSION=${{vars.BROKER_EXECUTOR_IBKR_VERSION}}" >> .env
         echo "MCPGATEWAY_URL=${{vars.MCPGATEWAY_URL}}" >> .env
          echo "IBKR_BRIDGE_URL=${{vars.IBKR_BRIDGE_URL}}" >> .env
 
@@ -297,7 +299,7 @@ jobs:
           DATAHUB_URL DATAHUB_VERSION
           AUTHSERVICE_URL AUTHSERVICE_VERSION
           SERVICECONTROLPLANE_URL SERVICECONTROLPLANE_VERSION
-          LIQUIDITY_MANAGER_URL BROKEREXECUTORIBKR_URL
+          LIQUIDITY_MANAGER_URL BROKER_EXECUTOR_IBKR_VERSION
           REDIS_URL MYSQL_HOST MYSQL_DATABASE
           CACHEMANAGER_URL TICKERSCANNER_VERSION SCHEDULER_VERSION
           NETWORK TIMEZONE
