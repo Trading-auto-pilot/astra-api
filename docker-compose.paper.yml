@@ -993,7 +993,7 @@ services:
   help-trading:
     image: expovin/help-trading:${HELPTRADING_VERSION:-latest}
     restart: unless-stopped
-    profiles: ["frontend"]
+    profiles: ["help-trading"]
     networks:
       - trading_net
     labels:
