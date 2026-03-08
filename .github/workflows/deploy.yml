@@ -152,6 +152,23 @@ jobs:
         echo "🐳 Build e push su server: expovin/ibkr-clientportal:$IBKR_VERSION"
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME} DOCKERHUB_TOKEN=${DOCKERHUB_TOKEN} IBKR_VERSION=${IBKR_VERSION} bash -s" <<'EOF'
           set -e
+          retry() {
+            local max_attempts="$1"
+            local sleep_seconds="$2"
+            shift 2
+            local attempt=1
+            until "$@"; do
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                echo "❌ Comando fallito dopo $attempt tentativi: $*"
+                return 1
+              fi
+              echo "⚠️ Tentativo $attempt/$max_attempts fallito: $*"
+              echo "↻ Riprovo tra ${sleep_seconds}s..."
+              sleep "$sleep_seconds"
+              attempt=$((attempt + 1))
+            done
+          }
+
           sudo mkdir -p /home/$USER/deploy/IBKR_API_Gateway
           if [ -d /home/$USER/deploy/IBKR_API_Gateway/SW ]; then
             echo "✅ SW già presente su server, la mantengo"
@@ -175,9 +192,10 @@ jobs:
           ls -la /home/$USER/deploy/IBKR_API_Gateway/SW
           cd /home/$USER/deploy/IBKR_API_Gateway
           echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
-          docker build -t "$DOCKERHUB_USERNAME/ibkr-clientportal:$IBKR_VERSION" -t "$DOCKERHUB_USERNAME/ibkr-clientportal:latest" -f /home/$USER/deploy/IBKR_API_Gateway/Dockerfile /home/$USER/deploy/IBKR_API_Gateway
-          docker push "$DOCKERHUB_USERNAME/ibkr-clientportal:$IBKR_VERSION"
-          docker push "$DOCKERHUB_USERNAME/ibkr-clientportal:latest"
+          retry 5 20 docker pull eclipse-temurin:17-jre-jammy
+          retry 5 20 docker build --pull -t "$DOCKERHUB_USERNAME/ibkr-clientportal:$IBKR_VERSION" -t "$DOCKERHUB_USERNAME/ibkr-clientportal:latest" -f /home/$USER/deploy/IBKR_API_Gateway/Dockerfile /home/$USER/deploy/IBKR_API_Gateway
+          retry 5 15 docker push "$DOCKERHUB_USERNAME/ibkr-clientportal:$IBKR_VERSION"
+          retry 5 15 docker push "$DOCKERHUB_USERNAME/ibkr-clientportal:latest"
         EOF
 
     - name: Creazione release su github
