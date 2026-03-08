@@ -18,6 +18,8 @@ const buildServiceFlagsRouter = require("./serviceFlags");
  * - Graceful shutdown
  */
 
+const buildContainersRouter = require("./routes/containers");
+
 const { app, getService, logger } = createMicroserviceServer({
   ServiceClass: ServiceControlPlane,
   microservice: "serviceControlPlane",
@@ -30,6 +32,11 @@ const { app, getService, logger } = createMicroserviceServer({
     {
       path: "/service-flags",
       router: ({ getService, logger }) => buildServiceFlagsRouter(getService, logger),
+      protected: true,
+    },
+    {
+      path: "/containers",
+      router: buildContainersRouter,
       protected: true,
     },
   ]

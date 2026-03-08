@@ -1,0 +1,14 @@
+{
+  "watch": [
+    "server.js",
+    "modules/**/*.js",
+    "../shared/**/*.js"
+  ],
+  "ignore": [
+    "*.test.js",
+    "node_modules/**",
+    "Dockerfile"
+  ],
+  "exec": "node server.js",
+  "ext": "js,json"
+}

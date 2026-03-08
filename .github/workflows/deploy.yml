@@ -85,6 +85,7 @@ jobs:
           mcp-gateway
           capital-manager
           help-trading
+          ibkr-login-desktop
         )
 
         for service in "${services[@]}"; do

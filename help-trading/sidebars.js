@@ -676,6 +676,15 @@ const sidebars = {
       items: [
         {
           type: 'category',
+          label: 'Release 3.5.0',
+          link: {type: 'doc', id: 'release-notes/release-3-5-0'},
+          items: [
+            'release-notes/release-3-5-0-ibkr-login-desktop',
+            'release-notes/release-3-5-0-servicecontrolplane',
+          ],
+        },
+        {
+          type: 'category',
           label: 'Release 3.4.0',
           link: {type: 'doc', id: 'release-notes/release-3-4-0'},
           items: [
@@ -696,6 +705,7 @@ const sidebars = {
       label: '6. Roadmap',
       link: {type: 'doc', id: 'roadmap/overview'},
       items: [
+        'roadmap/mobile',
         'roadmap/decision-engine-gestione-ordini-aperti',
         'roadmap/ibkr-portal-proxy',
       ],

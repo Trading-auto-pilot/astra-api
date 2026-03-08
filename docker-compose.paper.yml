@@ -648,6 +648,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - trading_net
     healthcheck:
@@ -1004,6 +1005,58 @@ services:
       - "traefik.http.routers.help-trading.tls=true"
       - "traefik.http.routers.help-trading.tls.certresolver=le"
       - "traefik.http.services.help-trading.loadbalancer.server.port=80"
+
+  ibkr-login-desktop:
+    image: expovin/ibkr-login-desktop:${IBKR_LOGIN_DESKTOP_VERSION}
+    restart: unless-stopped
+    network_mode: "service:ibkrgw-paper"
+    depends_on:
+      - ibkrgw-paper
+    environment:
+      - DATAHUB_URL=${DATAHUB_URL}
+      - REDIS_URL=${REDIS_URL}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - TZ=${TIMEZONE}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    profiles: ["ibkr-login-desktop"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3009/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${NETWORK}"
+      # REST API (Node.js — General Settings)
+      - "traefik.http.services.ibkr-login-desktop-api.loadbalancer.server.port=3009"
+      - "traefik.http.routers.ibkr-login-desktop.rule=Host(`trading.expovin.it`) && PathPrefix(`/ibkr-login-desktop`)"
+      - "traefik.http.routers.ibkr-login-desktop.entrypoints=websecure"
+      - "traefik.http.routers.ibkr-login-desktop.tls=true"
+      - "traefik.http.routers.ibkr-login-desktop.tls.certresolver=le"
+      - "traefik.http.routers.ibkr-login-desktop.service=ibkr-login-desktop-api"
+      - "traefik.http.middlewares.ibkr-login-desktop-stripprefix.stripPrefix.prefixes=/ibkr-login-desktop"
+      - "traefik.http.routers.ibkr-login-desktop.middlewares=ibkr-login-desktop-stripprefix,auth-forward@docker"
+      - "traefik.http.routers.ibkr-login-desktop-preflight.rule=Host(`trading.expovin.it`) && PathPrefix(`/ibkr-login-desktop`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.ibkr-login-desktop-preflight.entrypoints=websecure"
+      - "traefik.http.routers.ibkr-login-desktop-preflight.priority=10000"
+      - "traefik.http.routers.ibkr-login-desktop-preflight.service=ibkr-login-desktop-api"
+      - "traefik.http.routers.ibkr-login-desktop-preflight.middlewares=ibkr-login-desktop-stripprefix,cors-default@docker"
+      # VNC desktop (websockify/noVNC — Desktop remoto)
+      - "traefik.http.services.ibkr-login-desktop-vnc.loadbalancer.server.port=6080"
+      - "traefik.http.routers.ibkr-login.rule=Host(`trading.expovin.it`) && PathPrefix(`/ibkr-login`)"
+      - "traefik.http.routers.ibkr-login.entrypoints=websecure"
+      - "traefik.http.routers.ibkr-login.tls=true"
+      - "traefik.http.routers.ibkr-login.tls.certresolver=le"
+      - "traefik.http.routers.ibkr-login.service=ibkr-login-desktop-vnc"
+      - "traefik.http.middlewares.ibkr-login-stripprefix.stripPrefix.prefixes=/ibkr-login"
+      - "traefik.http.routers.ibkr-login.middlewares=ibkr-login-stripprefix"
 
 
 volumes:

@@ -1,0 +1,8 @@
+{
+  "lastUpdate": "08/03/2026",
+  "version": "1.0.0",
+  "microservice": "ibkr-login-desktop",
+  "note": [
+    "v.1.0.0 Initial release using BaseService"
+  ]
+}

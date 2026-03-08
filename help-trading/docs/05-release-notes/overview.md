@@ -17,6 +17,7 @@ Ogni pagina deve contenere sempre:
 
 ## Ultima release disponibile
 
+- [Release 3.5.0 - 08/03/2026](./release-3-5-0)
 - [Release 3.4.0 - 07/03/2026](./release-3-4-0)
 
 ## Template per nuove release

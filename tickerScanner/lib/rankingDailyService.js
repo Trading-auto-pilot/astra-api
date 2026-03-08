@@ -278,7 +278,8 @@ function createRankingDailyService({ logger, datahubAxios }) {
           written++;
         } catch (err) {
           errors++;
-          logger.warning(`${fn} write failed symbol=${record.symbol}: ${err?.message}`);
+          const detail = err?.response?.data?.error || err?.message;
+          logger.warning(`${fn} write failed symbol=${record.symbol}: ${detail}`);
         }
       },
       10 // max 10 parallel datahub POSTs

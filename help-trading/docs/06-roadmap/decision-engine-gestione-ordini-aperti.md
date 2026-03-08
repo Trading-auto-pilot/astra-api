@@ -82,7 +82,7 @@ CASO 2 — Ribilanciamento per riduzione del liquidityIndex
 
   Steps:
   1. Chiama capital-manager con flag ignoreExistingPositions=true
-       POST /allocation/quote { symbol, ignoreExistingPositions: true }
+       POST /allocation/quote { userId, symbol, market, ignoreExistingPositions: true }
        → ottieni newMaxInvestable (es. 3.7K)
 
   2. Calcola il capitale originariamente allocato (invariante rispetto all'andamento del prezzo):
@@ -106,6 +106,14 @@ CASO 2 — Ribilanciamento per riduzione del liquidityIndex
        → Nessuna azione sul size (la posizione rientra nei nuovi limiti)
        → Applica solo eventuali aggiustamenti di TP/SL (vedi CASO 3)
 
+  Regola operativa sul PnL:
+  - la riduzione posizione per over-risk (`investedCapital > newMaxInvestable`) va applicata anche se la posizione è in perdita;
+  - il criterio principale è il rispetto del limite di rischio aggiornato, non il profitto/perdita istantaneo.
+
+  Filtro anti-rumore consigliato:
+  - se il calo di `liquidityIndex` è borderline, eseguire la riduzione solo dopo conferma per N review consecutive
+    (es. 2-3 cicli), per evitare vendite impulsive su oscillazioni temporanee.
+
 CASO 3 — Regime RISK_ON, ma nuove zone tecniche diverse dall'entry
   → Aggiorna TP1 alla nuova resistenza sopra il prezzo corrente
   → Trailing stop: se prezzo > avgCost + 1.5 * ATR, sposta SL a avgCost + 0.5 * ATR
@@ -113,7 +121,7 @@ CASO 3 — Regime RISK_ON, ma nuove zone tecniche diverse dall'entry
 
 CASO 4 — Regime RISK_ON, prezzo tornato sotto zona di entry (pullback profondo)
   → Nessuna azione: il bracket order originale gestisce già il SL
-  → Log evento POSITION_REVIEW_NO_ACTION
+  → Log evento POSITION_REVIEW.NO_ACTION
 
 CASO 5 — Guardrail di sicurezza
   → Condizione: unrealizedPnL < -2 * ATR * qty  E  regime != RISK_ON
@@ -122,17 +130,44 @@ CASO 5 — Guardrail di sicurezza
 
 Le soglie (`1.5 * ATR`, `0.5 * ATR`, ecc.) sono parametri configurabili via settings DB, non valori fissi nel codice.
 
+### Priorità di valutazione regole (ordine fisso)
+
+Per evitare comportamenti non deterministici, la valutazione deve seguire sempre questo ordine:
+
+1. `RISK_OFF` sistemico → chiusura totale (CASO 1)
+2. Evento calendario ad alta volatilità in finestra D-1 → chiusura parziale/totale
+3. Guardrail di sicurezza (loss oltre soglia) → emergency close (CASO 5)
+4. Ribilanciamento da calo `liquidityIndex` (CASO 2)
+5. Aggiustamento tecnico TP/SL (CASO 3)
+6. Nessuna azione (CASO 4)
+
+### Controllo eventi a calendario su posizioni aperte
+
+Oltre alle regole tecniche e di liquidità, il `decision-engine` deve eseguire anche un controllo sugli **eventi a calendario** (macro, earnings, eventi sensibili) per le posizioni già aperte.
+
+Regola operativa:
+
+- se è presente un evento ad alta volatilità sul titolo/mercato, il servizio valuta la **chiusura parziale o totale il giorno precedente** all'evento;
+- la logica di accesso ai dati calendario deve riutilizzare gli **stessi endpoint e lo stesso flusso** già adottati dal decision-engine in fase di pre-check prima dell'apertura posizione (nessun canale nuovo dedicato).
+- la decisione deve usare una finestra temporale esplicita in timezone di mercato (es. US/Eastern), per evitare errori di giorno dovuti al timezone del container;
+- criterio operativo minimo consigliato:
+  - evento `HIGH`/`CRITICAL` in D-1 con posizione in profitto moderato → chiusura parziale;
+  - evento `HIGH`/`CRITICAL` in D-1 con volatilità già in aumento o profitto fragile → chiusura totale.
+
+> Nota da considerare
+> In presenza di `RISK_OFF` sistemico o evento calendario `HIGH/CRITICAL` in D-1, la priorità resta la riduzione del rischio: la chiusura (parziale/totale) non deve dipendere dal fatto che la posizione sia in profitto.
+
 ---
 
 ## Nuovi endpoint necessari su altri servizi
 
 ### broker-executor-ibkr
 
-Due nuove route da implementare:
+Tre route da implementare:
 
 | Metodo | Path | Descrizione |
 |---|---|---|
-| `GET` | `/positions` (o `/orders?status=FILLED`) | Legge le posizioni/ordini attivi con stato filled |
+| `GET` | `/positions` | Legge esclusivamente le posizioni aperte (qty residua `> 0`) |
 | `PATCH` | `/order/:id/levels` | Modifica TP e SL di un ordine bracket esistente |
 | `POST` | `/order` con `side=SELL, orderType=MKT` | Chiusura parziale o totale al mercato |
 
@@ -154,7 +189,7 @@ POST /allocation/quote
 }
 ```
 
-Con questo flag il capital-manager calcola il `maxInvestable` come se non ci fossero allocazioni in corso per quel simbolo, restituendo la soglia teorica corrispondente al `liquidityIndex` corrente. Il decision-engine usa questo valore per confrontarlo con `currentPrice * quantity` e determinare quanti contratti chiudere.
+Con questo flag il capital-manager calcola il `maxInvestable` come se non ci fossero allocazioni in corso per quel simbolo, restituendo la soglia teorica corrispondente al `liquidityIndex` corrente. Il decision-engine usa questo valore per confrontarlo con `avgCost * quantity` e determinare quanti contratti chiudere.
 
 ### liquidity-manager
 
@@ -174,6 +209,20 @@ Seguendo il pattern esistente su `{ENV}.decision-engine.events` e `{ENV}.hooks`:
 | `POSITION_REVIEW.NO_ACTION` | Review completata senza modifiche |
 | `POSITION_REVIEW.FETCH_ERROR` | Errore nella lettura delle posizioni |
 
+Payload minimo consigliato per tutti gli eventi:
+
+```json
+{
+  "eventKey": "POSITION_REVIEW.PARTIAL_CLOSE",
+  "symbol": "AAPL",
+  "userId": "8",
+  "reason": "LIQUIDITY_DROP",
+  "positionQtyBefore": 20,
+  "positionQtyAfter": 14,
+  "timestamp": "2026-03-08T10:30:00Z"
+}
+```
+
 ---
 
 ## Prerequisiti (ordine di priorità)
@@ -191,6 +240,10 @@ Seguendo il pattern esistente su `{ENV}.decision-engine.events` e `{ENV}.hooks`:
 
 5. **[MINORE]** Il loop deve girare solo in orario di mercato (09:30–16:00 ET), coerente con il guard `opening_volatility` già presente
 
+6. **[MINORE]** Aggiungere idempotenza/concorrenza:
+   - lock distribuito per posizione (`userId:symbol`) durante la review;
+   - operation key per evitare doppia esecuzione della stessa chiusura/modifica su retry.
+
 ---
 
 ## Rischi e contromisure
@@ -203,6 +256,7 @@ Seguendo il pattern esistente su `{ENV}.decision-engine.events` e `{ENV}.hooks`:
 | `liquidityIndex` volatile → ribilanciamenti frequenti | Usare media mobile su N misurazioni consecutive (es. ultimi 3 check) invece del valore istantaneo; aggiungere una soglia minima di variazione (es. Δ > 10 punti rispetto a T0) prima di attivare il CASO 2 |
 | Calcolo `contractsToClose` genera sell superiore alla posizione reale | Clampare: `contractsToClose = min(ceil(excessCapital / avgCost), quantity - 1)` — non chiudere mai tutta la posizione via CASO 2 (per quello esiste CASO 1) |
 | Modifica SL durante gap di prezzo overnight | Aggiungere controllo: non modificare SL se `currentPrice < avgCost - 1 * ATR` (possibile gap, attendere stabilizzazione) |
+| Loop su più istanze genera doppie azioni | Lock distribuito + operation key idempotente per `userId:symbol:reviewTs` |
 
 ---
 
@@ -230,3 +284,14 @@ decision-engine (Redis snapshot)
 ```
 
 Nessun nuovo microservizio richiesto. Tutte le funzioni di analisi tecnica esistenti vengono riutilizzate senza modifiche.
+
+---
+
+## Definition of Done (test di accettazione)
+
+1. Con `liquidityIndex` invariato e `currentPrice` in salita, **non** avviene vendita automatica (nessun falso positivo da mark-to-market).
+2. Con calo reale di `liquidityIndex` e `avgCost * qty > newMaxInvestable`, viene eseguita una chiusura parziale coerente.
+3. Con evento calendario `HIGH` in D-1, viene applicata la regola di riduzione rischio (parziale o totale) senza usare endpoint nuovi.
+4. In regime `RISK_OFF`, la chiusura totale ha priorità su qualsiasi altro caso.
+5. In presenza di retry/duplicati, non si osservano doppie chiusure sulla stessa posizione.
+6. Gli eventi Redis emessi rispettano naming e payload minimo definiti.

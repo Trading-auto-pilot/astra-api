@@ -17,5 +17,6 @@
     "broker-executor-ibkr": 3003,
     "datahub": 3000,
     "mcp-gateway": 3004,
-    "capital-manager": 3005
+    "capital-manager": 3005,
+    "ibkr-login-desktop": 3009
 }
