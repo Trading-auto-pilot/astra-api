@@ -11,6 +11,25 @@ const sidebars = {
       items: [
         {
           type: 'category',
+          label: 'Navigazione',
+          link: {type: 'doc', id: 'utente/navigazione'},
+          items: [
+            {
+              type: 'category',
+              label: 'Menu laterale sinistro',
+              link: {type: 'doc', id: 'utente/navigazione-menu-laterale'},
+              items: [
+                'utente/navigazione-menu-laterale-overview',
+                'utente/navigazione-menu-laterale-users',
+                'utente/navigazione-menu-laterale-api-key',
+                'utente/navigazione-menu-laterale-logs',
+                'utente/navigazione-menu-laterale-alertmanager-creare-alert',
+              ],
+            },
+          ],
+        },
+        {
+          type: 'category',
           label: 'Flusso di lavoro',
           link: {type: 'doc', id: 'utente/flusso-di-lavoro'},
           items: [
@@ -52,7 +71,6 @@ const sidebars = {
               label: 'alertmanager',
               link: {type: 'doc', id: 'utente/servizi-a-supporto/alertmanager'},
               items: [
-                'utente/servizi-a-supporto/alertmanager-creare-alert',
                 'utente/servizi-a-supporto/alertmanager-catalogo-eventi',
               ],
             },
@@ -71,6 +89,19 @@ const sidebars = {
           link: {type: 'doc', id: 'developer-esterno-api/deployment'},
           items: [
             'developer-esterno-api/deployment-variabili-ambiente',
+            {
+              type: 'category',
+              label: 'Git Deployment',
+              link: {type: 'doc', id: 'developer-esterno-api/deployment-git'},
+              items: [
+                'developer-esterno-api/deployment-local-to-paper',
+                'developer-esterno-api/deployment-git-trading-system-cicd',
+                'developer-esterno-api/deployment-git-astraai-cicd',
+                'developer-esterno-api/deployment-git-operativo-commit-pipeline',
+                'developer-esterno-api/deployment-git-versioning-tag',
+                'developer-esterno-api/deployment-git-rollback-stabile',
+              ],
+            },
           ],
         },
         {
@@ -658,6 +689,15 @@ const sidebars = {
           ],
         },
         'release-notes/template-release-notes',
+      ],
+    },
+    {
+      type: 'category',
+      label: '6. Roadmap',
+      link: {type: 'doc', id: 'roadmap/overview'},
+      items: [
+        'roadmap/decision-engine-gestione-ordini-aperti',
+        'roadmap/ibkr-portal-proxy',
       ],
     },
   ],

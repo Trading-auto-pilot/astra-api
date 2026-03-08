@@ -314,25 +314,61 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
   };
 
   const internalSpotFinderHandler = async (req, res) => {
-    const userIdRaw = req.body?.userId ?? req.body?.user_id;
-    if (userIdRaw === undefined || userIdRaw === null || userIdRaw === "") {
-      return res.status(400).json({ ok: false, error: "userId obbligatorio" });
+    const pipeId = Number(String(req.params.pipeId || "").trim());
+    const userIdRaw =
+      req.body?.userId ??
+      req.body?.user_id ??
+      req.query?.userId ??
+      req.query?.user_id ??
+      req.headers["x-user-id"] ??
+      req.internalAuth?.userId ??
+      req.internalAuth?.sub;
+    let userId = Number(userIdRaw);
+    if (!Number.isFinite(userId)) {
+      if (pipeId === C.RANKING_DAILY_PIPE_ID) {
+        // Internal scheduler jobs on virtual pipe 0 can run without a real user.
+        userId = 0;
+        logger?.warning?.(
+          `[decision-engine] internal spot-finder missing/invalid userId for pipeId=0, fallback userId=0`
+        );
+      } else {
+        logger?.warning?.(
+          `[decision-engine] internal spot-finder missing/invalid userId | pipeId=${pipeId} raw=${String(userIdRaw ?? "")}`
+        );
+        return res.status(400).json({ ok: false, error: "userId obbligatorio" });
+      }
     }
-    const userId = Number(userIdRaw);
     return startAsyncSpotFinder(req, res, userId);
   };
 
   router._internalSpotFinder = [requireInternalToken, internalSpotFinderHandler];
 
   const internalSpotFinderLiveHandler = async (req, res) => {
-    const userIdRaw = req.body?.userId ?? req.body?.user_id;
-    if (userIdRaw === undefined || userIdRaw === null || userIdRaw === "") {
-      return res.status(400).json({ ok: false, error: "userId obbligatorio" });
-    }
-    const userId = Number(userIdRaw);
     const pipeId = Number(String(req.params.pipeId || "").trim());
+    const userIdRaw =
+      req.body?.userId ??
+      req.body?.user_id ??
+      req.query?.userId ??
+      req.query?.user_id ??
+      req.headers["x-user-id"] ??
+      req.internalAuth?.userId ??
+      req.internalAuth?.sub;
+    let userId = Number(userIdRaw);
     if (!Number.isFinite(pipeId)) {
       return res.status(400).json({ ok: false, error: "pipeId must be a number" });
+    }
+    if (!Number.isFinite(userId)) {
+      if (pipeId === C.RANKING_DAILY_PIPE_ID) {
+        userId = 0;
+        logger?.warning?.(
+          `[decision-engine] internal live spot-finder missing/invalid userId for pipeId=0, fallback userId=0`
+        );
+      } else {
+        logger?.warning?.(
+          `[decision-engine] internal live spot-finder missing/invalid userId | pipeId=${pipeId} raw=${String(userIdRaw ?? "")}`
+        );
+        return res.status(400).json({ ok: false, error: "userId obbligatorio" });
+      }
     }
     const jobId = newJobId();
     const statusChannel = service?.redisStatusChannel;
@@ -388,11 +424,29 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
   };
 
   const internalSpotFinderLiveStopHandler = async (req, res) => {
-    const userIdRaw = req.body?.userId ?? req.body?.user_id;
-    if (userIdRaw === undefined || userIdRaw === null || userIdRaw === "") {
-      return res.status(400).json({ ok: false, error: "userId obbligatorio" });
+    const pipeId = Number(String(req.params.pipeId || "").trim());
+    const userIdRaw =
+      req.body?.userId ??
+      req.body?.user_id ??
+      req.query?.userId ??
+      req.query?.user_id ??
+      req.headers["x-user-id"] ??
+      req.internalAuth?.userId ??
+      req.internalAuth?.sub;
+    let userId = Number(userIdRaw);
+    if (!Number.isFinite(userId)) {
+      if (pipeId === C.RANKING_DAILY_PIPE_ID) {
+        userId = 0;
+        logger?.warning?.(
+          `[decision-engine] internal live stop missing/invalid userId for pipeId=0, fallback userId=0`
+        );
+      } else {
+        logger?.warning?.(
+          `[decision-engine] internal live stop missing/invalid userId | pipeId=${pipeId} raw=${String(userIdRaw ?? "")}`
+        );
+        return res.status(400).json({ ok: false, error: "userId obbligatorio" });
+      }
     }
-    const userId = Number(userIdRaw);
     return stopLive(req, res, userId);
   };
 

@@ -131,12 +131,12 @@ class FmpFundamentalsService {
       this.fetchBalanceSheet(symbol),
     ]);
 
-    this.logger.info("[DEBUG raw keyMetrics]", { symbol, keyMetrics_raw: keyMetrics });
-    this.logger.info("[DEBUG raw ratios]", { symbol, ratios_raw: ratiosRaw });
+    this.logger.debug("[DEBUG raw keyMetrics]", { symbol, keyMetrics_raw: keyMetrics });
+    this.logger.debug("[DEBUG raw ratios]", { symbol, ratios_raw: ratiosRaw });
     const normalized = this.normalizeKeyMetrics(keyMetrics);
     const normalizedRatios = this.normalizeRatios(ratiosRaw);
     const mergedRatios = { ...normalized, ...normalizedRatios };
-    this.logger.info("[DEBUG normalized ratios]", { symbol, normalized });
+    this.logger.debug("[DEBUG normalized ratios]", { symbol, normalized });
 
     const price = profile?.price != null ? Number(profile.price) : null;
     const dcfValue = dcf?.dcf != null ? Number(dcf.dcf) : null;

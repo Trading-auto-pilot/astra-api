@@ -1,6 +1,6 @@
 {
-  "lastUpdate": "07/03/2026", 
-  "version": "3.0.0",
+  "lastUpdate": "08/03/2026", 
+  "version": "3.0.1",
   "microservice": "tickerScanner",
 
   "note": [
@@ -15,6 +15,7 @@
     "v.2.1.1 Fix centralizzato log con JSON. Data update daily presa da timezon Job Scheduler ",
     "v.2.2.0 Aggiunta log storici, puntamento a tabelle corrette ",
     "v.2.2.1 Call API async, fix general setting",
-    "v.3.0.0 Refactoring di calcolo (disabilitate pipe utente)"
+    "v.3.0.0 Refactoring di calcolo (disabilitate pipe utente)",
+    "v.3.0.1 Minor Fix for scheduler run"
   ]
 }

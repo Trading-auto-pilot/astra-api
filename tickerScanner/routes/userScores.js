@@ -284,11 +284,25 @@ module.exports.buildInternalUserScoresRouter = function buildInternalUserScoresR
       const modelName = req.body?.name ?? req.body?.note ?? req.body?.description ?? "Non specificate";
       const modelVersion = req.body?.version ?? "1.0";
 
-      const userIdRaw = req.body?.userId ?? req.body?.user_id;
+      const userIdRaw =
+        req.body?.userId ??
+        req.body?.user_id ??
+        req.query?.userId ??
+        req.query?.user_id ??
+        req.headers["x-user-id"];
       if (userIdRaw === undefined || userIdRaw === null || userIdRaw === "") {
+        logger.warning(
+          `${fn} missing userId | jobKey=${jobKey} | internalSub=${safeStringify(req?.internalAuth?.sub)}`
+        );
         return res.status(400).json({ ok: false, error: "userId obbligatorio" });
       }
       const userId = Number(userIdRaw);
+      if (!Number.isFinite(userId)) {
+        logger.warning(
+          `${fn} invalid userId=${safeStringify(userIdRaw)} | jobKey=${jobKey} | internalSub=${safeStringify(req?.internalAuth?.sub)}`
+        );
+        return res.status(400).json({ ok: false, error: "userId non valido" });
+      }
 
       const service = getService();
       const result = await service.userDailySvc.launchJobsForUser(

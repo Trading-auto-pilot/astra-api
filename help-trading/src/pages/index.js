@@ -29,6 +29,11 @@ const guideCards = [
     description: 'Versioni, date di rilascio e changelog dettagliato di tutti i componenti backend.',
     link: '/docs/release-notes/overview',
   },
+  {
+    title: '6. Roadmap',
+    description: 'Note per sviluppi futuri: piani tecnici, proposte di miglioramento e bozze di architettura per le prossime iterazioni.',
+    link: '/docs/roadmap/overview',
+  },
 ];
 
 export default function Home() {

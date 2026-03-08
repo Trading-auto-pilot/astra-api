@@ -132,7 +132,9 @@ In sintesi: il merge su `PAPER` e il trigger del deploy. La pipeline prende il c
 
 ## Pagine della sezione
 
+- [LOCAL -> PAPER](./deployment-local-to-paper.md)
 - [Variabili d'ambiente](./deployment-variabili-ambiente.md)
+- [Git Deployment](./deployment-git.md)
 
 ## Raccomandazioni
 
