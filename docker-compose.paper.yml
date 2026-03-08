@@ -1003,8 +1003,6 @@ services:
       - "traefik.http.routers.help-trading.entrypoints=websecure"
       - "traefik.http.routers.help-trading.tls=true"
       - "traefik.http.routers.help-trading.tls.certresolver=le"
-      - "traefik.http.routers.help-trading.tls.domains[0].main=trading.expovin.it"
-      - "traefik.http.routers.help-trading.tls.domains[0].sans=api.trading.expovin.it,help.trading.expovin.it"
       - "traefik.http.services.help-trading.loadbalancer.server.port=80"
 
 

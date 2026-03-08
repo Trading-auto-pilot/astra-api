@@ -257,6 +257,7 @@ jobs:
         echo "TICKERSCANNER_URL=${{vars.TICKERSCANNER_URL}}" >> .env
         echo "AUTHSERVICE_URL=${{vars.AUTHSERVICE_URL}}" >> .env  
         echo "ASTRAAI_VERSION=${{vars.ASTRAAI_VERSION}}" >> .env
+        echo "HELPTRADING_VERSION=${{vars.HELPTRADING_VERSION}}" >> .env
         echo "ALERTINGSERVICE_VERSION=${{vars.ALERTINGSERVICE_VERSION}}" >> .env
         echo "CORS_ORIGIN=${{vars.CORS_ORIGIN}}" >> .env
         echo "SERVICECONTROLPLANE_VERSION=${{vars.SERVICECONTROLPLANE_VERSION}}" >> .env
