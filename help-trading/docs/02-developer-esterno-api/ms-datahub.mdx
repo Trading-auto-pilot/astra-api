@@ -1,0 +1,141 @@
+---
+sidebar_position: 11
+---
+
+import DatahubArchitectureDiagram from '@site/src/components/DatahubArchitectureDiagram';
+
+# datahub
+
+## Cosa fa
+
+`datahub` e il layer dati centrale che ha sostituito `DBManager`.
+Espone API dinamiche costruite automaticamente a partire dallo schema MySQL e supporta endpoint manuali custom.
+
+## Ruoli e responsabilita
+
+- connessione diretta a MySQL all'avvio;
+- lettura schema (`INFORMATION_SCHEMA`) di tabelle e viste;
+- generazione endpoint REST CRUD per ogni tabella;
+- caricamento route manuali dalla cartella `datahub/routes`;
+- endpoint interni per refresh schema e introspezione endpoint;
+- compatibilita con endpoint legacy (`/settings`, `/logs`, `/auth/*`).
+
+## Come funziona all'avvio
+
+Durante `_onInit()` il servizio:
+
+1. si connette a MySQL (`schemaReader.connect()`);
+2. legge tutte le tabelle/viste dello schema (`readSchema()`);
+3. sincronizza la tabella tecnica `__caching`;
+4. genera i router dinamici per ogni tabella/vista;
+5. carica le route manuali da `datahub/routes/*.js`;
+6. espone gli endpoint risultanti tramite `server.js`.
+
+Per ogni **tabella** vengono creati automaticamente 5 endpoint CRUD:
+
+1. `GET /api/table/{table}`
+2. `GET /api/table/{table}/{key}`
+3. `POST /api/table/{table}`
+4. `PUT /api/table/{table}/{key}`
+5. `DELETE /api/table/{table}/{key}`
+
+Nota: per le **viste** gli endpoint write possono non essere disponibili (read-only).
+
+## Porta esposta
+
+- Porta interna servizio: `3000`
+- Esposizione via Traefik (local): `http://localhost/datahub/*`
+
+## Architettura grafica
+
+<DatahubArchitectureDiagram />
+
+Lettura dello schema:
+
+- all'avvio `datahub` si connette a **MySQL**;
+- legge tutte le tabelle/viste dello schema;
+- genera endpoint CRUD automatici;
+- usa **Redis** per caching/configurazioni cache tabella (`__caching`) e riduzione latenza.
+
+## Configurazione compose
+
+`datahub` e definito in `docker-compose.local.yml`.
+Nel file `docker-compose.paper.yml` corrente non e ancora presente un servizio `datahub` equivalente.
+
+```yaml
+datahub:
+  image: local/datahub:${DATAHUB_VERSION:-latest}
+  build:
+    context: .
+    dockerfile: datahub/Dockerfile
+  restart: unless-stopped
+  ports:
+    - "3000:3000"
+  environment:
+    - MYSQL_HOST=mysql
+    - MYSQL_PORT=3306
+    - MYSQL_USER=${MYSQL_USER}
+    - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    - MYSQL_DATABASE=${MYSQL_DATABASE}
+    - REDIS_URL=redis://redis:6379
+    - ENV=${ENV}
+  depends_on:
+    mysql:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  labels:
+    - "traefik.http.routers.datahub.rule=Host(`localhost`) && PathPrefix(`/datahub`)"
+    - "traefik.http.services.datahub.loadbalancer.server.port=3000"
+```
+
+## Variabili d'ambiente
+
+### Infrastruttura
+
+Variabili gestite da `BaseService` e da `serverFactory` (comuni a tutti i microservizi).
+
+| Variabile | Default | Descrizione |
+|---|---|---|
+| `REDIS_URL` | — | URI Redis (es. `redis://redis:6379`). Obbligatorio per il bus eventi e i canali di stato. |
+| `LOG_LEVEL` | `info` | Livello di log: `trace`, `debug`, `info`, `warning`, `error`. |
+| `ENV` | — | Ambiente di esecuzione (`local`, `paper`, `prod`). Usato nel prefisso dei canali Redis. |
+| `PORT` | `3000` | Porta su cui il server HTTP si mette in ascolto. |
+| `CORS_ORIGIN` | `http://localhost:5173` | Origin o lista di origin (CSV) consentite dal middleware CORS. |
+
+### MySQL
+
+Variabili per la connessione diretta al database relazionale.
+
+| Variabile | Default | Descrizione |
+|---|---|---|
+| `MYSQL_HOST` | `localhost` | Hostname del server MySQL. |
+| `MYSQL_PORT` | `3306` | Porta del server MySQL. |
+| `MYSQL_USER` | `root` | Utente MySQL usato per la connessione. |
+| `MYSQL_PASSWORD` | `""` | Password dell'utente MySQL. Se assente, viene letto `MYSQL_ROOT_PASSWORD` come fallback. |
+| `MYSQL_ROOT_PASSWORD` | `""` | Fallback per la password se `MYSQL_PASSWORD` non e impostata. |
+| `MYSQL_DATABASE` | `trading` | Nome del database da cui leggere lo schema e generare gli endpoint CRUD. |
+
+### Redis (caching query)
+
+Variabili per il layer di caching Redis delle risposte delle query dinamiche. Distinto da `REDIS_URL` usato dal bus eventi.
+
+| Variabile | Default | Descrizione |
+|---|---|---|
+| `REDIS_CACHE_ENABLED` | `false` | Se `true`, abilita il caching su Redis delle risposte delle query dinamiche. |
+| `REDIS_HOST` | `localhost` | Hostname dell'istanza Redis usata per il caching. |
+| `REDIS_PORT` | `6379` | Porta dell'istanza Redis usata per il caching. |
+| `REDIS_PASSWORD` | — | Password Redis per il caching (opzionale). |
+| `REDIS_DB` | `0` | Indice del database Redis da usare per il caching. |
+| `REDIS_KEY_PREFIX` | `datahub` | Prefisso aggiunto a tutte le chiavi Redis generate dal caching delle query. |
+
+## Pagine dedicate
+
+- [Architettura e flussi](./ms-datahub-architettura.md)
+- [Endpoint (overview)](./ms-datahub-endpoint.md)
+- [Implementazione per file](./ms-datahub-file-e-ruoli.md)
+- [Configurazione](./ms-datahub-configurazione.md)
+- [Runbook operativo](./ms-datahub-runbook.md)
+- [Endpoint automatici](./ms-datahub-endpoint-automatici.md)
+- [Endpoint interni (refresh/reload)](./ms-datahub-endpoint-interni.md)
+- [Endpoint manuali attuali](./ms-datahub-endpoint-manuali.md)

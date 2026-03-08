@@ -1,0 +1,164 @@
+.wrapper {
+  margin: 1rem 0 1.25rem;
+}
+
+.canvas {
+  border: 1px solid #d8e6f8;
+  border-radius: 18px;
+  padding: 18px;
+  background:
+    radial-gradient(circle at 16% 16%, rgba(16, 158, 115, 0.14), transparent 35%),
+    radial-gradient(circle at 86% 16%, rgba(23, 129, 219, 0.14), transparent 35%),
+    linear-gradient(180deg, #f9fcff 0%, #f2f8ff 100%);
+}
+
+.band {
+  display: grid;
+  gap: 0.55rem;
+  margin-bottom: 0.8rem;
+}
+
+.pill {
+  justify-self: center;
+  width: fit-content;
+  padding: 0.2rem 0.62rem;
+  border-radius: 999px;
+  border: 1px solid #c7dbf4;
+  background: #eef5ff;
+  font-size: 0.69rem;
+  font-weight: 700;
+  color: #2f5e91;
+}
+
+.coreGrid {
+  display: grid;
+  grid-template-columns: 1.05fr 1.2fr 1fr;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.leftCol,
+.centerCol,
+.rightCol {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.card {
+  border-radius: 14px;
+  border: 1px solid #c6dcf6;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(20, 58, 104, 0.1);
+  padding: 12px 14px;
+}
+
+.title {
+  margin-bottom: 0.25rem;
+  font-size: 0.93rem;
+  font-weight: 800;
+  color: #16385c;
+}
+
+.card p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #456589;
+}
+
+.card ul {
+  margin: 0.38rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.75rem;
+  color: #385a7f;
+}
+
+.card small {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.71rem;
+  color: #5f7895;
+}
+
+.services {
+  border-color: #9fc8ed;
+}
+
+.brokers {
+  border-color: #9ad8bf;
+}
+
+.cachemanager {
+  border-color: #8dbbe8;
+  box-shadow: 0 12px 26px rgba(12, 74, 140, 0.16);
+}
+
+.redis {
+  border-color: #a5cbf3;
+}
+
+.fs {
+  border-color: #b7cce7;
+}
+
+.arrowRight,
+.arrowLeft {
+  justify-self: center;
+  width: fit-content;
+  padding: 0.16rem 0.56rem;
+  border-radius: 999px;
+  border: 1px solid #c6dcf6;
+  background: #eaf4ff;
+  font-size: 0.67rem;
+  font-weight: 700;
+  color: #2d5e8f;
+}
+
+@media (max-width: 1100px) {
+  .coreGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .arrowRight,
+  .arrowLeft {
+    justify-self: start;
+  }
+}
+
+/* Dark theme overrides */
+:global([data-theme='dark']) .canvas {
+  border-color: #2a3b52;
+  background:
+    radial-gradient(circle at 16% 16%, rgba(58, 154, 255, 0.16), transparent 38%),
+    radial-gradient(circle at 84% 16%, rgba(16, 175, 126, 0.16), transparent 38%),
+    linear-gradient(180deg, #111b2b 0%, #0e1724 100%);
+}
+
+:global([data-theme='dark']) .card,
+:global([data-theme='dark']) .block {
+  border-color: #365377;
+  background: #162338;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.36);
+}
+
+:global([data-theme='dark']) .title {
+  color: #e6f1ff;
+}
+
+:global([data-theme='dark']) .card p,
+:global([data-theme='dark']) .block p,
+:global([data-theme='dark']) .card small,
+:global([data-theme='dark']) .block small,
+:global([data-theme='dark']) .card ul,
+:global([data-theme='dark']) .block ul {
+  color: #bdd2ea;
+}
+
+:global([data-theme='dark']) .arrowDown,
+:global([data-theme='dark']) .pill,
+:global([data-theme='dark']) .pills span,
+:global([data-theme='dark']) .arrowLeft,
+:global([data-theme='dark']) .arrowRight {
+  color: #d5e8ff;
+  border-color: #365377;
+  background: #1b2b44;
+}

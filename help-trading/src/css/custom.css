@@ -1,0 +1,88 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Spline+Sans+Mono:wght@400;600&display=swap');
+
+:root {
+  --ifm-font-family-base: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --ifm-font-family-monospace: 'Spline Sans Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --ifm-color-primary: #1d79bb;
+  --ifm-color-primary-dark: #196daa;
+  --ifm-color-primary-darker: #17669f;
+  --ifm-color-primary-darkest: #135484;
+  --ifm-color-primary-light: #2385cd;
+  --ifm-color-primary-lighter: #2a8bd2;
+  --ifm-color-primary-lightest: #4b9fda;
+
+  --ifm-background-color: #f8fbff;
+  --ifm-background-surface-color: #ffffff;
+  --ifm-font-color-base: #172b45;
+  --ifm-heading-color: #0f2648;
+
+  --ifm-navbar-background-color: rgba(255, 255, 255, 0.92);
+  --ifm-footer-background-color: #edf4fb;
+
+  --docusaurus-highlighted-code-line-bg: rgba(26, 115, 184, 0.1);
+}
+
+.navbar {
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid rgba(20, 53, 106, 0.12);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #5ab4ff;
+  --ifm-color-primary-dark: #3ca6fe;
+  --ifm-color-primary-darker: #2b9fff;
+  --ifm-color-primary-darkest: #007fdd;
+  --ifm-color-primary-light: #78c2ff;
+  --ifm-color-primary-lighter: #89c9ff;
+  --ifm-color-primary-lightest: #b8ddff;
+
+  --ifm-background-color: #0f1724;
+  --ifm-background-surface-color: #121d2d;
+  --ifm-font-color-base: #d9e7f7;
+  --ifm-font-color-secondary: #bdd0e6;
+  --ifm-heading-color: #ecf4ff;
+
+  --ifm-navbar-background-color: rgba(15, 23, 36, 0.92);
+  --ifm-footer-background-color: #0d1624;
+
+  --docusaurus-highlighted-code-line-bg: rgba(90, 180, 255, 0.2);
+}
+
+[data-theme='dark'] body,
+[data-theme='dark'] .main-wrapper,
+[data-theme='dark'] .theme-doc-markdown {
+  background-color: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+}
+
+[data-theme='dark'] .navbar {
+  border-bottom: 1px solid rgba(107, 145, 189, 0.25);
+}
+
+[data-theme='dark'] .footer {
+  background: var(--ifm-footer-background-color);
+  color: var(--ifm-font-color-base);
+}
+
+[data-theme='dark'] .footer a {
+  color: #9dc9f5;
+}
+
+/* Desktop: centra la barra ricerca nella navbar */
+@media (min-width: 997px) {
+  .navbar .navbar__inner {
+    position: relative;
+  }
+
+  .navbar .navbar__search {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+  }
+
+  .navbar .navbar__search-input {
+    width: clamp(220px, 26vw, 360px);
+  }
+}

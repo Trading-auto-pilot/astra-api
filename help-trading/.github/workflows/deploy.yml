@@ -1,0 +1,117 @@
+name: CI/CD Help Trading
+
+on:
+  push:
+    branches:
+      - PAPER
+      - LIVE
+
+env:
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+  GCP_HOST: ${{ secrets.GCP_HOST }}
+  GCP_USER: ${{ secrets.GCP_USER }}
+  SERVICE_NAME: help-trading
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          clean: true
+          fetch-depth: 1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      - name: 🚦 Verifica modalità di deploy su LIVE
+        run: |
+          BRANCH_NAME="${{ github.ref_name }}"
+          EVENT_NAME="${{ github.event_name }}"
+          SOURCE_BRANCH="${{ github.event.pull_request.head.ref }}"
+          TARGET_BRANCH="${{ github.event.pull_request.base.ref }}"
+
+          if [[ "$BRANCH_NAME" == "LIVE" ]]; then
+            if [[ "$EVENT_NAME" != "pull_request" ]]; then
+              echo "❌ Deploy su LIVE permesso solo tramite Pull Request da PAPER"
+              exit 1
+            fi
+            if [[ "$SOURCE_BRANCH" != "PAPER" || "$TARGET_BRANCH" != "LIVE" ]]; then
+              echo "❌ Solo PR da PAPER a LIVE sono consentite"
+              exit 1
+            fi
+          fi
+          echo "✅ Controllo superato, proseguo con il deploy..."
+
+      - name: Leggi versione da release.json
+        id: version
+        run: |
+          VERSION=$(jq -r '.version' release.json)
+          if [[ -z "$VERSION" || "$VERSION" == "null" ]]; then
+            echo "❌ Campo .version non valido in release.json"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "🏷 Versione: $VERSION"
+
+      - name: Build and push image (solo PAPER)
+        if: ${{ github.ref_name == 'PAPER' }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          NAME="${{ env.SERVICE_NAME }}"
+          echo "🔧 Build & push $NAME:$VERSION"
+          docker buildx build \
+            --platform linux/amd64 \
+            --push \
+            --tag "$DOCKERHUB_USERNAME/$NAME:latest" \
+            --tag "$DOCKERHUB_USERNAME/$NAME:$VERSION" \
+            .
+
+      - name: Setup SSH key
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy su server
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} VERSION=$VERSION bash -e -s" << 'EOF'
+            set -e
+            cd ~/deploy
+
+            LOWER_ENV_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
+            COMPOSE_FILE="docker-compose.${LOWER_ENV_NAME}.yml"
+            LOWER_PROJECT_NAME="$LOWER_ENV_NAME"
+
+            if [[ ! -f ".env" ]]; then
+              echo "❌ .env non trovato in ~/deploy"
+              exit 1
+            fi
+
+            if grep -q '^HELPTRADING_VERSION=' .env; then
+              sed -i "s/^HELPTRADING_VERSION=.*/HELPTRADING_VERSION=$VERSION/" .env
+            else
+              echo "HELPTRADING_VERSION=$VERSION" >> .env
+            fi
+
+            echo "📥 Pull immagine expovin/help-trading:$VERSION"
+            COMPOSE_PROFILES=frontend \
+              docker compose -f "$COMPOSE_FILE" --env-file .env -p "$LOWER_PROJECT_NAME" pull help-trading
+
+            echo "🚀 Riavvio help-trading"
+            COMPOSE_PROFILES=frontend \
+              docker compose -f "$COMPOSE_FILE" --env-file .env -p "$LOWER_PROJECT_NAME" \
+              up -d --no-deps --force-recreate help-trading
+
+            docker image prune -a -f
+          EOF

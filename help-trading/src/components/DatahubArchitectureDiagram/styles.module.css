@@ -1,0 +1,289 @@
+.wrapper {
+  margin: 1rem 0 1.25rem;
+}
+
+.canvas {
+  position: relative;
+  min-height: 480px;
+  border: 1px solid #d8e6f8;
+  border-radius: 18px;
+  padding: 18px;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(73, 164, 255, 0.15), transparent 33%),
+    radial-gradient(circle at 84% 16%, rgba(22, 187, 149, 0.18), transparent 34%),
+    linear-gradient(180deg, #f7fbff 0%, #f2f8ff 100%);
+}
+
+.block {
+  position: absolute;
+  border-radius: 14px;
+  border: 1px solid #c6dcf6;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(20, 58, 104, 0.1);
+  padding: 12px 14px;
+}
+
+.title {
+  margin-bottom: 0.25rem;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #16385c;
+}
+
+.block p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #456589;
+}
+
+.block small {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  color: #5f7895;
+}
+
+.block ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.75rem;
+  color: #37597e;
+}
+
+.mysql {
+  top: 195px;
+  left: 20px;
+  width: 180px;
+}
+
+.redis {
+  top: 195px;
+  right: 20px;
+  width: 180px;
+}
+
+.datahub {
+  top: 160px;
+  left: 50%;
+  width: 260px;
+  transform: translateX(-50%);
+  border-color: #90bee9;
+  box-shadow: 0 12px 26px rgba(12, 74, 140, 0.16);
+}
+
+.services {
+  top: 20px;
+  left: 50%;
+  width: 360px;
+  transform: translateX(-50%);
+}
+
+.traefik {
+  bottom: 20px;
+  left: 50%;
+  width: 220px;
+  transform: translateX(-50%);
+}
+
+.arrow {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2d5e8f;
+  font-size: 0.69rem;
+  font-weight: 700;
+}
+
+.arrow::before {
+  content: '';
+  position: absolute;
+  background: linear-gradient(90deg, #6eaee8, #2f8bd8);
+}
+
+.arrow::after {
+  content: '';
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-style: solid;
+}
+
+.aMySql {
+  top: 225px;
+  left: 205px;
+  width: 150px;
+  height: 26px;
+}
+
+.aMySql::before {
+  width: 120px;
+  height: 3px;
+}
+
+.aMySql::after {
+  right: 14px;
+  border-width: 6px 0 6px 9px;
+  border-color: transparent transparent transparent #2f8bd8;
+}
+
+.aRedis {
+  top: 225px;
+  right: 205px;
+  width: 150px;
+  height: 26px;
+}
+
+.aRedis::before {
+  width: 120px;
+  height: 3px;
+}
+
+.aRedis::after {
+  left: 14px;
+  border-width: 6px 9px 6px 0;
+  border-color: transparent #2f8bd8 transparent transparent;
+}
+
+.aServices {
+  top: 120px;
+  left: 50%;
+  width: 200px;
+  height: 52px;
+  transform: translateX(-50%);
+}
+
+.aServices::before {
+  width: 3px;
+  height: 34px;
+  background: linear-gradient(180deg, #6eaee8, #2f8bd8);
+}
+
+.aServices::after {
+  bottom: 2px;
+  border-width: 9px 6px 0 6px;
+  border-color: #2f8bd8 transparent transparent transparent;
+}
+
+.aTraefik {
+  top: 327px;
+  left: 50%;
+  width: 200px;
+  height: 90px;
+  transform: translateX(-50%);
+}
+
+.aTraefik::before {
+  width: 3px;
+  height: 70px;
+  background: linear-gradient(180deg, #2f8bd8, #1f6aa8);
+}
+
+.aTraefik::after {
+  bottom: 6px;
+  border-width: 9px 6px 0 6px;
+  border-color: #1f6aa8 transparent transparent transparent;
+}
+
+@media (max-width: 996px) {
+  .canvas {
+    min-height: 740px;
+  }
+
+  .services {
+    width: calc(100% - 30px);
+    left: 15px;
+    transform: none;
+  }
+
+  .datahub {
+    top: 165px;
+    width: calc(100% - 40px);
+    left: 20px;
+    transform: none;
+  }
+
+  .mysql {
+    top: 370px;
+    left: 20px;
+    width: calc(50% - 30px);
+  }
+
+  .redis {
+    top: 370px;
+    right: 20px;
+    width: calc(50% - 30px);
+  }
+
+  .traefik {
+    bottom: 20px;
+    width: calc(100% - 40px);
+    left: 20px;
+    transform: none;
+  }
+
+  .aServices {
+    top: 122px;
+    width: 120px;
+  }
+
+  .aMySql {
+    top: 332px;
+    left: 22%;
+    width: 58px;
+    transform: rotate(90deg);
+  }
+
+  .aRedis {
+    top: 332px;
+    right: 22%;
+    width: 58px;
+    transform: rotate(90deg);
+  }
+
+  .aTraefik {
+    top: 505px;
+    width: 120px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+/* Dark theme overrides */
+:global([data-theme='dark']) .canvas {
+  border-color: #2a3b52;
+  background:
+    radial-gradient(circle at 16% 16%, rgba(58, 154, 255, 0.16), transparent 38%),
+    radial-gradient(circle at 84% 16%, rgba(16, 175, 126, 0.16), transparent 38%),
+    linear-gradient(180deg, #111b2b 0%, #0e1724 100%);
+}
+
+:global([data-theme='dark']) .card,
+:global([data-theme='dark']) .block {
+  border-color: #365377;
+  background: #162338;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.36);
+}
+
+:global([data-theme='dark']) .title {
+  color: #e6f1ff;
+}
+
+:global([data-theme='dark']) .card p,
+:global([data-theme='dark']) .block p,
+:global([data-theme='dark']) .card small,
+:global([data-theme='dark']) .block small,
+:global([data-theme='dark']) .card ul,
+:global([data-theme='dark']) .block ul {
+  color: #bdd2ea;
+}
+
+:global([data-theme='dark']) .arrowDown,
+:global([data-theme='dark']) .pill,
+:global([data-theme='dark']) .pills span,
+:global([data-theme='dark']) .arrowLeft,
+:global([data-theme='dark']) .arrowRight {
+  color: #d5e8ff;
+  border-color: #365377;
+  background: #1b2b44;
+}

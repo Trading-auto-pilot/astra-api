@@ -1,0 +1,106 @@
+---
+sidebar_position: 10
+---
+
+import AuthServiceArchitectureDiagram from '@site/src/components/AuthServiceArchitectureDiagram';
+
+# authservice
+
+## Cosa fa
+
+`authservice` gestisce autenticazione e autorizzazione API per tutto il backend:
+
+- login utente/password;
+- rinnovo token JWT;
+- validazione credenziali per Traefik ForwardAuth (`/auth/validate`);
+- enforcement permessi su path/metodo.
+
+## Come e implementato (sintesi)
+
+- runtime Node.js + Express;
+- bootstrap standard con `createMicroserviceServer` (`shared/serverFactory`);
+- classe servizio `AuthService` estende `BaseService`;
+- router principale in `auth.js`, con moduli specializzati (`modules/auth`, `modules/authorization`, `modules/user`, `modules/apiKeys`);
+- accesso dati via `DATAHUB_URL` (con fallback `DBMANAGER_URL` per compatibilita).
+
+## Porta esposta
+
+- Porta interna servizio: `3015`
+- Esposizione via Traefik: `https://api.trading.expovin.it/auth/*`
+
+## Architettura grafica
+
+<AuthServiceArchitectureDiagram />
+
+Il diagramma mostra che:
+
+- `authservice` legge utenti, permessi e API key da `datahub`;
+- `datahub` a sua volta persiste/legge su MySQL;
+- Traefik usa `authservice` come ForwardAuth per proteggere i microservizi;
+- i microservizi sono quindi serviti indirettamente dal layer auth centralizzato.
+
+## Configurazione (docker-compose.paper.yml)
+
+```yaml
+authservice:
+  image: expovin/authservice:${AUTHSERVICE_VERSION}
+  restart: unless-stopped
+  environment:
+    - LOG_LEVEL=${LOG_LEVEL}
+    - ENV=${ENV}
+    - DBMANAGER_URL=${DBMANAGER_URL}
+    - JWT_SECRET=${JWT_SECRET}
+    - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+    - CORS_ORIGIN=${CORS_ORIGIN}
+    - TZ=${TIMEZONE}
+  labels:
+    - "traefik.enable=true"
+    - "traefik.http.routers.auth-public.rule=Host(`api.trading.expovin.it`) && (PathPrefix(`/auth/login`) || PathPrefix(`/auth/validate`) || PathPrefix(`/auth/renew`))"
+    - "traefik.http.routers.auth-admin.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/auth/admin`)"
+    - "traefik.http.routers.auth-admin.middlewares=cors-default@docker,auth-forward@docker"
+    - "traefik.http.services.auth-svc.loadbalancer.server.port=3015"
+```
+
+## Variabili d'ambiente
+
+### Infrastruttura
+
+Variabili obbligatorie gestite da `BaseService` (comune a tutti i microservizi).
+
+| Variabile | Default | Descrizione |
+|---|---|---|
+| `DATAHUB_URL` | `http://datahub:3000` | URL del servizio `datahub` (ex `DBMANAGER_URL`, ancora accettato come alias). Usato per leggere utenti, permessi e API key. |
+| `REDIS_URL` | — | URI Redis (es. `redis://redis:6379`). Obbligatorio per il bus eventi. |
+| `LOG_LEVEL` | `info` | Livello di log: `trace`, `debug`, `info`, `warning`, `error`. |
+| `ENV` | `DEV` | Ambiente di esecuzione (`local`, `paper`, `prod`). Usato nel prefisso dei canali Redis e nella pubblicazione eventi. Accetta anche l'alias `APP_ENV`. |
+| `LOG_BATCH_MAX_BYTES` | — | Dimensione massima batch per il log su DB (funzionalità `dbLogger`). |
+| `ENABLE_DB_LOG` | — | Se `true`, abilita la scrittura dei log su DB via `datahub`. |
+| `TZ` | — | Timezone di sistema del container (es. `America/New_York`). |
+
+### JWT e autenticazione
+
+| Variabile | Default | Descrizione |
+|---|---|---|
+| `JWT_SECRET` | — | Segreto usato per firmare e verificare i token JWT utente. **Obbligatorio**: il servizio non si avvia se assente. |
+| `JWT_EXPIRES_IN` | `1h` | Durata di validità del token JWT emesso al login (es. `1h`, `24h`, `7d`). |
+
+### Sicurezza e hashing
+
+| Variabile | Default | Descrizione |
+|---|---|---|
+| `BCRYPT_ROUNDS` | `12` | Numero di round bcrypt per l'hashing delle password. Valori più alti aumentano la sicurezza ma rallentano le operazioni di login e cambio password. |
+| `CORS_ORIGIN` | — | Origin (o lista separata da virgola) ammessa per le richieste CORS. Configurata a livello di `serverFactory`. |
+
+:::caution
+`JWT_SECRET` è una variabile critica: se non impostata il servizio lancia un errore all'avvio e termina. Usare un segreto robusto (almeno 32 caratteri casuali) e non condividerlo tra ambienti (`local`, `paper`, `prod`).
+:::
+
+## Pagine dedicate
+
+- [Architettura e flussi](./ms-authservice-architettura.md)
+- [Endpoint dettagliati](./ms-authservice-endpoint.md)
+- [Struttura file e ruolo di ogni file](./ms-authservice-file-e-ruoli.md)
+- [Configurazione](./ms-authservice-configurazione.md)
+- [Runbook operativo](./ms-authservice-runbook.md)
+- [Integrazione Traefik](./ms-authservice-traefik.md)
+- [Autenticazione interna tra microservizi](./ms-authservice-autenticazione-interna.md)

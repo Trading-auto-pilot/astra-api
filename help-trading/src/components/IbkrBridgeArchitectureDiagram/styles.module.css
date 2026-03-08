@@ -1,0 +1,136 @@
+.wrapper {
+  margin: 1rem 0 1.25rem;
+}
+
+.canvas {
+  border: 1px solid #d8e6f8;
+  border-radius: 18px;
+  padding: 18px;
+  background:
+    radial-gradient(circle at 14% 14%, rgba(24, 143, 255, 0.12), transparent 36%),
+    radial-gradient(circle at 85% 16%, rgba(13, 170, 124, 0.12), transparent 36%),
+    linear-gradient(180deg, #f8fcff 0%, #f2f8ff 100%);
+}
+
+.rowTop,
+.rowCenter {
+  display: flex;
+  justify-content: center;
+}
+
+.rowBottom {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+}
+
+.card {
+  border-radius: 14px;
+  border: 1px solid #c6dcf6;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(20, 58, 104, 0.1);
+  padding: 12px 14px;
+}
+
+.title {
+  margin-bottom: 0.25rem;
+  font-size: 0.93rem;
+  font-weight: 800;
+  color: #16385c;
+}
+
+.card p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #456589;
+}
+
+.card ul {
+  margin: 0.38rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.75rem;
+  color: #37597e;
+}
+
+.services {
+  width: min(760px, 100%);
+  border-color: #9fc8ed;
+}
+
+.bridge {
+  width: min(760px, 100%);
+  border-color: #8dbbe8;
+  box-shadow: 0 12px 26px rgba(12, 74, 140, 0.16);
+}
+
+.gateway { border-color: #acd7c7; }
+.sso { border-color: #bad2ed; }
+.redis { border-color: #bfd5ec; }
+.datahub { border-color: #a7caef; }
+
+.arrowDown {
+  position: relative;
+  margin: 0.45rem auto;
+  width: fit-content;
+  padding: 0.14rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid #c6dcf6;
+  background: #eaf4ff;
+  font-size: 0.67rem;
+  font-weight: 700;
+  color: #2d5e8f;
+}
+
+.arrowDown::after {
+  content: '';
+  display: block;
+  width: 3px;
+  height: 16px;
+  margin: 0.18rem auto 0;
+  background: linear-gradient(180deg, #6eaee8, #2f8bd8);
+}
+
+@media (max-width: 996px) {
+  .rowBottom {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Dark theme overrides */
+:global([data-theme='dark']) .canvas {
+  border-color: #2a3b52;
+  background:
+    radial-gradient(circle at 16% 16%, rgba(58, 154, 255, 0.16), transparent 38%),
+    radial-gradient(circle at 84% 16%, rgba(16, 175, 126, 0.16), transparent 38%),
+    linear-gradient(180deg, #111b2b 0%, #0e1724 100%);
+}
+
+:global([data-theme='dark']) .card,
+:global([data-theme='dark']) .block {
+  border-color: #365377;
+  background: #162338;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.36);
+}
+
+:global([data-theme='dark']) .title {
+  color: #e6f1ff;
+}
+
+:global([data-theme='dark']) .card p,
+:global([data-theme='dark']) .block p,
+:global([data-theme='dark']) .card small,
+:global([data-theme='dark']) .block small,
+:global([data-theme='dark']) .card ul,
+:global([data-theme='dark']) .block ul {
+  color: #bdd2ea;
+}
+
+:global([data-theme='dark']) .arrowDown,
+:global([data-theme='dark']) .pill,
+:global([data-theme='dark']) .pills span,
+:global([data-theme='dark']) .arrowLeft,
+:global([data-theme='dark']) .arrowRight {
+  color: #d5e8ff;
+  border-color: #365377;
+  background: #1b2b44;
+}
