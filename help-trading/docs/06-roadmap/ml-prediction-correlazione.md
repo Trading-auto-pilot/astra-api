@@ -117,29 +117,30 @@ Correlazione forte negativa  ≤ -0.6  →  relazione INVERSA   (feature sale �
 
 I titoli nella fascia centrale (-0.42, +0.42) non mostrano un legame statisticamente sfruttabile con la fonte dati: il sistema li ignora per quella coppia (titolo, fonte).
 
-> **Nota importante**: la correlazione negativa non implica un segnale BEARISH sul titolo. Implica una **relazione inversa** con la feature. Il segnale finale (BULLISH/BEARISH) viene calcolato a runtime combinando la direzione della correlazione con la variazione attuale della feature.
+> **Nota importante**: la correlazione (positiva o negativa) definisce solo il tipo di **relazione** (`DIRECT` / `INVERSE`). Il segnale operativo finale (`BULLISH` / `BEARISH`) viene deciso a runtime in base alle condizioni correnti di mercato.
 
 #### Come si calcola il segnale a runtime
 
-Il segnale sul titolo è determinato dal prodotto tra la direzione attuale della feature e il segno della correlazione:
+Il processo avviene in due step distinti:
 
-```
-segnale = sign(feature_change_oggi) × sign(correlation)
+1. **Scoperta relazione storica**:
+   - `DIRECT` (feature e titolo tendono a muoversi nello stesso verso)
+   - `INVERSE` (feature e titolo tendono a muoversi in verso opposto)
 
-  → +1  =  BULLISH
-  → −1  =  BEARISH
-```
+2. **Decisione operativa runtime**:
+   - usa relazione storica + stato corrente del mercato (regime, volatilità, conferme tecniche, guardrail);
+   - determina il segnale `BULLISH` (apertura long) o `BEARISH` (short/nessun long, secondo policy).
 
-Esempi:
+Esempio concettuale:
 
 | Evento oggi | Correlazione storica | Segnale titolo |
 | --- | --- | --- |
-| VIX **scende** | −0.72 (inversa) | (−1) × (−1) = **BULLISH** |
-| VIX **sale** | −0.72 (inversa) | (+1) × (−1) = **BEARISH** |
-| S&P500 **sale** | +0.81 (diretta) | (+1) × (+1) = **BULLISH** |
-| S&P500 **scende** | +0.81 (diretta) | (−1) × (+1) = **BEARISH** |
+| VIX **scende** | −0.72 (inversa) | candidato scenario risk-on: può risultare **BULLISH** se confermato dal contesto |
+| VIX **sale** | −0.72 (inversa) | candidato scenario risk-off: può risultare **BEARISH** |
+| S&P500 **sale** | +0.81 (diretta) | bias potenzialmente **BULLISH** se il contesto lo conferma |
+| S&P500 **scende** | +0.81 (diretta) | bias potenzialmente **BEARISH** |
 
-Il segnale finale dipende dal segno combinato feature/correlazione: in alcuni casi è **BULLISH**, in altri **BEARISH**.
+Quindi: il modello identifica prima una relazione affidabile; il verso operativo finale viene deciso dal motore in base alle condizioni di mercato correnti.
 
 #### Predictability Score
 
@@ -215,7 +216,8 @@ Senza questo guardrail il backtest può risultare ottimistico in modo non realis
 
 La pagina di screening può mostrare per ogni titolo:
 - badge `ML PREDICTABLE` se il titolo ha almeno una coppia con `|correlation| ≥ 0.6`
-- colonna `ML Signal` con segnale attivo (`BULLISH` da correlazione positiva, `BEARISH` da correlazione negativa, assente se tutto rumore)
+- colonna `ML Relationship` con relazione attiva (`DIRECT` / `INVERSE`)
+- colonna `ML Signal` con il segnale operativo runtime (`BULLISH` / `BEARISH`) determinato dalle condizioni di mercato correnti
 - dettaglio correlazioni su hover/click: lista delle coppie (fonte, lag, valore) con indicazione della direzione
 
 ### decision-engine
