@@ -356,9 +356,10 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
     ? Number.isFinite(volume) && volume >= volumeThreshold
     : true;
   const breakoutOk = priceOk && volumeOk;
+  const retracementEntryLimit = asNumber(current?.levels?.retracement?.entryLimit, null);
   const pullbackOk =
-    Number.isFinite(price) && Number.isFinite(breakLevel)
-      ? price >= breakLevel && price <= breakLevel + buffer
+    Number.isFinite(price) && Number.isFinite(retracementEntryLimit)
+      ? price <= retracementEntryLimit
       : false;
 
   const trendOk = basePattern?.trendOk ?? null;
@@ -488,7 +489,8 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
 
   if (liveData) {
     const entryMode = actionableBreakout ? "breakout" : actionablePullback ? "pullback" : null;
-    const entryBlock = entryMode ? next.levels?.[entryMode] : null;
+    const levelsKey = entryMode === "pullback" ? "retracement" : entryMode;
+    const entryBlock = levelsKey ? next.levels?.[levelsKey] : null;
     const entryLimit = asNumber(entryBlock?.entryLimit ?? entryBlock?.entry, null);
     const stopLoss = asNumber(entryBlock?.stopLoss, null);
     const takeProfit1 = asNumber(entryBlock?.takeProfit1, null);
@@ -502,7 +504,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
     if (entryMode && Number.isFinite(entryLimit) && Number.isFinite(livePrice)) {
       const volumeOkLive =
         !Number.isFinite(liveVolumeThreshold) || (Number.isFinite(liveVolume) && liveVolume >= liveVolumeThreshold);
-      const priceOkLive = livePrice >= entryLimit;
+      const priceOkLive = entryMode === "pullback" ? livePrice <= entryLimit : livePrice >= entryLimit;
       if (priceOkLive && volumeOkLive) {
         const alertKey = `${ticker}:${entryMode}:${entryLimit}`;
         const lastAlert = liveState.lastAlertByKey.get(alertKey) || 0;

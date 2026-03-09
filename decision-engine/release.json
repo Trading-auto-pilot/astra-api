@@ -8,6 +8,7 @@
     "v.1.0.1 Fix API setLogLevel",
     "v.1.1.0 Fix generl settings, Call API asincrone",
     "v.2.0.0 Verifica eventi a calendario prima di acquisto, richiamo capital-manager per capitale da investire. Fix invio ordini",
-    "v.2.0.1 Minor Fix"
+    "v.2.0.1 Minor Fix",
+    "v.2.0.2 Fix entry on Pullback, didn't work"
   ]
 }
