@@ -708,7 +708,17 @@ const sidebars = {
       items: [
         'roadmap/mobile',
         'roadmap/decision-engine-gestione-ordini-aperti',
-        'roadmap/ml-prediction-correlazione',
+        {
+          type: 'category',
+          label: 'ML Prediction',
+          link: {type: 'doc', id: 'roadmap/ml-prediction-correlazione'},
+          items: [
+            'roadmap/ml-prediction-fonti-dati',
+            'roadmap/ml-prediction-database',
+            'roadmap/ml-prediction-ms-alt-data-collector',
+            'roadmap/ml-prediction-ms-correlation-engine',
+          ],
+        },
       ],
     },
   ],

@@ -1042,7 +1042,7 @@ services:
       - "traefik.http.routers.ibkr-login-desktop.tls.certresolver=le"
       - "traefik.http.routers.ibkr-login-desktop.service=ibkr-login-desktop-api"
       - "traefik.http.middlewares.ibkr-login-desktop-stripprefix.stripPrefix.prefixes=/ibkr-login-desktop"
-      - "traefik.http.routers.ibkr-login-desktop.middlewares=ibkr-login-desktop-stripprefix,auth-forward@docker"
+      - "traefik.http.routers.ibkr-login-desktop.middlewares=ibkr-login-desktop-stripprefix,cors-default@docker,auth-forward@docker"
       - "traefik.http.routers.ibkr-login-desktop-preflight.rule=Host(`trading.expovin.it`) && PathPrefix(`/ibkr-login-desktop`) && Method(`OPTIONS`)"
       - "traefik.http.routers.ibkr-login-desktop-preflight.entrypoints=websecure"
       - "traefik.http.routers.ibkr-login-desktop-preflight.priority=10000"
