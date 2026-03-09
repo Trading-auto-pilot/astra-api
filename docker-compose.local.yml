@@ -1007,7 +1007,7 @@ services:
       - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
       - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
       - MARKETDATASERVICE_URL=http://market-data-service:3020
-      - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
+      - BROKER_EXECUTOR_IBKR_URL=http://broker-executor-ibkr:3003
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
       - MYSQL_USER=${MYSQL_USER}
@@ -1081,7 +1081,7 @@ services:
       - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
       - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
       - MARKETDATASERVICE_URL=http://market-data-service:3020
-      - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
+      - BROKER_EXECUTOR_IBKR_URL=http://broker-executor-ibkr:3003
       - DATAHUB_URL=http://datahub:3000
       - TZ=${TIMEZONE}
     depends_on:
@@ -1142,7 +1142,7 @@ services:
       - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
       - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
       - MARKETDATASERVICE_URL=http://market-data-service:3020
-      - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
+      - BROKER_EXECUTOR_IBKR_URL=http://broker-executor-ibkr:3003
       - MCPGATEWAY_URL=http://mcp-gateway:3004
       - TZ=${TIMEZONE}
       # capital-manager specifico

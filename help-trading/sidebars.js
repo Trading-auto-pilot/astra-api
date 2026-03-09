@@ -74,6 +74,7 @@ const sidebars = {
                 'utente/servizi-a-supporto/alertmanager-catalogo-eventi',
               ],
             },
+            'utente/servizi-a-supporto/ibkr-login-desktop',
           ],
         },
       ],
@@ -707,7 +708,7 @@ const sidebars = {
       items: [
         'roadmap/mobile',
         'roadmap/decision-engine-gestione-ordini-aperti',
-        'roadmap/ibkr-portal-proxy',
+        'roadmap/ml-prediction-correlazione',
       ],
     },
   ],

@@ -540,6 +540,7 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
     ).replace(/\/+$/, "");
     const brokerExecutorUrl = (
       service?.brokerExecutorUrl ||
+      process.env.BROKER_EXECUTOR_IBKR_URL ||
       process.env.BROKER_EXECUTOR_URL ||
       "http://broker-executor-ibkr:3003"
     ).replace(/\/+$/, "");
