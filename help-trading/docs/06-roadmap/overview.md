@@ -17,3 +17,4 @@ Ogni pagina descrive:
 - [Mobile — Pagina operativa da smartphone](./mobile)
 - [Decision-Engine — Gestione ordini aperti](./decision-engine-gestione-ordini-aperti)
 - [ML Prediction — Predizione basata su correlazioni esterne](./ml-prediction-correlazione)
+- [Market Simulator — Replay di dati storici come mercato live](./market-simulator)
