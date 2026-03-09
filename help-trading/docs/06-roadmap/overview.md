@@ -14,5 +14,6 @@ Ogni pagina descrive:
 
 ## Indice
 
+- [Mobile — Pagina operativa da smartphone](./mobile)
 - [Decision-Engine — Gestione ordini aperti](./decision-engine-gestione-ordini-aperti)
-- [ibkr-login-desktop — Login IBKR da remoto](./ibkr-portal-proxy)
+- [ML Prediction — Predizione basata su correlazioni esterne](./ml-prediction-correlazione)

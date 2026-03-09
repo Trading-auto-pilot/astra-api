@@ -42,6 +42,9 @@ Il valore del lag (ritardo) è **scoperto automaticamente** dal sistema per ogni
 | **News sentiment** | Sentiment aggregato per settore/ticker da titoli notizie | Score [-1, +1] per giorno |
 | **Dati macro** | Tassi FED, CPI, NFP, earnings calendar | Evento + valore |
 | **Stagionalità** | Giorno settimana, mese, quarter, exdate | Feature categoriche |
+| **Volatilità/Opzioni** | VIX term structure (VIX/VIX3M), VVIX, put/call ratio | Valore numerico giornaliero |
+| **Credito/Tassi** | HY spread, IG spread, real yields, curva 2s10s | Valore numerico giornaliero |
+| **Breadth/Flussi** | Advance/Decline, nuovi massimi/minimi, ETF flows settoriali | Valore numerico giornaliero |
 
 ---
 
@@ -75,6 +78,12 @@ Analizza storicamente le correlazioni tra le fonti dati e i prezzi futuri dei ti
    - Usa **rolling window** (es. ultimi 252 giorni) per avere una correlazione aggiornata
 
 2. Filtra per significatività statistica (p-value < 0.05)
+
+   > Poiché vengono testate molte combinazioni (titolo × fonte × lag), il filtro p-value deve essere corretto per **multiple testing**:
+   > - baseline: controllo **FDR (Benjamini-Hochberg)**;
+   > - opzionale conservativo: Bonferroni per set piccoli.
+   >
+   > Senza questa correzione aumenta il rischio di falsi positivi.
 
 3. Classifica il tipo di relazione:
    - `correlation ≥ +0.6` → `relationship = DIRECT` (feature e titolo si muovono insieme)
@@ -130,13 +139,22 @@ Esempi:
 | S&P500 **sale** | +0.81 (diretta) | (+1) × (+1) = **BULLISH** |
 | S&P500 **scende** | +0.81 (diretta) | (−1) × (+1) = **BEARISH** |
 
-In tutti i casi il segnale sul titolo è **BULLISH** — come nell'esempio VIX in calo con correlazione negativa.
+Il segnale finale dipende dal segno combinato feature/correlazione: in alcuni casi è **BULLISH**, in altri **BEARISH**.
 
 #### Predictability Score
 
+Formula robusta consigliata:
+
 ```
-predictability_score = max(|correlation|) per tutte le coppie (titolo, fonte) significative
+predictability_score = media pesata delle top-k |correlation| significative
 ```
+
+Dove i pesi penalizzano:
+- instabilità del coefficiente su finestre rolling;
+- p-value peggiori;
+- bassa persistenza out-of-sample.
+
+`max(|correlation|)` può restare come metrica diagnostica, ma non come score operativo principale.
 
 Soglie operative (configurabili):
 
@@ -178,6 +196,17 @@ Per i titoli ad alta predittività, quando arriva il dato giornaliero della font
 
 I segnali vengono pubblicati su Redis (`ml:signals`) e salvati in `ml_signals_daily`.
 
+### Guardrail anti-data-leakage
+
+Ogni feature deve avere un timestamp `available_at` (quando il dato è realmente disponibile al sistema).
+
+Regole:
+- training e inferenza usano solo feature con `available_at <= decision_time`;
+- macro/news soggetti a revisioni: conservare versione iniziale e, separatamente, versione rivista;
+- timezone unica di calcolo (consigliato UTC) e mapping esplicito alle sessioni US.
+
+Senza questo guardrail il backtest può risultare ottimistico in modo non realistico.
+
 ---
 
 ## Integrazione con il trading system esistente
@@ -194,6 +223,11 @@ La pagina di screening può mostrare per ogni titolo:
 Riceve i segnali ML come input aggiuntivo (opzionale, configurabile per pipe):
 - Se ML signal è `BULLISH` e segnale tecnico è positivo → confidence composta aumenta
 - Se ML signal contraddice il segnale tecnico → warning, decision-engine può ridurre la position size
+
+Policy operativa consigliata:
+- l'analisi tecnica resta il gate primario di esecuzione;
+- ML agisce come **overlay di confidence/sizing**;
+- se ML e tecnico sono in conflitto, no ingresso automatico oppure size ridotta (configurabile).
 
 ### alertingService
 
@@ -248,6 +282,7 @@ Tutti e tre i servizi seguono il pattern `BaseService` e si integrano via `datah
 - [ ] decision-engine legge segnali ML come feature opzionale
 - [ ] Alert `ML_SIGNAL_STRONG` in alertingService
 - [ ] Backtest: confronto performance con/senza ML overlay
+- [ ] Walk-forward validation con costi/slippage e test di robustezza out-of-sample
 
 ---
 
@@ -257,3 +292,4 @@ Tutti e tre i servizi seguono il pattern `BaseService` e si integrano via `datah
 - **Runtime ML**: possibile uso di `Python` microservice o librerie JS (`ml-regression`, `brain.js`) per semplicità infrastrutturale
 - **Dati minimi**: correlazione affidabile richiede almeno 252 giorni di storico per entrambe le serie
 - **Aggiornamento**: correlazioni ricalcolate settimanalmente; segnali prodotti giornalmente dopo market close
+- **Validazione**: oltre ad accuracy/hit-rate, monitorare metriche trading (`expectancy`, `max drawdown`, turnover, net PnL dopo costi)
