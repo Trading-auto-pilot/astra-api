@@ -326,7 +326,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
   if (!bus || typeof bus.get !== "function" || typeof bus.set !== "function") return false;
   if (!liveState.pipeId || !liveState.userId || !liveState.asOfDate) return false;
 
-  const key = buildSpotFinderRedisKey(liveState.pipeId, liveState.userId, liveState.asOfDate);
+  const key = buildSpotFinderRedisKey(bus, liveState.pipeId, liveState.userId, liveState.asOfDate);
   const payload = await bus.get(key);
   if (!payload || !Array.isArray(payload?.results)) return false;
 

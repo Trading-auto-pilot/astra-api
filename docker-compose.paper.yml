@@ -96,10 +96,10 @@ services:
     command:
       [
         "redis-server",
-        "--appendonly", "no",
-        "--save", "",
+        "--appendonly", "yes",
+        "--appendfsync", "everysec",
         "--maxmemory", "512mb",
-        "--maxmemory-policy", "allkeys-lru"
+        "--maxmemory-policy", "volatile-lru"
       ]
     volumes:
       - redis-data:/data
@@ -306,6 +306,7 @@ services:
       - CORS_ORIGIN=${CORS_ORIGIN}
       - INTERNAL_JWT_PUBLIC_KEY=${INTERNAL_JWT_PUBLIC_KEY}
       - TZ=${TIMEZONE}
+      - CACHEMANAGER_TIMEOUT_MS=${CACHEMANAGER_TIMEOUT_MS:-120000}
     depends_on:
       datahub:
         condition: service_healthy

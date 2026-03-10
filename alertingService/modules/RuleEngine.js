@@ -173,6 +173,7 @@ class RuleEngine {
       message:
         payload.message ||
         payload.description ||
+        payload.payload?.message ||
         payload.payload?.reason ||
         payload.eventId ||
         payload.event_id ||
@@ -308,17 +309,18 @@ class RuleEngine {
 
   renderTemplate(template, event) {
     const map = {
-      message: event.message,
-      time: event.tsIso,
-      id: event.raw?.id ?? "",
-      level: event.level,
-      service: event.microservice,
-      module: event.moduleName,
+      message:  event.message,
+      time:     event.tsIso,
+      id:       event.raw?.id ?? event.eventId ?? "",  // logs: DB id; events: eventId fallback
+      level:    event.level,
+      service:  event.microservice,
+      module:   event.moduleName,
       function: event.functionName,
-      channel: event.channel,
+      channel:  event.channel,
       eventKey: event.eventKey,
-      eventId: event.eventId,
+      eventId:  event.eventId,
       severity: event.level,
+      ticker:   event.raw?.payload?.ticker ?? "",      // events: ticker from inner payload
     };
     return String(template || "")
       .replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, k) =>

@@ -28,7 +28,7 @@ class SchedulerEngine {
    * @param {object}   [opts.bus]   - istanza RedisBus per hook asincroni
    * @param {string}   [opts.env]   - ambiente (DEV, PROD, ...)
    */
-  constructor({ logger, defaultTimezone = "UTC", dbmanagerUrl, getSetting, bus, env } = {}) {
+  constructor({ logger, defaultTimezone = "UTC", dbmanagerUrl, getSetting, bus, env, onJobLastRun } = {}) {
     this.logger = logger || console;
     this.defaultTimezone = defaultTimezone;
     this.dbmanagerUrl = dbmanagerUrl;
@@ -42,6 +42,7 @@ class SchedulerEngine {
     // Map<jobId, { job, startedAt, timeout }> per job asincroni in attesa di hook
     this.pendingAsyncJobs = new Map();
     this._hookSubscribed = false;
+    this.onJobLastRun = typeof onJobLastRun === "function" ? onJobLastRun : null;
   }
 
   _sanitizeHeaders(headers) {
@@ -543,6 +544,16 @@ class SchedulerEngine {
       String(now.getSeconds()).padStart(2, "0"),
     ].join(":");
     const lastRunAt = `${date} ${time}`;
+
+    if (this.onJobLastRun) {
+      try {
+        this.onJobLastRun({ job, status, lastRunAt, extra });
+      } catch (err) {
+        this.logger.warning(
+          `[_updateLastRun] onJobLastRun callback failed: ${err?.message || err}`
+        );
+      }
+    }
 
     // Salva in Redis KV (senza TTL) per lettura dal frontend
     if (this.bus && job?.jobKey) {

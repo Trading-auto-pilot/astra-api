@@ -58,8 +58,11 @@ const cancelJob = (jobId) => {
 };
 
 // --- Redis key -------------------------------------------------------------
-const buildSpotFinderRedisKey = (pipeId, userId, asOfDate) =>
-  `spot-finder:${pipeId}:${userId}:${asOfDate}`;
+// ENV-aware: usa bus.key() per aggiungere il prefisso ambiente (PAPER, PROD, DEV, ...)
+// così PAPER e PROD non condividono le stesse chiavi anche su istanze Redis condivise.
+const buildSpotFinderRedisKey = (bus, pipeId, userId, asOfDate) =>
+  bus?.key?.("spot-finder", pipeId, userId, asOfDate)
+  ?? `spot-finder:${pipeId}:${userId}:${asOfDate}`;
 
 // --- Snapshot CRUD ---------------------------------------------------------
 
@@ -68,7 +71,7 @@ const loadSnapshotResults = async (bus, pipeId, userId, dateParamRaw) => {
     throw new Error("redis not available");
   }
   const snapshotDate = resolveSnapshotDate(dateParamRaw);
-  const key = buildSpotFinderRedisKey(pipeId, userId, snapshotDate);
+  const key = buildSpotFinderRedisKey(bus, pipeId, userId, snapshotDate);
   const payload = await bus.get(key);
   if (!payload) {
     return { snapshotDate, results: [] };
@@ -79,7 +82,7 @@ const loadSnapshotResults = async (bus, pipeId, userId, dateParamRaw) => {
 
 const persistSpotFinderSnapshot = async (bus, pipeId, userId, job, asOfDate, logger) => {
   if (!bus || typeof bus.set !== "function") return false;
-  const key = buildSpotFinderRedisKey(pipeId, userId, asOfDate);
+  const key = buildSpotFinderRedisKey(bus, pipeId, userId, asOfDate);
   const payload = {
     pipeId,
     userId,
@@ -114,7 +117,7 @@ const persistSpotFinderSnapshot = async (bus, pipeId, userId, job, asOfDate, log
 
 const updateSnapshotResult = async (bus, pipeId, userId, asOfDate, nextResult, logger) => {
   if (!bus || typeof bus.get !== "function" || typeof bus.set !== "function") return false;
-  const key = buildSpotFinderRedisKey(pipeId, userId, asOfDate);
+  const key = buildSpotFinderRedisKey(bus, pipeId, userId, asOfDate);
   try {
     const payload = await bus.get(key);
     const results = Array.isArray(payload?.results) ? payload.results : [];
@@ -393,7 +396,7 @@ const startAsyncJob = async (opts) => {
   if (useCache && userId) {
     if (bus && typeof bus.get === "function") {
       try {
-        const key = buildSpotFinderRedisKey(pipeId, userId, snapshotDate);
+        const key = buildSpotFinderRedisKey(bus, pipeId, userId, snapshotDate);
         const snapshot = await bus.get(key);
         if (snapshot && Array.isArray(snapshot.results)) {
           const snapshotResults = snapshot.results;

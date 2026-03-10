@@ -272,6 +272,7 @@ jobs:
         echo "BODY_LIMIT='${{ vars.BODY_LIMIT }}'" >> .env
         echo "DATA_SERVICE_VERSION='${{ vars.DATA_SERVICE_VERSION }}'" >> .env
         echo "IBKR_REQUEST_TIMEOUT_MS='${{ vars.IBKR_REQUEST_TIMEOUT_MS }}'" >> .env
+        echo "CACHEMANAGER_TIMEOUT_MS='${{ vars.CACHEMANAGER_TIMEOUT_MS }}'" >> .env
         echo "IBKR_SSODH_INIT_INTERVAL_MS='${{ vars.IBKR_SSODH_INIT_INTERVAL_MS }}'" >> .env
         echo "INTERNAL_JWT_EXP_SECONDS='${{ vars.INTERNAL_JWT_EXP_SECONDS }}'" >> .env
         echo "INTERNAL_JWT_ISS='${{ vars.INTERNAL_JWT_ISS }}'" >> .env

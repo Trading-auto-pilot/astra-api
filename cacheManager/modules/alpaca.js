@@ -45,18 +45,25 @@ class AlpacaProvider {
     const allBars = [];
     let pageToken = "";
 
+    // Daily/weekly bars: Alpaca ignores or misinterprets the time component
+    // when start falls on a weekend, returning full history instead of the
+    // requested range. Strip to YYYY-MM-DD for non-intraday timeframes.
+    const isDailyOrLarger = ["1Day", "1Week", "1Month"].includes(timeframe);
+    const startParam = isDailyOrLarger && start ? start.split("T")[0] : start;
+    const endParam   = isDailyOrLarger && end   ? end.split("T")[0]   : end;
+
     const baseUrl = `${this.restUrl}/v2/stocks/bars`;
 
     do {
       const url =
         `${baseUrl}?symbols=${encodeURIComponent(symbol)}` +
         `&timeframe=${encodeURIComponent(timeframe)}` +
-        `&start=${start}&end=${end}` +
+        `&start=${startParam}&end=${endParam}` +
         `&limit=1000&adjustment=raw&feed=sip&sort=asc` +
         (pageToken ? `&page_token=${pageToken}` : "");
 
       this.logger.info?.(
-        `[AlpacaProvider] Fetch bars ${symbol} ${start}→${end} tf=${timeframe}` +
+        `[AlpacaProvider] Fetch bars ${symbol} ${startParam}→${endParam} tf=${timeframe}` +
           (pageToken ? ` (page=${pageToken})` : "") +
           ` : ${url}`
       );

@@ -474,7 +474,7 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
     }
     const dateParamRaw = req.query?.date || req.query?.asOfDate || req.query?.scoreDate || null;
     const snapshotDate = resolveSnapshotDate(dateParamRaw);
-    const key = buildSpotFinderRedisKey(pipeId, userId, snapshotDate);
+    const key = buildSpotFinderRedisKey(b, pipeId, userId, snapshotDate);
     const payload = await b.get(key);
     if (!payload) {
       const err = new Error("snapshot not found");
@@ -646,7 +646,7 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
     try {
       const dateParamRaw = req.query?.date || req.query?.asOfDate || req.query?.scoreDate || null;
       const snapshotDate = resolveSnapshotDate(dateParamRaw);
-      const key = buildSpotFinderRedisKey(pipeId, userId, snapshotDate);
+      const key = buildSpotFinderRedisKey(b, pipeId, userId, snapshotDate);
       const payload = await b.get(key);
       if (!payload) {
         return res.status(404).json({ ok: false, error: "snapshot not found" });

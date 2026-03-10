@@ -708,6 +708,7 @@ const sidebars = {
       items: [
         'roadmap/mobile',
         'roadmap/decision-engine-gestione-ordini-aperti',
+        'roadmap/market-simulator',
         {
           type: 'category',
           label: 'ML Prediction',

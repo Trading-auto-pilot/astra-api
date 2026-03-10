@@ -12,7 +12,7 @@ const SUBSCRIPTION_TIMEOUT_MS = 10000;
 const ALERT_TIMEOUT_MS = 10000;
 
 // --- Redis -----------------------------------------------------------------
-const SNAPSHOT_TTL_SECONDS = 60 * 60 * 12; // 43200 (12h)
+const SNAPSHOT_TTL_SECONDS = 60 * 60 * 24; // 86400 (24h)
 
 // --- Job -------------------------------------------------------------------
 const MAX_CONCURRENCY = 6;

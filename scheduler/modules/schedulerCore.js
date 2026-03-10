@@ -22,6 +22,7 @@ class SchedulerCore {
       getSetting: this.main.getSetting || null,
       bus: this.main.bus || null,
       env: this.main.env || process.env.ENV || "DEV",
+      onJobLastRun: ({ job, status, lastRunAt }) => this._updateJobLastRunInCache(job, status, lastRunAt),
     });
 
     this.jobsCache = [];
@@ -137,6 +138,29 @@ class SchedulerCore {
 
   getJobsSnapshot() {
     return this.jobsCache;
+  }
+
+  _updateJobLastRunInCache(job, status, lastRunAt) {
+    if (!job?.jobKey && !job?.id) return;
+    const nowIso = new Date().toISOString();
+    const targetId = job?.id != null ? String(job.id) : null;
+    const targetKey = job?.jobKey ? String(job.jobKey) : null;
+
+    this.jobsCache = this.jobsCache.map((item) => {
+      const itemId = item?.id != null ? String(item.id) : null;
+      const itemKey = item?.jobKey ? String(item.jobKey) : null;
+      const matched = (targetId && itemId === targetId) || (targetKey && itemKey === targetKey);
+      if (!matched) return item;
+      return {
+        ...item,
+        lastRunAt: lastRunAt,
+        last_run_at: lastRunAt,
+        lastStatus: status,
+        last_status: status,
+        updatedAt: nowIso,
+        updated_at: nowIso,
+      };
+    });
   }
 
   /**
