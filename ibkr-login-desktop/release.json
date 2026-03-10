@@ -1,8 +1,9 @@
 {
   "lastUpdate": "08/03/2026",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "microservice": "ibkr-login-desktop",
   "note": [
-    "v.1.0.0 Initial release using BaseService"
+    "v.1.0.0 Initial release using BaseService",
+    "v.1.0.1 Vista iPad"
   ]
 }

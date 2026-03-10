@@ -4,25 +4,24 @@ set -e
 # 1. Start Node.js microservice (REST API on port 3009)
 node /app/ibkr-login-desktop/server.js &
 
-# 2. Start virtual display — 360x700: compact mobile viewport, fits any phone screen via noVNC
-Xvfb :0 -screen 0 360x700x24 &
+# 2. Start virtual display — 834x1194: iPad Pro 11" portrait viewport
+Xvfb :0 -screen 0 834x1194x24 &
 sleep 1
 
 export DISPLAY=:0
 
-# 3. Launch Chromium in kiosk mode (iPhone SE viewport)
-#    --kiosk: no address bar / toolbar — the full 375x700 goes to the IBKR web content.
-#    DPR 1 is enough: IBKR renders mobile layout based on UA + 375px viewport width.
+# 3. Launch Chromium in kiosk mode (iPad Pro 11" viewport)
+#    --kiosk: no address bar / toolbar — the full 834x1194 goes to the IBKR web content.
 #    localhost:5000 resolves to the gateway via shared network namespace (network_mode: service:ibkrgw-paper)
-IPHONE_UA="Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1"
+IPAD_UA="Mozilla/5.0 (iPad; CPU OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
 chromium \
   --no-sandbox \
   --disable-dev-shm-usage \
   --disable-gpu \
   --disable-features=VizDisplayCompositor \
   --kiosk \
-  --window-size=360,700 \
-  --user-agent="${IPHONE_UA}" \
+  --window-size=834,1194 \
+  --user-agent="${IPAD_UA}" \
   --allow-insecure-localhost \
   --remote-debugging-port=9222 \
   "https://localhost:5000" &

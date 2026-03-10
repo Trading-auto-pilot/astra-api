@@ -1,6 +1,7 @@
 // modules/RuleEngine.js
 "use strict";
 
+const crypto = require("crypto");
 const axios = require("axios");
 const { createDatahubAdapter, convertPathToDatahub } = require("../../shared/datahubAdapter");
 const TwilioClient = require("./twilio");
@@ -293,7 +294,7 @@ class RuleEngine {
   }
 
   buildHash(event) {
-    return [
+    const raw = [
       event.source,
       event.eventKey,
       event.eventId,
@@ -305,6 +306,7 @@ class RuleEngine {
     ]
       .filter(Boolean)
       .join("|");
+    return crypto.createHash("sha256").update(raw).digest("hex");
   }
 
   renderTemplate(template, event) {

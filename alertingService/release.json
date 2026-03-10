@@ -1,12 +1,13 @@
 {
   "lastUpdate": "10/03/2026", 
-  "version": "2.1.2",
+  "version": "2.1.3",
   "microservice": "alertingService",
 
   "note": [
     "v.0.1.0 alertingService: Initial scaffolding generated from template.",
     "v.2.0.0 Refactoring completo creato da zero. Aggiunto invio Whatsapp e Rule Engine ",
     "v.2.1.1 Fix minori",
-    "v.2.1.2 Fix Data ultimo run"
+    "v.2.1.2 Fix Data ultimo run",
+    "v.2.1.3 Minor Fix"
   ]
 }
