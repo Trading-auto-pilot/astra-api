@@ -10,6 +10,7 @@ const createLogger = require("../shared/logger");
 const buildStatusRouter = require("./status"); // router standard /status/*
 const buildWhatsappRouter = require("./whatsapp");
 const buildEmailRouter = require("./email");
+const buildTelegramRouter = require("./telegram");
 const buildAlertingRulesProxy = require("./alertingRulesProxy");
 
 
@@ -392,6 +393,7 @@ app.use(
 /* --------------------------- ROUTES: WHATSAPP -------------------------- */
 app.use("/whatsapp", requireReady, buildWhatsappRouter({ logger }));
 app.use("/email", requireReady, buildEmailRouter({ logger }));
+app.use("/telegram", requireReady, buildTelegramRouter({ logger }));
 
 /* ------------------------ ROUTES: RULES RELOAD ------------------------ */
 app.post("/alerting/rules/reload", requireReady, async (_req, res) => {

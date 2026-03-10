@@ -6,6 +6,7 @@ const axios = require("axios");
 const { createDatahubAdapter, convertPathToDatahub } = require("../../shared/datahubAdapter");
 const TwilioClient = require("./twilio");
 const EmailClient = require("./email");
+const TelegramClient = require("./telegram");
 
 const DEFAULT_WINDOW_SECONDS = 300;
 const DEFAULT_MAX_PER_WINDOW = 3;
@@ -41,6 +42,7 @@ class RuleEngine {
 
     this.twilio = new TwilioClient({ logger: this.logger });
     this.email = new EmailClient({ logger: this.logger });
+    this.telegram = new TelegramClient({ logger: this.logger });
   }
 
   async start() {
@@ -432,6 +434,25 @@ class RuleEngine {
               body,
             });
             deliveries.push({ provider: "email", status: "sent", response_json: info });
+          }
+        } else if (ch === "telegram") {
+          const chatId =
+            actions.telegram_chat_id ||
+            actions.chat_id ||
+            process.env.ALERTING_DEFAULT_TELEGRAM_CHAT_ID ||
+            process.env.TELEGRAM_CHAT_ID;
+          if (!chatId) {
+            this.logger?.warning?.(
+              `[ruleEngine] telegram skipped rule=${ruleId} missing chat_id (actions.telegram_chat_id or ALERTING_DEFAULT_TELEGRAM_CHAT_ID)`
+            );
+            deliveries.push({
+              provider: "telegram",
+              status: "skipped",
+              response_json: { error: "missing chat_id" },
+            });
+          } else {
+            const msg = await this.telegram.sendMessage({ chatId, text: body });
+            deliveries.push({ provider: "telegram", status: "sent", response_json: msg });
           }
         }
       } catch (err) {

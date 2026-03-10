@@ -15,6 +15,7 @@ Ogni pagina descrive:
 ## Indice
 
 - [Mobile — Pagina operativa da smartphone](./mobile)
+- [Strategy to Enter](./strategy-to-enter)
 - [Decision-Engine — Gestione ordini aperti](./decision-engine-gestione-ordini-aperti)
 - [ML Prediction — Predizione basata su correlazioni esterne](./ml-prediction-correlazione)
 - [Market Simulator — Replay di dati storici come mercato live](./market-simulator)

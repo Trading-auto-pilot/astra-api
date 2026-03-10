@@ -6,10 +6,18 @@ const https = require("https");
 const { asBool, asInt } = require("../../shared/helpers");
 
 class IbkrConnectivity {
-  constructor({ logger, getSetting, publishTelemetry, getEnv, getStatus }) {
+  constructor({
+    logger,
+    getSetting,
+    publishTelemetry,
+    publishHook,
+    getEnv,
+    getStatus,
+  }) {
     this.logger = logger;
     this.getSetting = getSetting;
     this.publishTelemetry = publishTelemetry;
+    this.publishHook = publishHook;
     this.getEnv = getEnv;
     this.getStatus = getStatus;
     this._timer = null;
@@ -17,6 +25,7 @@ class IbkrConnectivity {
     this._lastIntervalMs = null;
     this._client = null;
     this._reauthInFlight = null;
+    this._disconnectHookSent = false;
     this.state = {
       gwStatus: "GW_DOWN",
       gwStatusCode: null,
@@ -114,6 +123,65 @@ class IbkrConnectivity {
     } catch (err) {
       this.logger.warning?.(
         `[connectivity] telemetry publish failed (combined): ${err?.message || String(err)}`
+      );
+    }
+  }
+
+  async _emitFirstDisconnectionHookIfNeeded() {
+    const ssodhAuthStatus = this.state?.lastSsodhInitPayload?.authStatus?.status;
+    const disconnected = Number(ssodhAuthStatus) === 401;
+    const reconnected =
+      Number(this.state.authStatusCode) === 200 &&
+      this.state.authenticated === true &&
+      this.state.connected === true;
+
+    if (reconnected && this._disconnectHookSent) {
+      this._disconnectHookSent = false;
+      this.logger.info(
+        "[connectivity] connection restored: disconnection hook flag reset"
+      );
+    }
+
+    if (!disconnected || this._disconnectHookSent) {
+      return;
+    }
+
+    if (typeof this.publishHook !== "function") {
+      this.logger.warning?.(
+        "[connectivity] publishHook missing: cannot publish disconnection hook"
+      );
+      return;
+    }
+
+    const payload = {
+      severity: "warning",
+      message:
+        "IBKR disconnected: auth status is 401 during ssodh init/auth check",
+      authStatus: {
+        status: this.state.authStatusCode,
+        data: this.state.lastAuthPayload,
+        error: this.state.authError,
+        at: this.state.lastAuthAt,
+      },
+      tickle: {
+        status: this.state.lastTickleStatus,
+        data: this.state.lastTicklePayload,
+        error: this.state.lastTickleError,
+        at: this.state.lastTickleAt,
+      },
+      ssodhInit: this.state.lastSsodhInitPayload || null,
+      lastSsodhInitAt: this.state.lastSsodhInitAt || null,
+    };
+
+    try {
+      await this.publishHook("IBKR.AUTH.DISCONNECTED", payload);
+      this._disconnectHookSent = true;
+      this.logger.warning?.(
+        "[connectivity] hook published: IBKR.AUTH.DISCONNECTED"
+      );
+    } catch (err) {
+      this.logger.warning?.(
+        `[connectivity] disconnection hook publish failed: ${err?.message || String(err)}`
       );
     }
   }
@@ -303,6 +371,7 @@ class IbkrConnectivity {
       await this._checkAuth();
       await this._tickleIfDue(settings.tickleIntervalMs);
       await this._ssodhInitIfDue(settings.ssodhInitIntervalMs);
+      await this._emitFirstDisconnectionHookIfNeeded();
       await this._emitCombinedTelemetry();
     } catch (err) {
       this.logger.error(

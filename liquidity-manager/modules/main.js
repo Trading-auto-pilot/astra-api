@@ -27,6 +27,7 @@ class LiquidityManager extends BaseService {
 
     this.historyDays = Number(process.env.LIQUIDITY_HISTORY_DAYS) || 365;
     this.providerMode = process.env.LIQUIDITY_PROVIDER_MODE || "live";
+    this.redisLiquidityTtlSec = Number(process.env.LIQUIDITY_REDIS_TTL_SEC) || (23 * 60 * 60 + 59 * 60);
 
     this.repository = createLiquidityScoreRepository({ logger: this.logger });
     this.engine = new LiquidityScoreEngine({
@@ -61,7 +62,11 @@ class LiquidityManager extends BaseService {
   // =====================================================
 
   async getLiquidityScore() {
-    return this.repository.getLatest();
+    const latest = await this.repository.getLatest();
+    if (latest) {
+      await this._cacheLiquiditySnapshot(latest, { source: "getLatest" });
+    }
+    return latest;
   }
 
   async recomputeLiquidityScore({ reason = "manual", onProgress } = {}) {
@@ -69,10 +74,39 @@ class LiquidityManager extends BaseService {
     const snapshot = await this.engine.computeScore({ onProgress });
     await this.repository.saveSnapshot(snapshot);
     await this.repository.prune({ historyDays: this.historyDays });
+    await this._cacheLiquiditySnapshot(snapshot, { source: "recompute", reason });
     this.logger.info(
       `[recomputeLiquidityScore] reason=${reason} score=${snapshot.score} riskRegime=${snapshot.riskRegime} confidence=${snapshot.confidence}`
     );
     return snapshot;
+  }
+
+  async _cacheLiquiditySnapshot(snapshot, meta = {}) {
+    if (!snapshot || !this.bus || typeof this.bus.set !== "function" || typeof this.bus.key !== "function") {
+      return;
+    }
+
+    const ttlSec = Math.max(60, Number(this.redisLiquidityTtlSec) || 60);
+    const redisKey = this.bus.key("liquidity-manager", "liquidity-score", "latest");
+    const payload = {
+      ...snapshot,
+      cacheMeta: {
+        ttlSec,
+        cachedAt: new Date().toISOString(),
+        ...meta,
+      },
+    };
+
+    try {
+      await this.bus.set(redisKey, payload, { EX: ttlSec });
+      this.logger.debug?.(
+        `[_cacheLiquiditySnapshot] cached key=${redisKey} ttlSec=${ttlSec}`
+      );
+    } catch (err) {
+      this.logger.warning?.(
+        `[_cacheLiquiditySnapshot] redis set failed key=${redisKey}: ${err?.message || String(err)}`
+      );
+    }
   }
 
   async getLiquidityScoreHistory({ days = 30 } = {}) {

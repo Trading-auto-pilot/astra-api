@@ -1,8 +1,9 @@
 {
   "lastUpdate": "07/03/2026",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "microservice": "liquidity-manager",
   "note": [
-    "v.1.0.0 Initial release using BaseService"
+    "v.1.0.0 Initial release using BaseService",
+    "v.1.0.1 Add persistence on REDIS for 24h"
   ]
 }

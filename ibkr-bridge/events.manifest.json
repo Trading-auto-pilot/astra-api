@@ -1,0 +1,33 @@
+{
+  "service": "ibkr-bridge",
+  "version": "1.0.0",
+  "channel": "${ENV}.${MICROSERVICE_NAME}.events",
+  "envelope": {
+    "eventKey": "string (service.eventId)",
+    "eventId": "string",
+    "service": "string",
+    "env": "string",
+    "ts": "ISO-8601 datetime",
+    "severity": "info|warning|error",
+    "correlationId": "string",
+    "payload": "object"
+  },
+  "events": [
+    {
+      "eventId": "IBKR.AUTH.DISCONNECTED",
+      "eventKey": "ibkr-bridge.IBKR.AUTH.DISCONNECTED",
+      "severity": "warning",
+      "description": "Pubblicato una sola volta per ciclo di disconnessione quando ssodhInit.authStatus.status=401. Il flag viene resettato alla riconnessione.",
+      "channels": ["hooks (event=IBKR.AUTH.DISCONNECTED)"],
+      "hookEvent": "IBKR.AUTH.DISCONNECTED",
+      "payloadSchema": {
+        "severity": "warning",
+        "message": "string",
+        "authStatus": "object {status,data,error,at}",
+        "tickle": "object {status,data,error,at}",
+        "ssodhInit": "object",
+        "lastSsodhInitAt": "ISO-8601 datetime|null"
+      }
+    }
+  ]
+}

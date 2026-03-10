@@ -1,6 +1,7 @@
 // modules/main.js
 "use strict";
 
+const { randomUUID } = require("crypto");
 const BaseService = require("../../shared/BaseService");
 const { getSetting } = require("../../shared/loadSettings");
 const IbkrConnectivity = require("./connectivity");
@@ -39,9 +40,33 @@ class IbkrBridge extends BaseService {
       getSetting,
       publishTelemetry: async (payload) =>
         this.bus.publish(this.redisTelemetryChannel, payload),
+      publishHook: async (event, payload) =>
+        this._publishHook(event, payload),
       getEnv: () => this.env,
       getStatus: () => this._status,
     });
+  }
+
+  /**
+   * Publish a hook message to `${env}.hooks` channel (fail-soft).
+   * @param {string} event
+   * @param {object} payload
+   */
+  async _publishHook(event, payload = {}) {
+    try {
+      const channel = `${this.env}.hooks`;
+      await this.bus.publish(channel, {
+        event,
+        source: "ibkr-bridge",
+        ts: new Date().toISOString(),
+        correlationId: randomUUID(),
+        ...payload,
+      });
+    } catch (err) {
+      this.logger.warning(
+        `[_publishHook] ${event}: ${err?.message || String(err)}`
+      );
+    }
   }
 
   /**

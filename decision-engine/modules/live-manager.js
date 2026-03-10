@@ -324,23 +324,38 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
     ibkrBridgeUrl,
   } = deps;
   if (!bus || typeof bus.get !== "function" || typeof bus.set !== "function") return false;
-  if (!liveState.pipeId || !liveState.userId || !liveState.asOfDate) return false;
+  if (!liveState.pipeId || !liveState.userId || !liveState.asOfDate) {
+    logger?.warning?.(
+      `[live] updateSnapshot skipped ticker=${ticker}: liveState non pronto ` +
+      `(pipeId=${liveState.pipeId} userId=${liveState.userId} asOfDate=${liveState.asOfDate})`
+    );
+    return false;
+  }
 
   const key = buildSpotFinderRedisKey(bus, liveState.pipeId, liveState.userId, liveState.asOfDate);
   const payload = await bus.get(key);
-  if (!payload || !Array.isArray(payload?.results)) return false;
+  if (!payload || !Array.isArray(payload?.results)) {
+    logger?.warning?.(`[live] updateSnapshot skipped ticker=${ticker}: payload Redis mancante o invalido (key=${key})`);
+    return false;
+  }
 
   const results = payload.results;
   const idx = results.findIndex(
     (row) => String(row?.ticker || row?.symbol || "").toUpperCase() === ticker
   );
-  if (idx === -1) return false;
+  if (idx === -1) {
+    logger?.warning?.(`[live] updateSnapshot skipped ticker=${ticker}: non trovato nei results Redis (${results.length} entries, keys=${results.slice(0,3).map(r=>r?.ticker||r?.symbol).join(",")}...)`);
+    return false;
+  }
 
   const current = results[idx] || {};
   const patternRoot = current?.signal?.pattern ? "signal" : current?.pattern ? "pattern" : null;
   const basePattern =
     patternRoot === "signal" ? current.signal.pattern : patternRoot === "pattern" ? current.pattern : null;
-  if (!basePattern) return false;
+  if (!basePattern) {
+    logger?.warning?.(`[live] updateSnapshot skipped ticker=${ticker}: basePattern mancante (patternRoot=${patternRoot})`);
+    return false;
+  }
 
   const breakLevel = asNumber(
     basePattern?.breakLevel ?? basePattern?.breakoutEntry?.breakLevel,
@@ -366,6 +381,20 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
   const flagOk = basePattern?.flagOk ?? null;
   const actionableBreakout = Boolean(trendOk && flagOk && breakoutOk);
   const actionablePullback = Boolean(trendOk && flagOk && pullbackOk);
+
+  // Log retracement evaluation ogni volta che il prezzo entra nell'area
+  if (pullbackOk) {
+    logger?.info?.(
+      `[live] RETRACEMENT AREA ticker=${ticker} price=${price} entryLimit=${retracementEntryLimit}` +
+      ` | trendOk=${trendOk} flagOk=${flagOk} → actionablePullback=${actionablePullback}`
+    );
+  }
+  if (breakoutOk) {
+    logger?.info?.(
+      `[live] BREAKOUT AREA ticker=${ticker} price=${price} breakLevel=${breakLevel}` +
+      ` | trendOk=${trendOk} flagOk=${flagOk} → actionableBreakout=${actionableBreakout}`
+    );
+  }
 
   const prevFlags = liveState.lastFlagByTicker.get(ticker) || {};
   const nextFlags = { trendOk, flagOk, breakoutOk, pullbackOk };
@@ -501,13 +530,34 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
       asNumber(nextPattern?.breakoutEntry?.volumeThreshold, null) ??
       asNumber(basePattern?.breakoutEntry?.volumeThreshold, null);
 
+    if (!entryMode) {
+      if (pullbackOk || breakoutOk) {
+        logger?.info?.(
+          `[live] NO ENTRY ticker=${ticker} price=${price} livePrice=${livePrice}` +
+          ` pullbackOk=${pullbackOk} breakoutOk=${breakoutOk} trendOk=${trendOk} flagOk=${flagOk}` +
+          ` — prezzo in zona ma flags non actionable`
+        );
+      }
+    }
+
     if (entryMode && Number.isFinite(entryLimit) && Number.isFinite(livePrice)) {
       const volumeOkLive =
         !Number.isFinite(liveVolumeThreshold) || (Number.isFinite(liveVolume) && liveVolume >= liveVolumeThreshold);
       const priceOkLive = entryMode === "pullback" ? livePrice <= entryLimit : livePrice >= entryLimit;
+      if (!priceOkLive || !volumeOkLive) {
+        logger?.info?.(
+          `[live] ENTRY PENDING ticker=${ticker} mode=${entryMode} entryLimit=${entryLimit}` +
+          ` livePrice=${livePrice} priceOkLive=${priceOkLive}` +
+          ` liveVolume=${liveVolume} liveVolumeThreshold=${liveVolumeThreshold} volumeOkLive=${volumeOkLive}`
+        );
+      }
       if (priceOkLive && volumeOkLive) {
         const alertKey = `${ticker}:${entryMode}:${entryLimit}`;
         const lastAlert = liveState.lastAlertByKey.get(alertKey) || 0;
+        const cooldownRemaining = ALERT_COOLDOWN_MS - (Date.now() - lastAlert);
+        if (cooldownRemaining > 0) {
+          logger?.info?.(`[live] ENTRY IN COOLDOWN ticker=${ticker} mode=${entryMode} — riprova tra ${Math.ceil(cooldownRemaining / 1000)}s`);
+        }
         if (Date.now() - lastAlert > ALERT_COOLDOWN_MS) {
 
           // --- riskOn check (cached with TTL) ---

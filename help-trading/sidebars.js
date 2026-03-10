@@ -707,6 +707,7 @@ const sidebars = {
       link: {type: 'doc', id: 'roadmap/overview'},
       items: [
         'roadmap/mobile',
+        'roadmap/strategy-to-enter',
         'roadmap/decision-engine-gestione-ordini-aperti',
         'roadmap/market-simulator',
         {
