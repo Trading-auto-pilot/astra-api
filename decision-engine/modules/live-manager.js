@@ -10,12 +10,24 @@ const http = require("http");
 const {
   SNAPSHOT_TTL_SECONDS,
   ALERT_COOLDOWN_MS,
+  DEFAULT_SIGNAL_TF,
+  SIGNAL_LOOKBACK_DAYS,
+  SIGNAL_LOOKBACK_BARS,
+  MIN_LOOKBACK_BARS,
+  DEFAULT_ATR_PERIOD,
+  DEFAULT_SWING_WINDOW,
+  DEFAULT_FLAG_ATR_K,
+  DEFAULT_FLAG_PCT_K,
+  DEFAULT_VOL_MULT,
 } = require("./constants");
-const { asNumber } = require("./helpers");
+const { asNumber, normalizeAndSortCandles, subDays } = require("./helpers");
 const { buildSpotFinderRedisKey } = require("./job-manager");
+const { detectTrendFlagBreakout } = require("./zones");
 
 const RISK_ON_TTL_MS = Number(process.env.RISK_ON_TTL_MS) || 60_000;
 const INTRADAY_TF = process.env.LIVE_INTRADAY_TF || "1min";
+const LIVE_SIGNAL_CANDLE_CACHE_TTL_MS =
+  Number(process.env.LIVE_SIGNAL_CANDLE_CACHE_TTL_MS) || 120_000;
 
 // Opening volatility block: skip BREAKOUT signals during first N min of market open.
 // MARKET_OPEN_UTC: NYSE open = "14:30" (ET standard) or "13:30" (ET daylight).
@@ -221,6 +233,7 @@ const liveState = {
   lastLiveByTicker: new Map(),
   lastAlertByKey: new Map(),
   lastFlagByTicker: new Map(),
+  signalCandlesByTicker: new Map(),
   lastRiskOnCheck: { ts: 0, riskRegime: null, score: null },
   ibkrAccountCheck: { ts: 0, isPaper: null, accountId: null, ttlMs: 5 * 60 * 1000 },
   lastOpenBlockNotifByKey: new Map(),
@@ -228,7 +241,11 @@ const liveState = {
   lastEventBlockNotifByKey: new Map(),
 };
 
-const resetLiveState = () => {
+const resetLiveState = (reason = "unspecified", logger = null) => {
+  logger?.info?.(
+    `[live] resetLiveState reason=${reason} prevActive=${liveState.active} ` +
+    `prevPipeId=${liveState.pipeId ?? "-"} prevTickers=${liveState.tickers.size}`
+  );
   liveState.active = false;
   liveState.pipeId = null;
   liveState.asOfDate = null;
@@ -237,6 +254,7 @@ const resetLiveState = () => {
   liveState.exchangeByTicker = new Map();
   liveState.lastRunByTicker.clear();
   liveState.runningByTicker.clear();
+  liveState.signalCandlesByTicker.clear();
 };
 
 const activateLiveState = ({ pipeId, asOfDate, userId, tickers, exchangeByTicker, query, authHeaders }) => {
@@ -250,6 +268,7 @@ const activateLiveState = ({ pipeId, asOfDate, userId, tickers, exchangeByTicker
   liveState.authHeaders = authHeaders;
   liveState.lastRunByTicker.clear();
   liveState.runningByTicker.clear();
+  liveState.signalCandlesByTicker.clear();
 };
 
 const getLiveStatus = (pipeId) => ({
@@ -307,6 +326,150 @@ const publishEvent = async ({
   );
 };
 
+const recalcFlagOkFromLiveSnapshot = async ({
+  ticker,
+  price,
+  volume,
+  cachemanagerUrl,
+  logger,
+}) => {
+  if (!cachemanagerUrl) return null;
+  try {
+    const signalTf =
+      String(liveState.query?.signalTf || DEFAULT_SIGNAL_TF).trim() || DEFAULT_SIGNAL_TF;
+    const signalLookbackDays = Math.max(
+      1,
+      asNumber(liveState.query?.signalLookbackDays, SIGNAL_LOOKBACK_DAYS)
+    );
+    const signalLookbackBars = Math.max(
+      MIN_LOOKBACK_BARS,
+      asNumber(liveState.query?.signalLookbackBars, SIGNAL_LOOKBACK_BARS)
+    );
+    const atrPeriod = Math.max(2, asNumber(liveState.query?.atrPeriod, DEFAULT_ATR_PERIOD));
+    const swingWindow = Math.max(1, asNumber(liveState.query?.swingWindow, DEFAULT_SWING_WINDOW));
+    const flagAtrK = asNumber(liveState.query?.flagAtrK, DEFAULT_FLAG_ATR_K);
+    const flagPctK = asNumber(liveState.query?.flagPctK, DEFAULT_FLAG_PCT_K);
+    const volMult = asNumber(liveState.query?.volMult, DEFAULT_VOL_MULT);
+    const exchange = liveState.exchangeByTicker.get(ticker);
+
+    let baseCandles = null;
+    const cached = liveState.signalCandlesByTicker.get(ticker);
+    const cacheFresh =
+      cached &&
+      Array.isArray(cached.candles) &&
+      cached.candles.length > 0 &&
+      Date.now() - (cached.fetchedAt || 0) <= LIVE_SIGNAL_CANDLE_CACHE_TTL_MS &&
+      cached.tf === signalTf;
+
+    if (cacheFresh) {
+      baseCandles = cached.candles;
+      logger?.trace?.(
+        `[live][trace] flag recalc using in-memory candles ticker=${ticker} tf=${signalTf} count=${baseCandles.length}`
+      );
+    } else {
+      const endDate = new Date();
+      const startDate = subDays(endDate, signalLookbackDays);
+      const query = new URLSearchParams({
+        symbol: ticker,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        tf: signalTf,
+      });
+      if (exchange) query.set("exchange", String(exchange));
+
+      const resp = await httpGetJson(`${cachemanagerUrl}/candles?${query.toString()}`, 15000);
+      if (resp.status !== 200 || !Array.isArray(resp.data) || resp.data.length === 0) {
+        logger?.trace?.(
+          `[live][trace] flag recalc skipped ticker=${ticker} status=${resp.status} candles=${Array.isArray(resp.data) ? resp.data.length : 0}`
+        );
+        if (cached && Array.isArray(cached.candles) && cached.candles.length > 0) {
+          baseCandles = cached.candles;
+          logger?.warning?.(
+            `[live] flag recalc fallback to stale candles ticker=${ticker} ageMs=${Date.now() - (cached.fetchedAt || 0)}`
+          );
+        } else {
+          return null;
+        }
+      } else {
+        const normalized = normalizeAndSortCandles(resp.data);
+        if (!normalized.length) return null;
+        baseCandles =
+          normalized.length > signalLookbackBars
+            ? normalized.slice(-signalLookbackBars)
+            : normalized.slice();
+        liveState.signalCandlesByTicker.set(ticker, {
+          tf: signalTf,
+          fetchedAt: Date.now(),
+          candles: baseCandles,
+        });
+      }
+    }
+
+    const candles = baseCandles.map((c) => ({ ...c }));
+
+    const lastIdx = candles.length - 1;
+    if (lastIdx >= 0 && Number.isFinite(price)) {
+      const last = { ...candles[lastIdx] };
+      if (Number.isFinite(last.high)) last.high = Math.max(last.high, price);
+      if (Number.isFinite(last.low)) last.low = Math.min(last.low, price);
+      last.close = price;
+      if (Number.isFinite(volume)) last.volume = volume;
+      candles[lastIdx] = last;
+    }
+
+    const pattern = detectTrendFlagBreakout(candles, {
+      atrPeriod,
+      swingWindow,
+      flagAtrK,
+      flagPctK,
+      volMult,
+    });
+    const flagRange = asNumber(pattern?.debug?.flagRange, null);
+    const flagThresholdUsed = asNumber(pattern?.debug?.flagThresholdUsed, null);
+    const slope = asNumber(pattern?.debug?.slope, null);
+    const atrLast = asNumber(pattern?.debug?.atrLast, null);
+    const priceLast = asNumber(pattern?.debug?.priceLast, null);
+    const slopeThreshold =
+      Number.isFinite(atrLast) && Number.isFinite(priceLast)
+        ? Math.max(0.05 * atrLast, 0.0005 * priceLast)
+        : null;
+    const avgVolFlag = asNumber(pattern?.debug?.avgVolFlag, null);
+    const avgVolImpulse = asNumber(pattern?.debug?.avgVolImpulse, null);
+    const condRange =
+      Number.isFinite(flagRange) && Number.isFinite(flagThresholdUsed)
+        ? flagRange < flagThresholdUsed
+        : null;
+    const condSlope =
+      Number.isFinite(slope) && Number.isFinite(slopeThreshold)
+        ? slope >= -slopeThreshold
+        : null;
+    const condVolume =
+      Number.isFinite(avgVolFlag) && Number.isFinite(avgVolImpulse)
+        ? avgVolFlag < 0.9 * avgVolImpulse
+        : null;
+    logger?.trace?.(
+      `[live][trace] flag recalc ticker=${ticker} tf=${signalTf} candles=${candles.length} trendOk=${pattern?.trendOk} flagOk=${pattern?.flagOk} ` +
+      `flagRange=${Number.isFinite(flagRange) ? flagRange : "-"} flagThreshold=${Number.isFinite(flagThresholdUsed) ? flagThresholdUsed : "-"} condRange=${condRange} ` +
+      `slope=${Number.isFinite(slope) ? slope : "-"} slopeThreshold=${Number.isFinite(slopeThreshold) ? slopeThreshold : "-"} condSlope=${condSlope} ` +
+      `avgVolFlag=${Number.isFinite(avgVolFlag) ? avgVolFlag : "-"} avgVolImpulse=${Number.isFinite(avgVolImpulse) ? avgVolImpulse : "-"} condVolume=${condVolume}`
+    );
+    if (pattern?.flagOk === false) {
+      logger?.trace?.(
+        `[live] FLAG KO ticker=${ticker} condRange=${condRange} condSlope=${condSlope} condVolume=${condVolume} ` +
+        `flagRange=${Number.isFinite(flagRange) ? flagRange : "-"} threshold=${Number.isFinite(flagThresholdUsed) ? flagThresholdUsed : "-"} ` +
+        `slope=${Number.isFinite(slope) ? slope : "-"} slopeThreshold=${Number.isFinite(slopeThreshold) ? slopeThreshold : "-"} ` +
+        `avgVolFlag=${Number.isFinite(avgVolFlag) ? avgVolFlag : "-"} avgVolImpulse=${Number.isFinite(avgVolImpulse) ? avgVolImpulse : "-"}`
+      );
+    }
+    return pattern;
+  } catch (err) {
+    logger?.warning?.(
+      `[live] flag recalc failed ticker=${ticker}: ${err?.message || String(err)}`
+    );
+    return null;
+  }
+};
+
 // --- updateSnapshotFlagsFromLive -------------------------------------------
 
 const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, liveData, deps) => {
@@ -324,7 +487,10 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
     ibkrBridgeUrl,
   } = deps;
   if (!bus || typeof bus.get !== "function" || typeof bus.set !== "function") return false;
-  if (!liveState.pipeId || !liveState.userId || !liveState.asOfDate) {
+  const hasPipeId = liveState.pipeId !== null && liveState.pipeId !== undefined;
+  const hasUserId = liveState.userId !== null && liveState.userId !== undefined;
+  const hasAsOfDate = Boolean(liveState.asOfDate);
+  if (!hasPipeId || !hasUserId || !hasAsOfDate) {
     logger?.warning?.(
       `[live] updateSnapshot skipped ticker=${ticker}: liveState non pronto ` +
       `(pipeId=${liveState.pipeId} userId=${liveState.userId} asOfDate=${liveState.asOfDate})`
@@ -333,6 +499,11 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
   }
 
   const key = buildSpotFinderRedisKey(bus, liveState.pipeId, liveState.userId, liveState.asOfDate);
+  logger?.trace?.(
+    `[live][trace] updateSnapshot start ticker=${ticker} key=${key} ` +
+    `price=${Number.isFinite(price) ? price : "-"} volume=${Number.isFinite(volume) ? volume : "-"} ` +
+    `dataMode=${dataMode || "-"} ts=${ts ?? "-"}`
+  );
   const payload = await bus.get(key);
   if (!payload || !Array.isArray(payload?.results)) {
     logger?.warning?.(`[live] updateSnapshot skipped ticker=${ticker}: payload Redis mancante o invalido (key=${key})`);
@@ -349,13 +520,36 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
   }
 
   const current = results[idx] || {};
-  const patternRoot = current?.signal?.pattern ? "signal" : current?.pattern ? "pattern" : null;
+  const patternRoot = current?.signal?.pattern
+    ? "signal"
+    : current?.pattern
+      ? "pattern"
+      : current?.fullResult?.signal?.pattern
+        ? "fullResult.signal"
+        : current?.fullResult?.pattern
+          ? "fullResult.pattern"
+          : null;
   const basePattern =
-    patternRoot === "signal" ? current.signal.pattern : patternRoot === "pattern" ? current.pattern : null;
+    patternRoot === "signal"
+      ? current.signal.pattern
+      : patternRoot === "pattern"
+        ? current.pattern
+        : patternRoot === "fullResult.signal"
+          ? current.fullResult.signal.pattern
+          : patternRoot === "fullResult.pattern"
+            ? current.fullResult.pattern
+            : null;
   if (!basePattern) {
     logger?.warning?.(`[live] updateSnapshot skipped ticker=${ticker}: basePattern mancante (patternRoot=${patternRoot})`);
     return false;
   }
+  const recalculatedPattern = await recalcFlagOkFromLiveSnapshot({
+    ticker,
+    price,
+    volume,
+    cachemanagerUrl,
+    logger,
+  });
 
   const breakLevel = asNumber(
     basePattern?.breakLevel ?? basePattern?.breakoutEntry?.breakLevel,
@@ -378,9 +572,25 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
       : false;
 
   const trendOk = basePattern?.trendOk ?? null;
-  const flagOk = basePattern?.flagOk ?? null;
+  const flagOk =
+    typeof recalculatedPattern?.flagOk === "boolean"
+      ? recalculatedPattern.flagOk
+      : basePattern?.flagOk ?? null;
+  logger?.trace?.(
+    `[live][trace] flag source ticker=${ticker} baseFlagOk=${basePattern?.flagOk} recalculatedFlagOk=${recalculatedPattern?.flagOk} selectedFlagOk=${flagOk}`
+  );
   const actionableBreakout = Boolean(trendOk && flagOk && breakoutOk);
   const actionablePullback = Boolean(trendOk && flagOk && pullbackOk);
+  logger?.trace?.(
+    `[live][trace] levels ticker=${ticker} breakLevel=${Number.isFinite(breakLevel) ? breakLevel : "-"} ` +
+    `buffer=${Number.isFinite(buffer) ? buffer : "-"} retracementEntryLimit=${Number.isFinite(retracementEntryLimit) ? retracementEntryLimit : "-"} ` +
+    `price=${Number.isFinite(price) ? price : "-"} volume=${Number.isFinite(volume) ? volume : "-"} ` +
+    `volumeThreshold=${Number.isFinite(volumeThreshold) ? volumeThreshold : "-"}`
+  );
+  logger?.trace?.(
+    `[live][trace] flags ticker=${ticker} trendOk=${trendOk} flagOk=${flagOk} ` +
+    `breakoutOk=${breakoutOk} pullbackOk=${pullbackOk} actionableBreakout=${actionableBreakout} actionablePullback=${actionablePullback}`
+  );
 
   // Log retracement evaluation ogni volta che il prezzo entra nell'area
   if (pullbackOk) {
@@ -416,6 +626,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
 
   const nextPattern = {
     ...basePattern,
+    flagOk,
     breakoutOk,
     pullbackOk,
     entryBreakoutSuggested:
@@ -451,8 +662,18 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
 
   if (patternRoot === "signal") {
     next.signal = { ...(current.signal || {}), pattern: nextPattern };
-  } else {
+  } else if (patternRoot === "pattern") {
     next.pattern = nextPattern;
+  } else if (patternRoot === "fullResult.signal") {
+    next.fullResult = {
+      ...(current.fullResult || {}),
+      signal: { ...(current.fullResult?.signal || {}), pattern: nextPattern },
+    };
+  } else if (patternRoot === "fullResult.pattern") {
+    next.fullResult = {
+      ...(current.fullResult || {}),
+      pattern: nextPattern,
+    };
   }
 
   if (next?.levels?.breakout) {
@@ -529,6 +750,13 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
     const liveVolumeThreshold =
       asNumber(nextPattern?.breakoutEntry?.volumeThreshold, null) ??
       asNumber(basePattern?.breakoutEntry?.volumeThreshold, null);
+    logger?.trace?.(
+      `[live][trace] entry candidate ticker=${ticker} mode=${entryMode || "-"} ` +
+      `entryLimit=${Number.isFinite(entryLimit) ? entryLimit : "-"} ` +
+      `livePrice=${Number.isFinite(livePrice) ? livePrice : "-"} ` +
+      `liveVolume=${Number.isFinite(liveVolume) ? liveVolume : "-"} ` +
+      `liveVolumeThreshold=${Number.isFinite(liveVolumeThreshold) ? liveVolumeThreshold : "-"}`
+    );
 
     if (!entryMode) {
       if (pullbackOk || breakoutOk) {
@@ -544,6 +772,11 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
       const volumeOkLive =
         !Number.isFinite(liveVolumeThreshold) || (Number.isFinite(liveVolume) && liveVolume >= liveVolumeThreshold);
       const priceOkLive = entryMode === "pullback" ? livePrice <= entryLimit : livePrice >= entryLimit;
+      logger?.trace?.(
+        `[live][trace] entry checks ticker=${ticker} mode=${entryMode} ` +
+        `priceOkLive=${priceOkLive} volumeOkLive=${volumeOkLive} ` +
+        `rule=${entryMode === "pullback" ? "livePrice<=entryLimit" : "livePrice>=entryLimit"}`
+      );
       if (!priceOkLive || !volumeOkLive) {
         logger?.info?.(
           `[live] ENTRY PENDING ticker=${ticker} mode=${entryMode} entryLimit=${entryLimit}` +
@@ -555,6 +788,10 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
         const alertKey = `${ticker}:${entryMode}:${entryLimit}`;
         const lastAlert = liveState.lastAlertByKey.get(alertKey) || 0;
         const cooldownRemaining = ALERT_COOLDOWN_MS - (Date.now() - lastAlert);
+        logger?.trace?.(
+          `[live][trace] cooldown ticker=${ticker} alertKey=${alertKey} ` +
+          `lastAlert=${lastAlert || 0} cooldownRemainingMs=${Math.max(0, cooldownRemaining)}`
+        );
         if (cooldownRemaining > 0) {
           logger?.info?.(`[live] ENTRY IN COOLDOWN ticker=${ticker} mode=${entryMode} — riprova tra ${Math.ceil(cooldownRemaining / 1000)}s`);
         }
@@ -583,6 +820,9 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
           }
 
           if (riskRegime && riskRegime !== "RISK_ON") {
+            logger?.trace?.(
+              `[live][trace] blocked by risk regime ticker=${ticker} riskRegime=${riskRegime} score=${riskScore}`
+            );
             logger?.warning?.(
               `[live] BUY SIGNAL BLOCKED ticker=${ticker} mode=${entryMode.toUpperCase()} ` +
               `— riskRegime=${riskRegime} score=${riskScore} (not RISK_ON)`
@@ -840,6 +1080,9 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
           );
 
           const correlationId = randomUUID();
+          logger?.trace?.(
+            `[live][trace] signal ready ticker=${ticker} mode=${entryMode} correlationId=${correlationId}`
+          );
           const hookPayload = {
             event: "ENTRY_SIGNAL",
             source: serviceName,
@@ -921,6 +1164,9 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
 
           // --- Send bracket order to broker-executor-ibkr (fire-and-forget) ---
           if (brokerExecutorUrl && Number.isFinite(entryLimit) && Number.isFinite(stopLoss)) {
+            logger?.trace?.(
+              `[live][trace] broker order path enabled ticker=${ticker} brokerExecutorUrl=${brokerExecutorUrl}`
+            );
             (async () => {
               // --- GUARDRAIL: verify IBKR account is PAPER (DU prefix) before placing orders ---
               const now = Date.now();
@@ -1115,7 +1361,17 @@ function createMarketDataHandler(deps) {
   } = deps;
 
   return async (parsed, raw) => {
-    if (!liveState.active) return;
+    logger?.info?.(
+      `[live] handler invoked active=${liveState.active} pipeId=${liveState.pipeId ?? "-"} tickers=${liveState.tickers.size}`
+    );
+    logger?.trace?.(
+      `[live][trace] handler invoked active=${liveState.active} ` +
+      `pipeId=${liveState.pipeId ?? "-"} tickers=${liveState.tickers.size}`
+    );
+    if (!liveState.active) {
+      logger?.trace?.("[live][trace] market data ignored: liveState inactive");
+      return;
+    }
     let parsedPayload =
       parsed && typeof parsed === "object" ? parsed : null;
     if (!parsedPayload && typeof raw === "string") {
@@ -1125,11 +1381,19 @@ function createMarketDataHandler(deps) {
         parsedPayload = null;
       }
     }
-    if (!parsedPayload) return;
+    if (!parsedPayload) {
+      logger?.trace?.("[live][trace] market data ignored: payload not parseable");
+      return;
+    }
     const dataMode = String(parsedPayload?.dataMode || parsedPayload?.mode || "").toLowerCase();
 
     const ticker = String(parsedPayload?.ticker || parsedPayload?.symbol || "").toUpperCase();
-    if (!ticker || !liveState.tickers.has(ticker)) return;
+    if (!ticker || !liveState.tickers.has(ticker)) {
+      logger?.trace?.(
+        `[live][trace] market data ignored: ticker=${ticker || "-"} tracked=${liveState.tickers.has(ticker)}`
+      );
+      return;
+    }
 
     const marketPayload = parsedPayload?.payload || parsedPayload?.data || {};
     const last = asNumber(marketPayload?.[31] ?? marketPayload?.["31"], null);
@@ -1139,6 +1403,11 @@ function createMarketDataHandler(deps) {
     if (!Number.isFinite(volume)) {
       volume = asNumber(marketPayload?.[87] ?? marketPayload?.["87"], null);
     }
+    logger?.trace?.(
+      `[live][trace] market data received ticker=${ticker} dataMode=${dataMode || "-"} ` +
+      `last=${Number.isFinite(last) ? last : "-"} bid=${Number.isFinite(bid) ? bid : "-"} ` +
+      `ask=${Number.isFinite(ask) ? ask : "-"} volume=${Number.isFinite(volume) ? volume : "-"} ts=${parsedPayload?.ts ?? "-"}`
+    );
 
     if (dataMode === "live") {
       liveState.lastLiveByTicker.set(ticker, {
@@ -1148,18 +1417,30 @@ function createMarketDataHandler(deps) {
         ask,
         volume,
       });
+      logger?.trace?.(
+        `[live][trace] live quote cached ticker=${ticker} ts=${parsedPayload?.ts ?? Date.now()}`
+      );
       return;
     }
 
-    if (dataMode !== "snapshot") return;
+    if (dataMode !== "snapshot") {
+      logger?.trace?.(
+        `[live][trace] market data ignored: unsupported dataMode=${dataMode || "-"} ticker=${ticker}`
+      );
+      return;
+    }
 
     const now = Date.now();
-    const lastRun = liveState.lastRunByTicker.get(ticker) || 0;
-    if (now - lastRun < liveState.minIntervalMs) return;
-    if (liveState.runningByTicker.has(ticker)) return;
+    if (liveState.runningByTicker.has(ticker)) {
+      logger?.trace?.(`[live][trace] snapshot skipped ticker=${ticker}: run already in progress`);
+      return;
+    }
 
     const price = Number.isFinite(last) ? last : Number.isFinite(ask) ? ask : bid;
-    if (!Number.isFinite(price)) return;
+    if (!Number.isFinite(price)) {
+      logger?.trace?.(`[live][trace] snapshot ignored ticker=${ticker}: no valid price from payload`);
+      return;
+    }
 
     liveState.lastRunByTicker.set(ticker, now);
     liveState.runningByTicker.add(ticker);

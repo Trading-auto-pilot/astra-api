@@ -1,6 +1,6 @@
 {
-  "lastUpdate": "08/03/2026", 
-  "version": "2.0.2",
+  "lastUpdate": "11/03/2026", 
+  "version": "3.0.0",
   "microservice": "decision-engine",
 
   "note": [
@@ -9,6 +9,7 @@
     "v.1.1.0 Fix generl settings, Call API asincrone",
     "v.2.0.0 Verifica eventi a calendario prima di acquisto, richiamo capital-manager per capitale da investire. Fix invio ordini",
     "v.2.0.1 Minor Fix",
-    "v.2.0.2 Fix entry on Pullback, didn't work"
+    "v.2.0.2 Fix entry on Pullback, didn't work",
+    "v.3.0.0 Implementata interfaccia con market-simulator per simulazione mercato"
   ]
 }

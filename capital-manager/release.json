@@ -1,8 +1,9 @@
 {
-  "lastUpdate": "07/03/2026",
-  "version": "1.0.0",
+  "lastUpdate": "11/03/2026",
+  "version": "1.0.1",
   "microservice": "capital-manager",
   "note": [
-    "v.1.0.0 Initial release using BaseService"
+    "v.1.0.0 Initial release using BaseService",
+    "v.1.0.1 Cambiata porta da 3010 a 3005"
   ]
 }

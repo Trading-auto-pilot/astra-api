@@ -952,7 +952,7 @@ services:
     networks:
       - trading_net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3010/status/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3005/status/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -962,7 +962,7 @@ services:
       - "traefik.http.routers.capital-manager.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/capital-manager`)"
       - "traefik.http.routers.capital-manager.entrypoints=websecure"
       - "traefik.http.routers.capital-manager.tls.certresolver=le"
-      - "traefik.http.services.capital-manager.loadbalancer.server.port=3010"
+      - "traefik.http.services.capital-manager.loadbalancer.server.port=3005"
       - "traefik.http.middlewares.capital-manager-stripprefix.stripPrefix.prefixes=/capital-manager"
       - "traefik.http.routers.capital-manager.middlewares=capital-manager-stripprefix,cors-default@docker,auth-forward@docker"
       - "traefik.http.routers.capital-manager-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/capital-manager`) && Method(`OPTIONS`)"

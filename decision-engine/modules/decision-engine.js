@@ -404,9 +404,14 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
       req._internalUserId = Number(userIdOverride);
       if (!req.headers["x-user-id"]) req.headers["x-user-id"] = String(userIdOverride);
     }
-    if (liveState.pipeId && liveState.pipeId !== pipeId) {
+    const hasLivePipe = liveState.pipeId !== null && liveState.pipeId !== undefined;
+    if (hasLivePipe && liveState.pipeId !== pipeId) {
       return res.status(409).json({ ok: false, error: "live process bound to another pipeId" });
     }
+    logger?.info?.(
+      `[decision-engine] stopLive requested pipeId=${pipeId} userIdOverride=${userIdOverride ?? "-"} ` +
+      `active=${liveState.active} currentPipeId=${liveState.pipeId ?? "-"}`
+    );
     try {
       const headers = pickAuthHeaders(req);
       await axios.post(
@@ -419,7 +424,7 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
         `[decision-engine] live stop unsubscribe failed ${err?.message || String(err)}`
       );
     }
-    resetLiveState();
+    resetLiveState("stopLive route", logger);
     return res.json({ ok: true, active: false });
   };
 
@@ -677,9 +682,13 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
       asBool(req?.body?.enabled, undefined) ??
       asBool(req?.body?.active, undefined) ??
       asBool(req?.query?.enabled, true);
+    logger?.info?.(
+      `[decision-engine] POST /live/${pipeId} enable=${enable} userId=${userId} ` +
+      `date=${req.query?.date || req.query?.asOfDate || req.query?.scoreDate || "-"}`
+    );
 
     if (!enable) {
-      resetLiveState();
+      resetLiveState("POST /live disabled", logger);
       return res.json({ ok: true, active: false });
     }
 

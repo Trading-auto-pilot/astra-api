@@ -865,6 +865,50 @@ services:
       timeout: 10s
       retries: 5
 
+  market-simulator:
+    image: expovin/market-simulator:${MARKET_SIMULATOR_VERSION}
+    container_name: market-simulator
+    restart: unless-stopped
+    ports:
+      - "3010:3010"
+    networks:
+      - trading-net
+    depends_on:
+      datahub:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - REDIS_URL=redis://redis:6379
+      - DATAHUB_URL=http://datahub:3000
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - STRATEGYUTILS_URL=http://strategyUtils:3007
+      - ALERTINGSERVICE_URL=http://alertingservice:3008
+      - TICKERSCANNER_URL=http://tickerscanner:3013
+      - SCHEDULER_URL=http://scheduler:3014
+      - AUTHSERVICE_URL=http://authService:3015
+      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+      - IBKRBRIDGE_URL=http://ibkr-bridge:3017
+      - DECISIONENGINE_URL=http://decision-engine:3018
+      - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
+      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - MARKETDATASERVICE_URL=http://market-data-service:3020
+      - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
+      - MCPGATEWAY_URL=http://mcp-gateway:3004
+      - CAPITALMANAGER_URL=http://capital-manager:3005
+      - IBKRLOGINDESKTOP_URL=http://ibkr-login-desktop:3009
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3010/status/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
 
 volumes:
   mysql_data:

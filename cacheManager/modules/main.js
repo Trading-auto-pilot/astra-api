@@ -914,6 +914,18 @@ class CacheManager {
       return ranges;
     }
 
+    const tfLower = String(tf || "").toLowerCase();
+    const isIntraday = tfLower.includes("min") || tfLower.includes("hour");
+    // For intraday ranges, edge gaps often represent market-closed windows
+    // (overnight/weekend). If we already have candles, avoid forcing remote fetches
+    // for those non-tradable border intervals.
+    if (isIntraday) {
+      this.logger.log(
+        `[detectMissingRanges] TF=${tf} intraday with ${sorted.length} candles: skip edge-gap refill`
+      );
+      return [];
+    }
+
     const ranges = [];
     const startTs = new Date(startDate).getTime();
     const endTs = new Date(endDate).getTime();

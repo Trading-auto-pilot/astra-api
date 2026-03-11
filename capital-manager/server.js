@@ -10,7 +10,7 @@ const { app, getService, logger } = createMicroserviceServer({
   microservice: "capital-manager",
   moduleName: "RESTServer",
   moduleVersion: "1.0.0",
-  defaultPort: 3010,
+  defaultPort: 3005,
 
   routes: [
     {

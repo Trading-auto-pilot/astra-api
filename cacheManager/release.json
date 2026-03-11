@@ -1,6 +1,6 @@
 {
-  "lastUpdate": "07/03/2026", 
-  "version": "2.4.1",
+  "lastUpdate": "11/03/2026", 
+  "version": "2.4.2",
   "microservice": "cacheManager",
 
   "note": [
@@ -11,6 +11,7 @@
     "2.2.0 Aggiunta del provider IBKR per dati storici",
     "2.3.0 Lettura contenuto file in cache L2, Hygiene sui file",
     "2.4.0 Refactoring completo fatto con Claud.ai, taglio su sole candele richieste",
-    "2.4.1 Aggiunta messaggi su canale HOOK per alerting piu fix minori"
+    "2.4.1 Aggiunta messaggi su canale HOOK per alerting piu fix minori",
+    "2.4.2 Fix per candele sui bordi"
   ]
 }

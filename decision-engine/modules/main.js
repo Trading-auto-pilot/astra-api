@@ -359,6 +359,9 @@ class DecisionEngine {
   addMarketDataHandler(handler) {
     if (typeof handler !== "function") return () => {};
     this._marketDataHandlers.add(handler);
+    this.logger.info(
+      `[marketData] handler added totalHandlers=${this._marketDataHandlers.size}`
+    );
     return () => this._marketDataHandlers.delete(handler);
   }
 
@@ -373,12 +376,37 @@ class DecisionEngine {
     const printable =
       typeof payload === "string" ? payload : JSON.stringify(payload);
     this.logger.trace(`[marketData][${this.redisMarketDataChannel}] ${printable}`);
+    this.logger.trace(
+      `[marketData] dispatch handlers=${this._marketDataHandlers.size} ` +
+      `dataOn=${this.communicationChannels?.data?.on === true}`
+    );
+    if (this._marketDataHandlers.size === 0) {
+      this.logger.warning(
+        `[marketData] message received but no handlers registered on ${this.redisMarketDataChannel}`
+      );
+    }
+    let idx = 0;
     for (const handler of this._marketDataHandlers) {
+      idx += 1;
       try {
-        handler(parsed, raw);
+        this.logger.trace(
+          `[marketData] invoking handler#${idx} type=${handler?.constructor?.name || typeof handler}`
+        );
+        const out = handler(parsed, raw);
+        if (out && typeof out.then === "function") {
+          out
+            .then(() => {
+              this.logger.trace(`[marketData] handler#${idx} resolved`);
+            })
+            .catch((err) => {
+              this.logger.warning(
+                `[marketData] handler#${idx} rejected: ${err?.message || String(err)}`
+              );
+            });
+        }
       } catch (err) {
         this.logger.warning(
-          `[marketData] handler failed: ${err?.message || String(err)}`
+          `[marketData] handler#${idx} failed: ${err?.message || String(err)}`
         );
       }
     }

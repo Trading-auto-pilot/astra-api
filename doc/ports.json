@@ -18,5 +18,6 @@
     "datahub": 3000,
     "mcp-gateway": 3004,
     "capital-manager": 3005,
-    "ibkr-login-desktop": 3009
+    "ibkr-login-desktop": 3009,
+    "market-simulator": 3010
 }

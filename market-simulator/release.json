@@ -1,0 +1,13 @@
+{
+  "lastUpdate": "10/03/2026",
+  "version": "1.1.0",
+  "microservice": "market-simulator",
+  "note": [
+    "Phase 1: snapshot replay from historical data",
+    "POST /session — configure date range, tf, data source",
+    "POST /session/tick — advance clock and publish snapshots to Redis",
+    "POST /subscriptions — subscribe tickers (same API as market-data-service)",
+    "GET/POST /candle — fetch single candle, push custom snapshot",
+    "Data sources: cachemanager (default), file, Redis"
+  ]
+}
