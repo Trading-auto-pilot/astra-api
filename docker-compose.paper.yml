@@ -854,7 +854,7 @@ services:
       - "traefik.http.routers.broker-executor-ibkr-preflight.middlewares=broker-executor-ibkr-stripprefix,cors-default@docker"
 
   mcp-gateway:
-    image: expovin/mcp-gateway:${MCP_GATEWAY_VERSION:-latest}
+    image: expovin/mcp-gateway:${MPC_GATEWAY_VERSION:-latest}
     restart: unless-stopped
     profiles: ["mcp-gateway"]
     environment:
@@ -883,7 +883,7 @@ services:
       - LIQUIDITY_MANAGER_URL=${LIQUIDITY_MANAGER_URL}
       - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
       - BROKER_EXECUTOR_IBKR_URL=${BROKER_EXECUTOR_IBKR_URL}
-      - DOCS_API_BASE_URL=http://help-trading:3106
+      - DOCS_API_BASE_URL=http://help-trading:3106/api/docs
       - DOCS_API_PATH_PREFIX=/api/docs
       - TZ=${TIMEZONE}
     depends_on:

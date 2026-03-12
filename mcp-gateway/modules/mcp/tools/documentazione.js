@@ -56,11 +56,19 @@ async function directFetch(path, method = "GET", body = null, timeoutMs = 10000)
   }
 }
 
-async function docsFetch(path, method = "GET", body = null, timeoutMs = 10000) {
+async function docsFetch(path, method = "GET", body = null, timeoutMs = 10000, logger = null) {
   if (DOCS_API_BASE_URL) {
-    return directFetch(path, method, body, timeoutMs);
+    const url = docsUrl(path);
+    logger?.log?.(`[mcp/documentazione] mode=direct ${method} ${url}`);
+    const result = await directFetch(path, method, body, timeoutMs);
+    logger?.log?.(`[mcp/documentazione] mode=direct OK`);
+    return result;
   }
-  return traefikFetch(docsPath(path), method, body, timeoutMs);
+  const fullPath = docsPath(path);
+  logger?.log?.(`[mcp/documentazione] mode=traefik ${method} ${fullPath}`);
+  const result = await traefikFetch(fullPath, method, body, timeoutMs);
+  logger?.log?.(`[mcp/documentazione] mode=traefik OK`);
+  return result;
 }
 
 module.exports = {
@@ -152,9 +160,11 @@ module.exports = {
     const { logger } = ctx;
     const action = String(input.action).trim();
 
+    logger?.log?.(`[mcp/documentazione] action=${action} DOCS_API_BASE_URL="${DOCS_API_BASE_URL}" DOCS_API_PATH_PREFIX="${DOCS_API_PATH_PREFIX}"`);
+
     try {
       if (action === "list_pages") {
-        const body = await docsFetch("/roadmap/titles", "GET", null, DOCS_API_READ_TIMEOUT_MS);
+        const body = await docsFetch("/roadmap/titles", "GET", null, DOCS_API_READ_TIMEOUT_MS, logger);
         return { ok: true, data: body };
       }
 
@@ -163,7 +173,7 @@ module.exports = {
           title: String(input.title).trim(),
           description: String(input.description).trim(),
           slug: String(input.slug).trim(),
-        }, DOCS_API_WRITE_TIMEOUT_MS);
+        }, DOCS_API_WRITE_TIMEOUT_MS, logger);
         return { ok: true, data: body };
       }
 
@@ -172,7 +182,8 @@ module.exports = {
           `/roadmap/${encodeURIComponent(String(input.slug).trim())}`,
           "DELETE",
           null,
-          DOCS_API_WRITE_TIMEOUT_MS
+          DOCS_API_WRITE_TIMEOUT_MS,
+          logger
         );
         return { ok: true, data: body };
       }
@@ -182,7 +193,8 @@ module.exports = {
           `/roadmap/${encodeURIComponent(String(input.slug).trim())}/paragraphs`,
           "GET",
           null,
-          DOCS_API_READ_TIMEOUT_MS
+          DOCS_API_READ_TIMEOUT_MS,
+          logger
         );
         return { ok: true, data: body };
       }
@@ -195,7 +207,8 @@ module.exports = {
             title: String(input.title).trim(),
             content: String(input.content).trim(),
           },
-          DOCS_API_WRITE_TIMEOUT_MS
+          DOCS_API_WRITE_TIMEOUT_MS,
+          logger
         );
         return { ok: true, data: body };
       }
@@ -209,7 +222,8 @@ module.exports = {
           `/roadmap/${encodeURIComponent(String(input.slug).trim())}/paragraphs/${input.number}`,
           "PUT",
           payload,
-          DOCS_API_WRITE_TIMEOUT_MS
+          DOCS_API_WRITE_TIMEOUT_MS,
+          logger
         );
         return { ok: true, data: body };
       }
@@ -219,7 +233,8 @@ module.exports = {
           `/roadmap/${encodeURIComponent(String(input.slug).trim())}/paragraphs/${input.number}`,
           "DELETE",
           null,
-          DOCS_API_WRITE_TIMEOUT_MS
+          DOCS_API_WRITE_TIMEOUT_MS,
+          logger
         );
         return { ok: true, data: body };
       }

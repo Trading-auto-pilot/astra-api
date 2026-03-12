@@ -1,11 +1,12 @@
 {
   "lastUpdate": "12/03/2026",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "microservice": "mcp-gateway",
   "note": [
     "v.1.0.0 Initial release using BaseService. Funziona solo in locale con Claud Desktop",
     "v.2.0.0 Versione web con tool per scrittura documentazione effimera sotto Roadmap",
     "v.2.0.1 Fix rotazione interna verso microservizi",
-    "v.2.0.2 Fix Errore 404"
+    "v.2.0.2 Fix Errore 404",
+    "v.2.0.3 Fix Errore 404 - second attempt"
   ]
 }
