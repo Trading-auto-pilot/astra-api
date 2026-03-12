@@ -1108,7 +1108,7 @@ services:
       - MARKETDATASERVICE_URL=http://market-data-service:3020
       - BROKER_EXECUTOR_IBKR_URL=http://broker-executor-ibkr:3003
       - DATAHUB_URL=http://datahub:3000
-      - DOCS_API_BASE_URL=http://help-trading:3106
+      - DOCS_API_BASE_URL=http://help-trading:3106/api/docs
       - DOCS_API_PATH_PREFIX=/help-api/api/docs
       - TZ=${TIMEZONE}
     depends_on:
