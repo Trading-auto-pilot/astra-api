@@ -1,6 +1,8 @@
 "use strict";
 
 const { traefikFetch } = require("./_http");
+
+const DOCS_API_BASE_URL = String(process.env.DOCS_API_BASE_URL || "").trim().replace(/\/+$/, "");
 const DOCS_API_PATH_PREFIX = (process.env.DOCS_API_PATH_PREFIX || "/help-api/api/docs").replace(/\/+$/, "");
 const DOCS_API_READ_TIMEOUT_MS = Number(process.env.DOCS_API_READ_TIMEOUT_MS || 15000);
 const DOCS_API_WRITE_TIMEOUT_MS = Number(process.env.DOCS_API_WRITE_TIMEOUT_MS || 180000);
@@ -20,7 +22,44 @@ function docsPath(path) {
   return `${DOCS_API_PATH_PREFIX}${suffix}`;
 }
 
+function docsUrl(path) {
+  const suffix = String(path || "").startsWith("/") ? path : `/${path}`;
+  return `${DOCS_API_BASE_URL}${suffix}`;
+}
+
+async function directFetch(path, method = "GET", body = null, timeoutMs = 10000) {
+  const url = docsUrl(path);
+  const headers = { "Content-Type": "application/json" };
+
+  const init = {
+    method,
+    headers,
+    signal: AbortSignal.timeout(timeoutMs),
+  };
+  if (body !== null && (method === "POST" || method === "PUT")) {
+    init.body = JSON.stringify(body);
+  }
+
+  const resp = await fetch(url, init);
+  if (!resp.ok) {
+    throw new Error(`${resp.status} ${resp.statusText} — ${url}`);
+  }
+
+  const ct = resp.headers.get("content-type") || "";
+  if (ct.includes("application/json")) return resp.json();
+
+  const raw = await resp.text();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { ok: true, raw };
+  }
+}
+
 async function docsFetch(path, method = "GET", body = null, timeoutMs = 10000) {
+  if (DOCS_API_BASE_URL) {
+    return directFetch(path, method, body, timeoutMs);
+  }
   return traefikFetch(docsPath(path), method, body, timeoutMs);
 }
 

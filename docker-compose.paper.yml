@@ -53,7 +53,7 @@ services:
       - "traefik.http.middlewares.auth-forward.forwardauth.authResponseHeaders=X-User-Id,X-Auth-Subject-Type,X-Api-Key-Id"
 
       # CORS Configuration
-      - "traefik.http.middlewares.cors-default.headers.accessControlAllowOriginList=https://trading.expovin.it,https://api.trading.expovin.it,http://localhost:5173,http://localhost:8080"
+      - "traefik.http.middlewares.cors-default.headers.accessControlAllowOriginList=https://trading.expovin.it,https://api.trading.expovin.it,https://claude.ai,https://app.claude.ai,http://localhost:5173,http://localhost:8080"
       - "traefik.http.middlewares.cors-default.headers.accessControlAllowMethods=GET,OPTIONS,PUT,POST,DELETE"
       - "traefik.http.middlewares.cors-default.headers.accessControlAllowHeaders=Content-Type,Authorization,X-Requested-With,X-Api-Key,Upgrade,Connection,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Extensions,Sec-WebSocket-Accept"
       - "traefik.http.middlewares.cors-default.headers.accessControlAllowCredentials=true"
@@ -883,6 +883,7 @@ services:
       - LIQUIDITY_MANAGER_URL=${LIQUIDITY_MANAGER_URL}
       - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
       - BROKER_EXECUTOR_IBKR_URL=${BROKER_EXECUTOR_IBKR_URL}
+      - DOCS_API_BASE_URL=http://help-trading:3106
       - DOCS_API_PATH_PREFIX=/api/docs
       - TZ=${TIMEZONE}
     depends_on:
@@ -908,12 +909,12 @@ services:
       - "traefik.http.routers.mcp-gateway.tls.certresolver=le"
       - "traefik.http.services.mcp-gateway.loadbalancer.server.port=3004"
       - "traefik.http.middlewares.mcp-gateway-stripprefix.stripPrefix.prefixes=/mcp-gateway"
-      - "traefik.http.routers.mcp-gateway.middlewares=mcp-gateway-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.mcp-gateway.middlewares=mcp-gateway-stripprefix,cors-default@docker"
       - "traefik.http.routers.mcp-gateway-web.rule=Host(`trading.expovin.it`) && PathPrefix(`/mcp-gateway`)"
       - "traefik.http.routers.mcp-gateway-web.entrypoints=websecure"
       - "traefik.http.routers.mcp-gateway-web.tls.certresolver=le"
       - "traefik.http.routers.mcp-gateway-web.service=mcp-gateway"
-      - "traefik.http.routers.mcp-gateway-web.middlewares=mcp-gateway-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.mcp-gateway-web.middlewares=mcp-gateway-stripprefix,cors-default@docker"
       - "traefik.http.routers.mcp-gateway-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/mcp-gateway`) && Method(`OPTIONS`)"
       - "traefik.http.routers.mcp-gateway-preflight.entrypoints=websecure"
       - "traefik.http.routers.mcp-gateway-preflight.tls.certresolver=le"

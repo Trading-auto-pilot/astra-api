@@ -65,7 +65,8 @@ MCP_TRANSPORT=http MCP_HTTP_PATH=/mcp node server.js
 | `MCP_HTTP_PATH` | `/mcp` | Mount path for HTTP transport |
 | `MCP_TOOL_ALLOWLIST` | _(all)_ | Comma-separated list of allowed tool names |
 | `TICKERSCANNER_URL` | `http://tickerscanner:3013` | Used by `strategies_list` tool |
-| `DOCS_API_PATH_PREFIX` | `/help-api/api/docs` | Traefik path prefix for help-trading docs API used by `documentazione` tool |
+| `DOCS_API_BASE_URL` | _(empty)_ | Direct internal base URL for help-trading docs API (recommended: `http://help-trading:3106`) |
+| `DOCS_API_PATH_PREFIX` | `/help-api/api/docs` | Traefik path prefix fallback used only when `DOCS_API_BASE_URL` is empty |
 
 ## Endpoints
 

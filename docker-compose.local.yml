@@ -51,7 +51,7 @@ services:
       - "traefik.http.middlewares.auth-forward.forwardauth.authResponseHeaders=X-User-Id,X-Auth-Subject-Type,X-Api-Key-Id"
 
       # CORS Configuration (solo HTTP locale)
-      - "traefik.http.middlewares.cors-default.headers.accessControlAllowOriginList=http://localhost:8080,http://localhost:5173"
+      - "traefik.http.middlewares.cors-default.headers.accessControlAllowOriginList=http://localhost:8080,http://localhost:5173,https://claude.ai,https://app.claude.ai"
       - "traefik.http.middlewares.cors-default.headers.accessControlAllowMethods=GET,OPTIONS,PUT,POST,DELETE,PATCH"
       - "traefik.http.middlewares.cors-default.headers.accessControlAllowHeaders=Content-Type,Authorization,X-Requested-With,X-Api-Key,Upgrade,Connection,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Extensions,Sec-WebSocket-Accept"
       - "traefik.http.middlewares.cors-default.headers.accessControlAllowCredentials=true"
@@ -1108,6 +1108,7 @@ services:
       - MARKETDATASERVICE_URL=http://market-data-service:3020
       - BROKER_EXECUTOR_IBKR_URL=http://broker-executor-ibkr:3003
       - DATAHUB_URL=http://datahub:3000
+      - DOCS_API_BASE_URL=http://help-trading:3106
       - DOCS_API_PATH_PREFIX=/help-api/api/docs
       - TZ=${TIMEZONE}
     depends_on:
@@ -1133,7 +1134,7 @@ services:
       - "traefik.http.routers.mcp-gateway.entrypoints=web"
       - "traefik.http.services.mcp-gateway.loadbalancer.server.port=3004"
       - "traefik.http.middlewares.mcp-gateway-stripprefix.stripPrefix.prefixes=/mcp-gateway"
-      - "traefik.http.routers.mcp-gateway.middlewares=mcp-gateway-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.mcp-gateway.middlewares=mcp-gateway-stripprefix,cors-default@docker"
       - "traefik.http.routers.mcp-gateway-preflight.rule=Host(`localhost`) && PathPrefix(`/mcp-gateway`) && Method(`OPTIONS`)"
       - "traefik.http.routers.mcp-gateway-preflight.entrypoints=web"
       - "traefik.http.routers.mcp-gateway-preflight.priority=10000"
