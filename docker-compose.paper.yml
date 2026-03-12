@@ -742,7 +742,7 @@ services:
 
 
   liquidity-manager:
-    image: expovin/liquidity-manager:${LIQUIDITYMANAGER_VERSION:-latest}
+    image: expovin/liquidity-manager:${LIQUIDITY_MANAGER_VERSION:-latest}
     restart: unless-stopped
     profiles: ["liquidity-manager"]
     environment:

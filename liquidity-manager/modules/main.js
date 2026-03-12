@@ -46,7 +46,36 @@ class LiquidityManager extends BaseService {
   async _onInit() {
     this.logger.info("[_onInit] Initializing Liquidity Score components...");
     await this.repository.init();
+    await this._restoreFromRedis();
     this.logger.info("[_onInit] Internal scheduler disabled: use external scheduler via POST /liquidity-score/recompute");
+  }
+
+  async _restoreFromRedis() {
+    if (!this.bus || typeof this.bus.get !== "function" || typeof this.bus.key !== "function") {
+      return;
+    }
+    try {
+      const latest = await this.repository.getLatest();
+      if (latest) {
+        this.logger.info("[_restoreFromRedis] local repository already has data, skipping Redis restore");
+        return;
+      }
+      const redisKey = this.bus.key("liquidity-manager", "liquidity-score", "latest");
+      const cached = await this.bus.get(redisKey);
+      if (cached && cached.timestamp) {
+        const { cacheMeta: _, ...snapshot } = cached;
+        await this.repository.saveSnapshot(snapshot);
+        this.logger.info(
+          `[_restoreFromRedis] restored snapshot from Redis key=${redisKey} timestamp=${cached.timestamp} score=${cached.score}`
+        );
+      } else {
+        this.logger.info("[_restoreFromRedis] no valid snapshot in Redis, starting fresh");
+      }
+    } catch (err) {
+      this.logger.warning?.(
+        `[_restoreFromRedis] failed: ${err?.message || String(err)}`
+      );
+    }
   }
 
   /**

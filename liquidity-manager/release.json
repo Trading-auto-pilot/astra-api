@@ -1,9 +1,10 @@
 {
   "lastUpdate": "07/03/2026",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "microservice": "liquidity-manager",
   "note": [
     "v.1.0.0 Initial release using BaseService",
-    "v.1.0.1 Add persistence on REDIS for 24h"
+    "v.1.0.1 Add persistence on REDIS for 24h",
+    "v1.0.2 Fix Persistence second attempt"
   ]
 }
