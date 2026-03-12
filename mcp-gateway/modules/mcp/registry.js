@@ -11,6 +11,7 @@ const DEFAULT_TOOLS = [
   require("./tools/liquidity_snapshot"),
   require("./tools/scheduler_list_jobs"),
   require("./tools/scheduler_run_job"),
+  require("./tools/documentazione"),
 ];
 
 class McpRegistry {

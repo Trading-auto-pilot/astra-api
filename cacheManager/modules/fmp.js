@@ -31,6 +31,11 @@ class FmpProvider {
     return low.includes("min") || low.includes("hour");
   }
 
+  toDateOnly(value) {
+    if (!value) return value;
+    return String(value).split("T")[0];
+  }
+
   /**
    * Recupera barre da FMP.
    * Per tf intraday usa historical-chart, per daily/weekly usa SMA endpoint.
@@ -44,6 +49,8 @@ class FmpProvider {
       const url = `${this.baseUrl}/historical-chart/${tf}`;
       const params = {
         symbol,
+        ...(start ? { from: start } : {}),
+        ...(end ? { to: end } : {}),
         apikey: this.apiKey,
       };
 
@@ -72,8 +79,8 @@ class FmpProvider {
       symbol,
       periodLength,
       timeframe: tf,
-      from: start,
-      to: end,
+      from: this.toDateOnly(start),
+      to: this.toDateOnly(end),
       apikey: this.apiKey,
     };
 
@@ -83,7 +90,11 @@ class FmpProvider {
 
     const res = await axios.get(url, { params });
 
-    const rows = Array.isArray(res.data) ? res.data : [];
+    const rows = Array.isArray(res.data)
+      ? res.data
+      : Array.isArray(res.data?.historical)
+        ? res.data.historical
+        : [];
 
     return rows.map((row) => ({
       t: row.date,       // "2025-02-04 00:00:00"

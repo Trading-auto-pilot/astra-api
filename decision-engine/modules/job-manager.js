@@ -8,6 +8,7 @@ const axios = require("axios");
 const { reportJobDone } = require("../../shared/jobReporter");
 const {
   SNAPSHOT_TTL_SECONDS,
+  SUBSCRIPTION_TIMEOUT_MS,
   MAX_CONCURRENCY,
   DEFAULT_CONCURRENCY,
   MIN_CONCURRENCY,
@@ -28,6 +29,7 @@ const {
   resolveSnapshotDate,
   pickAuthHeaders,
   isSupportNotAvailable,
+  isTrendOk,
 } = require("./helpers");
 
 // --- In-memory job store ---------------------------------------------------
@@ -303,6 +305,33 @@ const applyPipeLimit = (list, query) => {
   return list.slice(0, Math.min(list.length, Math.floor(raw)));
 };
 
+const autoSubscribeTrendTickers = async ({
+  marketdataserviceUrl,
+  headers,
+  results,
+  logger,
+}) => {
+  if (!marketdataserviceUrl) return { ok: false, subscribed: 0, reason: "marketdataserviceUrl missing" };
+  const trendTickers = (Array.isArray(results) ? results : [])
+    .filter((row) => isTrendOk(row))
+    .map((row) => String(row?.ticker || row?.symbol || "").trim().toUpperCase())
+    .filter(Boolean);
+  const deduped = Array.from(new Set(trendTickers));
+  if (!deduped.length) {
+    logger?.info?.("[decision-engine] auto-subscribe skipped: no trendOk tickers");
+    return { ok: true, subscribed: 0 };
+  }
+  await axios.post(
+    `${marketdataserviceUrl}/subscriptions`,
+    { tickers: deduped },
+    { headers, timeout: SUBSCRIPTION_TIMEOUT_MS }
+  );
+  logger?.info?.(
+    `[decision-engine] auto-subscribed trend tickers count=${deduped.length}`
+  );
+  return { ok: true, subscribed: deduped.length, tickers: deduped };
+};
+
 // --- Async job runner ------------------------------------------------------
 
 /**
@@ -313,6 +342,7 @@ const applyPipeLimit = (list, query) => {
  * @param {object} opts.query           - req.query
  * @param {object} opts.req             - Express request
  * @param {string} opts.decisionengineUrl
+ * @param {string} opts.marketdataserviceUrl
  * @param {string} opts.tickerscannerUrl
  * @param {number} opts.cacheManagerTimeoutMs
  * @param {number} opts.tickerscannerTimeoutMs
@@ -328,6 +358,7 @@ const startAsyncJob = async (opts) => {
     query,
     req,
     decisionengineUrl,
+    marketdataserviceUrl,
     tickerscannerUrl,
     cacheManagerTimeoutMs,
     tickerscannerTimeoutMs,
@@ -383,6 +414,22 @@ const startAsyncJob = async (opts) => {
 
   const dateParam = normalizeDateParam(dateParamRaw);
   const headers = pickAuthHeaders(req);
+  const liveSubscribedTickers = new Set();
+  const subscribeTrendTicker = async (ticker) => {
+    const normalized = String(ticker || "").trim().toUpperCase();
+    if (!normalized) return;
+    if (!marketdataserviceUrl) return;
+    if (liveSubscribedTickers.has(normalized)) return;
+    await axios.post(
+      `${marketdataserviceUrl}/subscriptions`,
+      { tickers: [normalized] },
+      { headers, timeout: SUBSCRIPTION_TIMEOUT_MS }
+    );
+    liveSubscribedTickers.add(normalized);
+    logger?.info?.(
+      `[decision-engine] live auto-subscribe ticker=${normalized} source=spot-finder-job`
+    );
+  };
   const tickers = applyPipeLimit(
     pipeId === RANKING_DAILY_PIPE_ID
       ? await fetchRankingDailyTickers(tickerscannerUrl, dateParam, tickerscannerTimeoutMs, logger)
@@ -448,6 +495,18 @@ const startAsyncJob = async (opts) => {
     if (userId) {
       await persistSpotFinderSnapshot(bus, pipeId, userId, job, snapshotDate, logger);
     }
+    try {
+      await autoSubscribeTrendTickers({
+        marketdataserviceUrl,
+        headers,
+        results: job.results,
+        logger,
+      });
+    } catch (err) {
+      logger?.warning?.(
+        `[decision-engine] auto-subscribe failed ${err?.message || String(err)}`
+      );
+    }
     reportJobDone(bus, statusChannel, jobId, {
       status: "COMPLETED",
       summary: {
@@ -468,6 +527,18 @@ const startAsyncJob = async (opts) => {
     updateJob(jobId, { status: "completed", finishedAt: new Date().toISOString() });
     if (userId) {
       await persistSpotFinderSnapshot(bus, pipeId, userId, job, snapshotDate, logger);
+    }
+    try {
+      await autoSubscribeTrendTickers({
+        marketdataserviceUrl,
+        headers,
+        results: job.results,
+        logger,
+      });
+    } catch (err) {
+      logger?.warning?.(
+        `[decision-engine] auto-subscribe failed ${err?.message || String(err)}`
+      );
     }
     reportJobDone(bus, statusChannel, jobId, {
       status: "COMPLETED",
@@ -519,6 +590,15 @@ const startAsyncJob = async (opts) => {
         job.errorCount += 1;
       } else {
         job.ok += 1;
+        if (isTrendOk({ ticker, fullResult: data })) {
+          try {
+            await subscribeTrendTicker(ticker);
+          } catch (err) {
+            logger?.warning?.(
+              `[decision-engine] live auto-subscribe failed ticker=${ticker}: ${err?.message || String(err)}`
+            );
+          }
+        }
       }
     } catch (err) {
       job.errors.push({
@@ -544,12 +624,24 @@ const startAsyncJob = async (opts) => {
   const workers = [];
   for (let i = 0; i < concurrency; i++) workers.push(runNext());
   Promise.all(workers)
-    .then(() => {
+    .then(async () => {
       const active = getJob(jobId);
       if (!active || active.status !== "running") return;
       updateJob(jobId, { status: "completed", finishedAt: new Date().toISOString() });
       if (userId) {
         persistSpotFinderSnapshot(bus, pipeId, userId, job, snapshotDate, logger);
+      }
+      try {
+        await autoSubscribeTrendTickers({
+          marketdataserviceUrl,
+          headers,
+          results: job.results,
+          logger,
+        });
+      } catch (err) {
+        logger?.warning?.(
+          `[decision-engine] auto-subscribe failed ${err?.message || String(err)}`
+        );
       }
       reportJobDone(bus, statusChannel, jobId, {
         status: "COMPLETED",

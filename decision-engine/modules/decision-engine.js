@@ -242,6 +242,35 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
         snapshotDate,
         logger
       );
+
+      // Keep sync execution aligned with async job flow:
+      // auto-subscribe trendOk tickers to market-data-service.
+      try {
+        const trendTickers = results
+          .filter((row) => isTrendOk(row))
+          .map((row) => String(row?.ticker || row?.symbol || "").trim().toUpperCase())
+          .filter(Boolean);
+        const deduped = Array.from(new Set(trendTickers));
+        if (deduped.length) {
+          await axios.post(
+            `${marketdataserviceUrl}/subscriptions`,
+            { tickers: deduped },
+            { headers, timeout: C.SUBSCRIPTION_TIMEOUT_MS }
+          );
+          logger?.info?.(
+            `[decision-engine] auto-subscribed trend tickers count=${deduped.length} route=GET /spot-finder/:pipeId`
+          );
+        } else {
+          logger?.info?.(
+            "[decision-engine] auto-subscribe skipped: no trendOk tickers route=GET /spot-finder/:pipeId"
+          );
+        }
+      } catch (err) {
+        logger?.warning?.(
+          `[decision-engine] auto-subscribe failed route=GET /spot-finder/:pipeId: ${err?.message || String(err)}`
+        );
+      }
+
       return res.json(payload);
     } catch (err) {
       logger?.error?.(
@@ -277,6 +306,7 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
         query: req.query,
         req,
         decisionengineUrl,
+        marketdataserviceUrl,
         tickerscannerUrl,
         cacheManagerTimeoutMs,
         tickerscannerTimeoutMs,

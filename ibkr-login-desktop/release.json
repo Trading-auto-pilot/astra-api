@@ -1,9 +1,10 @@
 {
   "lastUpdate": "08/03/2026",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "microservice": "ibkr-login-desktop",
   "note": [
     "v.1.0.0 Initial release using BaseService",
-    "v.1.0.1 Vista iPad"
+    "v.1.0.1 Vista iPad",
+    "v.1.0.2 Errore login gia fatto"
   ]
 }

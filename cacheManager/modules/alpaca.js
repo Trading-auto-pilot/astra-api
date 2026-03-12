@@ -30,6 +30,47 @@ class AlpacaProvider {
     };
   }
 
+  _toTimestampMs(value) {
+    if (value === undefined || value === null || value === "") return null;
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) return null;
+      if (value > 1e15) return Math.floor(value / 1e6); // ns
+      if (value > 1e12) return value; // ms
+      if (value > 1e10) return Math.floor(value / 1e3); // us
+      return value * 1000; // sec
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      if (/^\d+$/.test(trimmed)) {
+        const n = Number(trimmed);
+        if (!Number.isFinite(n)) return null;
+        if (n > 1e15) return Math.floor(n / 1e6); // ns
+        if (n > 1e12) return n; // ms
+        if (n > 1e10) return Math.floor(n / 1e3); // us
+        return n * 1000; // sec
+      }
+      const parsed = Date.parse(trimmed);
+      return Number.isNaN(parsed) ? null : parsed;
+    }
+    return null;
+  }
+
+  _normalizeBar(row, symbol, timeframe) {
+    const ts = this._toTimestampMs(row?.t ?? row?.timestamp ?? row?.time ?? row?.date);
+    if (!Number.isFinite(ts)) return null;
+    return {
+      t: new Date(ts).toISOString(),
+      o: row?.o ?? row?.open,
+      h: row?.h ?? row?.high,
+      l: row?.l ?? row?.low,
+      c: row?.c ?? row?.close,
+      v: row?.v ?? row?.volume,
+      tf: timeframe,
+      symbol,
+    };
+  }
+
   /**
    * Recupera tutte le barre daily tra start ed end (inclusi).
    * Gestisce la paginazione via next_page_token.
@@ -97,11 +138,15 @@ class AlpacaProvider {
       pageToken = data.next_page_token || "";
     } while (pageToken);
 
+    const normalized = allBars
+      .map((row) => this._normalizeBar(row, symbol, timeframe))
+      .filter(Boolean);
+
     this.logger.log?.(
-      `[AlpacaProvider] Fetched ${allBars.length} bars for ${symbol} ${start}→${end}`
+      `[AlpacaProvider] Fetched ${allBars.length} raw bars (${normalized.length} normalized) for ${symbol} ${start}→${end}`
     );
 
-    return allBars;
+    return normalized;
   }
 }
 

@@ -610,6 +610,12 @@ services:
       dockerfile: ibkr-bridge/Dockerfile
     restart: unless-stopped
     environment:
+      - MCP_TRANSPORT=http
+      - MCP_HTTP_PATH=/mcp
+      - TRADING_BASE_URL=http://traefik
+      - TRADING_API_KEY=${TRADING_API_KEY}
+      - DOCS_API_READ_TIMEOUT_MS=15000
+      - DOCS_API_WRITE_TIMEOUT_MS=240000
       - DATAHUB_URL=http://datahub:3000
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
@@ -731,22 +737,32 @@ services:
   help-trading:
     image: local/help-trading:${HELPTRADING_VERSION:-latest}
     build:
-      context: ../help.trading
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: help-trading/Dockerfile
     restart: unless-stopped
     ports:
-      - "4000:80"
+      - "4000:3000"
+      - "4106:3106"
     profiles: ["frontend"]
     networks:
       - trading_net
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=trading_net"
-      - "traefik.http.routers.help-trading.rule=Host(`localhost`) && PathPrefix(`/help`)"
+      - "traefik.http.routers.help-trading.rule=Host(`localhost`) && (Path(`/help`) || PathPrefix(`/help/`))"
       - "traefik.http.routers.help-trading.entrypoints=web"
-      - "traefik.http.services.help-trading.loadbalancer.server.port=80"
+      - "traefik.http.routers.help-trading.priority=10"
+      - "traefik.http.routers.help-trading.service=help-trading@docker"
+      - "traefik.http.services.help-trading.loadbalancer.server.port=3000"
       - "traefik.http.middlewares.help-trading-stripprefix.stripPrefix.prefixes=/help"
       - "traefik.http.routers.help-trading.middlewares=help-trading-stripprefix"
+      - "traefik.http.routers.help-trading-docs-api.rule=Host(`localhost`) && PathPrefix(`/help-api`)"
+      - "traefik.http.routers.help-trading-docs-api.entrypoints=web"
+      - "traefik.http.routers.help-trading-docs-api.priority=100"
+      - "traefik.http.routers.help-trading-docs-api.service=help-trading-docs-api@docker"
+      - "traefik.http.services.help-trading-docs-api.loadbalancer.server.port=3106"
+      - "traefik.http.middlewares.help-trading-docs-api-stripprefix.stripPrefix.prefixes=/help-api"
+      - "traefik.http.routers.help-trading-docs-api.middlewares=help-trading-docs-api-stripprefix"
 
   liquidity-manager:
     image: local/liquidity-manager:${LIQUIDITYMANAGER_VERSION:-latest}
@@ -1065,6 +1081,12 @@ services:
     ports:
       - "3004:3004"
     environment:
+      - MCP_TRANSPORT=http
+      - MCP_HTTP_PATH=/mcp
+      - TRADING_BASE_URL=http://traefik
+      - TRADING_API_KEY=${TRADING_API_KEY}
+      - DOCS_API_READ_TIMEOUT_MS=15000
+      - DOCS_API_WRITE_TIMEOUT_MS=240000
       - DATAHUB_URL=http://datahub:3000
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=${LOG_LEVEL}
@@ -1086,6 +1108,7 @@ services:
       - MARKETDATASERVICE_URL=http://market-data-service:3020
       - BROKER_EXECUTOR_IBKR_URL=http://broker-executor-ibkr:3003
       - DATAHUB_URL=http://datahub:3000
+      - DOCS_API_PATH_PREFIX=/help-api/api/docs
       - TZ=${TIMEZONE}
     depends_on:
       datahub:

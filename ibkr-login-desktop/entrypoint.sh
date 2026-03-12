@@ -1,12 +1,28 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 # 1. Start Node.js microservice (REST API on port 3009)
 node /app/ibkr-login-desktop/server.js &
 
 # 2. Start virtual display — 834x1194: iPad Pro 11" portrait viewport
-Xvfb :0 -screen 0 834x1194x24 &
-sleep 1
+#    On container restart a stale /tmp/.X0-lock may block Xvfb startup.
+rm -f /tmp/.X0-lock || true
+rm -f /tmp/.X11-unix/X0 || true
+pkill -f "Xvfb :0" || true
+Xvfb :0 -screen 0 834x1194x24 -ac -nolisten tcp &
+
+# Wait until X socket is actually available
+for i in $(seq 1 30); do
+  if [ -S /tmp/.X11-unix/X0 ]; then
+    break
+  fi
+  sleep 0.2
+done
+
+if [ ! -S /tmp/.X11-unix/X0 ]; then
+  echo "Xvfb did not start correctly on :0"
+  exit 1
+fi
 
 export DISPLAY=:0
 
@@ -23,6 +39,7 @@ chromium \
   --window-size=834,1194 \
   --user-agent="${IPAD_UA}" \
   --allow-insecure-localhost \
+  --remote-debugging-address=127.0.0.1 \
   --remote-debugging-port=9222 \
   "https://localhost:5000" &
 

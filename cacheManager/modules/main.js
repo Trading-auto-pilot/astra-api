@@ -112,26 +112,42 @@ class CacheManager {
 
     this.providerType = (process.env.HISTORICAL_PROVIDER || "FMP").toUpperCase();
 
-    if (this.providerType === "ALPACA") {
+    const hasAlpacaCreds = Boolean(process.env.APCA_API_KEY_ID && process.env.APCA_API_SECRET_KEY);
+    const hasFmpKey = Boolean(process.env.FMP_API_KEY);
+
+    if (hasAlpacaCreds) {
       this.alpaca = new AlpacaProvider({
         apiKey: process.env.APCA_API_KEY_ID,
         apiSecret: process.env.APCA_API_SECRET_KEY,
         feed: process.env.ALPACA_MARKET_FEED || "sip",
         logger: this.logger,
       });
-      this.logger.info("[CacheManager] Provider storico: ALPACA");
-    } else if (this.providerType === "FMP") {
+    }
+
+    if (hasFmpKey) {
       this.fmp = new FmpProvider({
         apiKey: process.env.FMP_API_KEY,
         logger: this.logger,
       });
-      this.logger.info("[CacheManager] Provider storico: FMP");
-    } else if (this.providerType === "IBKR") {
+    }
+
+    if (this.providerType === "IBKR") {
       this.logger.info("[CacheManager] Provider storico: IBKR");
+    } else if (this.providerType === "ALPACA") {
+      this.logger.info("[CacheManager] Provider storico: ALPACA");
+      if (!this.alpaca) {
+        this.logger.warning("[CacheManager] APCA_API_KEY_ID/APCA_API_SECRET_KEY mancanti: ALPACA non disponibile");
+      }
+      if (!this.fmp) {
+        this.logger.warning("[CacheManager] Fallback FMP non disponibile (FMP_API_KEY mancante)");
+      }
+    } else if (this.providerType === "FMP") {
+      this.logger.info("[CacheManager] Provider storico: FMP");
+      if (!this.fmp) {
+        this.logger.warning("[CacheManager] FMP_API_KEY mancante: FMP non disponibile");
+      }
     } else {
-      this.logger.error(
-        `[CacheManager] Provider storico sconosciuto: ${this.providerType}`
-      );
+      this.logger.error(`[CacheManager] Provider storico sconosciuto: ${this.providerType}`);
     }
   
   }
@@ -513,6 +529,7 @@ class CacheManager {
   // =========================================================
 
   async getCandles(symbol, startDate, endDate, tf = "1Day", exchange) {
+    const tfCache = this._normalizeTfCache(tf);
     const startTs = new Date(startDate).getTime();
     const endTs = new Date(endDate).getTime();
     if (Number.isFinite(startTs) && Number.isFinite(endTs) && startTs > endTs) {
@@ -524,136 +541,179 @@ class CacheManager {
       endDate = tmp;
     }
     this.logger.info(
-      `[getCandles] Richiesta candele ${symbol} ${startDate} → ${endDate} tf=${tf}`
+      `[getCandles] Richiesta candele ${symbol} ${startDate} → ${endDate} tf=${tfCache}`
     );
+    const monthKeys = this._listMonthKeysBetween(startDate, endDate);
+    const missingMonths = [];
 
-    // -------------------------------------------------------
-    // 1) L3 - Redis
-    // -------------------------------------------------------
-    const l3Candles = await this._readL3(symbol, tf, startDate, endDate);
-    this.logger.log(
-      `[getCandles] L3 ha restituito ${l3Candles.length} candele per ${symbol}`
-    );
-
-    let collected = [...l3Candles];
-
-    let missingRanges = this._detectMissingRanges(
-      l3Candles,
-      startDate,
-      endDate,
-      tf
-    );
-    this.logger.log(
-      `[getCandles] Intervalli mancanti dopo L3: ${JSON.stringify(
-        missingRanges
-      )}`
-    );
-
-    // Se L3 ha coperto tutto → ritorno diretto
-    if (missingRanges.length === 0 && l3Candles.length > 0) {
-      this.logger.info(
-        `[getCandles] Tutte le candele trovate in L3 (Redis) per ${symbol}`
-      );
-      return this._filterCandlesByRange(collected, startDate, endDate);
+    for (const monthKey of monthKeys) {
+      const ensured = this._ensureCanonicalL2MonthFile(symbol, tfCache, monthKey);
+      if (!ensured) missingMonths.push(monthKey);
     }
 
-    // -------------------------------------------------------
-    // 2) Per ogni intervallo mancante: L2 -> L1
-    // -------------------------------------------------------
-    for (const range of missingRanges) {
-      const { from, to } = range;
+    if (missingMonths.length) {
       this.logger.info(
-        `[getCandles] Recupero intervallo mancante ${symbol} ${from} → ${to}`
+        `[getCandles] Mesi mancanti per ${symbol} tf=${tfCache}: ${missingMonths.join(", ")}`
       );
-
-      // 2a) L2 - File system
-      const l2Candles = await this._readL2(symbol, from, to, tf);
-      this.logger.log(
-        `[getCandles] L2 ha restituito ${l2Candles.length} candele per ${symbol} ${from}→${to}`
+    } else {
+      this.logger.info(
+        `[getCandles] Tutti i file mensili presenti per ${symbol} tf=${tfCache}, nessuna chiamata provider`
       );
-
-      collected.push(...l2Candles);
-
-      const subMissing = this._detectMissingRanges(
-        l2Candles,
-        from,
-        to,
-        tf
-      );
-      this.logger.log(
-        `[getCandles] Intervalli mancanti dopo L2 per ${symbol} ${from}→${to}: ${JSON.stringify(
-          subMissing
-        )}`
-      );
-
-      // Se L2 copre tutto questo sotto-range → aggiorno solo L3
-      if (subMissing.length === 0 && l2Candles.length > 0) {
-        this.logger.info(
-          `[getCandles] Intervallo ${from}→${to} soddisfatto da L2, aggiorno L3`
-        );
-        await this._writeL3(symbol, tf, collected);
-        continue;
-      }
-
-      // 2b) Provider remoto per la parte mancante
-      for (const sub of subMissing) {
-        const { from: pFrom, to: pTo } = sub;
-        this.logger.warning(
-          `[getCandles] Intervallo ${pFrom}→${pTo} mancante anche in L2, uso provider remoto`
-        );
-
-        const providerCandles = await this._retrieveFromProvider(
-          symbol,
-          pFrom,
-          pTo,
-          tf,
-          exchange
-        );
-
-        const trimmedProviderCandles = this._filterCandlesByRange(
-          providerCandles,
-          pFrom,
-          pTo
-        );
-        if (trimmedProviderCandles.length !== providerCandles.length) {
-          this.logger.warning(
-            `[getCandles] Provider remoto ha restituito ${providerCandles.length} candele (trimmed to ${trimmedProviderCandles.length}) per ${symbol} ${pFrom}→${pTo}`
-          );
-        } else {
-          this.logger.info(
-            `[getCandles] Provider remoto ha restituito ${providerCandles.length} candele per ${symbol} ${pFrom}→${pTo}`
-          );
-        }
-
-        // Salvo in L2 + L3 (merge)
-        await this._writeL2(symbol, tf, trimmedProviderCandles);
-        collected.push(...trimmedProviderCandles);
-        await this._writeL3(symbol, tf, collected);
-      }
     }
 
-    // -------------------------------------------------------
-    // 3) Ordino e filtro sul range richiesto
-    // -------------------------------------------------------
-    collected.sort((a, b) => new Date(a.t) - new Date(b.t));
+    // Missing month(s): fetch full month and mark file as complete.
+    for (const monthKey of missingMonths) {
+      const { fromIso, toIso } = this._monthBoundsUtc(monthKey);
+      this.logger.warning(
+        `[getCandles] File mese mancante ${monthKey}_${tfCache}.json → fetch completo ${fromIso}→${toIso}`
+      );
+      const providerCandles = await this._retrieveFromProvider(
+        symbol,
+        fromIso,
+        toIso,
+        tfCache,
+        exchange
+      );
+      const monthCandles = this._filterCandlesByRange(providerCandles, fromIso, toIso);
+      await this._writeL2MonthFile(symbol, tfCache, monthKey, monthCandles);
+    }
 
-    const filtered = this._filterCandlesByRange(
-      collected,
-      startDate,
-      endDate
-    );
+    const collected = this._readL2ByMonthKeys(symbol, tfCache, monthKeys);
+    const filtered = this._filterCandlesByRange(collected, startDate, endDate);
+    await this._writeL3(symbol, tfCache, filtered);
 
     this.logger.info(
       `[getCandles] Totale candele restituite per ${symbol} ${startDate}→${endDate}: ${filtered.length}`
     );
-
     return filtered;
   }
 
   // ---------------------- Helpers comuni -------------------
 
   _buildL3Key(symbol, tf) {
-    return `candles:${symbol}:${tf}`;
+    const tfCache = this._normalizeTfCache(tf);
+    return `candles:${symbol}:${tfCache}`;
+  }
+
+  _normalizeTfCache(tf = "1Day") {
+    const v = String(tf || "1Day").toLowerCase().trim();
+    if (["1m", "1min"].includes(v)) return "1min";
+    if (["5m", "5min"].includes(v)) return "5min";
+    if (["15m", "15min"].includes(v)) return "15min";
+    if (["30m", "30min"].includes(v)) return "30min";
+    if (["1h", "1hr", "1hour"].includes(v)) return "1h";
+    if (["2h", "2hr", "2hour"].includes(v)) return "2h";
+    if (["4h", "4hr", "4hour"].includes(v)) return "4h";
+    if (["6h", "6hr", "6hour"].includes(v)) return "6h";
+    if (["12h", "12hr", "12hour"].includes(v)) return "12h";
+    if (["1d", "1day"].includes(v)) return "1day";
+    if (["1w", "1week"].includes(v)) return "1week";
+    if (["1mo", "1month"].includes(v)) return "1month";
+    return v;
+  }
+
+  _listMonthKeysBetween(startDate, endDate) {
+    const out = [];
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return out;
+    let cur = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1, 0, 0, 0, 0));
+    const endMon = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1, 0, 0, 0, 0));
+    while (cur <= endMon) {
+      const y = cur.getUTCFullYear();
+      const m = String(cur.getUTCMonth() + 1).padStart(2, "0");
+      out.push(`${y}-${m}`);
+      cur.setUTCMonth(cur.getUTCMonth() + 1);
+    }
+    return out;
+  }
+
+  _monthBoundsUtc(monthKey) {
+    const [yRaw, mRaw] = String(monthKey || "").split("-");
+    const y = Number(yRaw);
+    const m = Number(mRaw);
+    const from = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0, 0));
+    const to = new Date(Date.UTC(y, m, 1, 0, 0, 0, 0) - 1);
+    return { fromIso: from.toISOString(), toIso: to.toISOString() };
+  }
+
+  _l2MonthFilePath(symbol, tfCache, monthKey) {
+    return path.join(this.cacheBasePath || "cache", symbol, `${monthKey}_${tfCache}.json`);
+  }
+
+  _tfFileAliases(tfCache) {
+    const aliases = new Set([tfCache]);
+    if (tfCache === "1day") aliases.add("1Day");
+    if (tfCache === "1week") aliases.add("1Week");
+    if (tfCache === "1month") aliases.add("1Month");
+    if (tfCache === "1h") aliases.add("1Hour");
+    if (tfCache === "2h") aliases.add("2Hour");
+    if (tfCache === "4h") aliases.add("4Hour");
+    if (tfCache === "6h") aliases.add("6Hour");
+    if (tfCache === "12h") aliases.add("12Hour");
+    return Array.from(aliases);
+  }
+
+  _ensureCanonicalL2MonthFile(symbol, tfCache, monthKey) {
+    const canonical = this._l2MonthFilePath(symbol, tfCache, monthKey);
+    if (fs.existsSync(canonical)) return canonical;
+    const dir = path.join(this.cacheBasePath || "cache", symbol);
+    for (const alias of this._tfFileAliases(tfCache)) {
+      const p = path.join(dir, `${monthKey}_${alias}.json`);
+      if (fs.existsSync(p)) {
+        try {
+          fs.renameSync(p, canonical);
+          this.logger.info(`[L2] Normalizzato nome file ${p} -> ${canonical}`);
+          return canonical;
+        } catch (err) {
+          this.logger.warning(`[L2] rename fallito ${p} -> ${canonical}: ${err.message}`);
+          return p;
+        }
+      }
+    }
+    return null;
+  }
+
+  _readL2ByMonthKeys(symbol, tfCache, monthKeys = []) {
+    const out = [];
+    for (const monthKey of monthKeys) {
+      const file = this._ensureCanonicalL2MonthFile(symbol, tfCache, monthKey);
+      if (!file || !fs.existsSync(file)) continue;
+      try {
+        const json = JSON.parse(fs.readFileSync(file, "utf8"));
+        if (Array.isArray(json)) out.push(...json);
+      } catch (err) {
+        this.logger.error(`[L2] Errore parse file ${file}: ${err.message}`);
+      }
+    }
+    return out
+      .map((c) => {
+        const ts = this._toTimestampMs(c?.t ?? c?.timestamp ?? c?.time ?? c?.date);
+        if (!Number.isFinite(ts)) return null;
+        return { ...c, t: new Date(ts).toISOString() };
+      })
+      .filter(Boolean)
+      .sort((a, b) => new Date(a.t) - new Date(b.t));
+  }
+
+  async _writeL2MonthFile(symbol, tfCache, monthKey, candles = []) {
+    try {
+      const dir = path.join(this.cacheBasePath || "cache", symbol);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const file = this._l2MonthFilePath(symbol, tfCache, monthKey);
+      const normalized = (Array.isArray(candles) ? candles : [])
+        .map((c) => {
+          const ts = this._toTimestampMs(c?.t ?? c?.timestamp ?? c?.time ?? c?.date);
+          if (!Number.isFinite(ts)) return null;
+          return { ...c, t: new Date(ts).toISOString() };
+        })
+        .filter(Boolean)
+        .sort((a, b) => new Date(a.t) - new Date(b.t));
+      fs.writeFileSync(file, JSON.stringify(normalized, null, 2));
+      this.logger.info(`[L2] Scrittura file completo ${file} (${normalized.length} candele)`);
+    } catch (err) {
+      this.logger.error(`[L2] Errore scrittura file mensile ${monthKey}_${tfCache}: ${err.message}`);
+    }
   }
 
   /**
@@ -692,10 +752,27 @@ class CacheManager {
   _toTimestampMs(value) {
     if (value === undefined || value === null || value === "") return null;
     if (typeof value === "number") {
-      return value < 1e12 ? value * 1000 : value;
+      if (!Number.isFinite(value)) return null;
+      if (value > 1e15) return Math.floor(value / 1e6); // ns
+      if (value > 1e12) return value; // ms
+      if (value > 1e10) return Math.floor(value / 1e3); // us
+      return value * 1000; // sec
     }
-    const parsed = Date.parse(String(value));
-    return Number.isNaN(parsed) ? null : parsed;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      if (/^\d+$/.test(trimmed)) {
+        const n = Number(trimmed);
+        if (!Number.isFinite(n)) return null;
+        if (n > 1e15) return Math.floor(n / 1e6); // ns
+        if (n > 1e12) return n; // ms
+        if (n > 1e10) return Math.floor(n / 1e3); // us
+        return n * 1000; // sec
+      }
+      const parsed = Date.parse(trimmed);
+      return Number.isNaN(parsed) ? null : parsed;
+    }
+    return null;
   }
 
   _mapTfAlpaca(tf) {
@@ -754,6 +831,30 @@ class CacheManager {
     if (days <= 7) return `${days}d`;
     if (days <= 30) return `${Math.ceil(days / 7)}w`;
     return `${days}d`;
+  }
+
+  _tfDurationMs(tf = "1Day") {
+    const v = String(tf || "").toLowerCase();
+    if (v.includes("min")) {
+      const n = Number.parseInt(v, 10);
+      return (Number.isFinite(n) ? n : 1) * 60 * 1000;
+    }
+    if (v.includes("hour") || v.endsWith("h") || v.includes("hr")) {
+      const n = Number.parseInt(v, 10);
+      return (Number.isFinite(n) ? n : 1) * 60 * 60 * 1000;
+    }
+    if (v.includes("week") || v.endsWith("w")) return 7 * 24 * 60 * 60 * 1000;
+    if (v.includes("month") || v.endsWith("mo")) return 30 * 24 * 60 * 60 * 1000;
+    return 24 * 60 * 60 * 1000; // default daily
+  }
+
+  _isIntradayTf(tf = "") {
+    const v = String(tf || "").toLowerCase().trim();
+    if (!v) return false;
+    // supported intraday aliases: 1min/5min/15min, 1h/2h, 1hour/2hour, 1hr/2hr
+    if (v.includes("min") || v.includes("hour")) return true;
+    if (/^\d+(m|h|hr)$/.test(v)) return true;
+    return false;
   }
 
   async _ibkrResolveConid(symbol, exchange) {
@@ -914,8 +1015,7 @@ class CacheManager {
       return ranges;
     }
 
-    const tfLower = String(tf || "").toLowerCase();
-    const isIntraday = tfLower.includes("min") || tfLower.includes("hour");
+    const isIntraday = this._isIntradayTf(tf);
     // For intraday ranges, edge gaps often represent market-closed windows
     // (overnight/weekend). If we already have candles, avoid forcing remote fetches
     // for those non-tradable border intervals.
@@ -932,13 +1032,17 @@ class CacheManager {
     const firstTs = sorted[0]._ts;
     const lastTs = sorted[sorted.length - 1]._ts;
 
-    // gap iniziale
-    if (firstTs > startTs) {
+    const tfMs = this._tfDurationMs(tf);
+    const gapStartMs = firstTs - startTs;
+    const gapEndMs = endTs - lastTs;
+
+    // gap iniziale: ignora residui inferiori a una barra (tipico offset timezone)
+    if (gapStartMs >= tfMs) {
       ranges.push({ from: startDate, to: sorted[0].t ?? new Date(firstTs).toISOString() });
     }
 
-    // gap finale
-    if (lastTs < endTs) {
+    // gap finale: ignora "frazione di giornata" su richieste fino a now
+    if (gapEndMs >= tfMs) {
       ranges.push({
         from: sorted[sorted.length - 1].t ?? new Date(lastTs).toISOString(),
         to: endDate,
@@ -1499,6 +1603,30 @@ class CacheManager {
           }
         }
       }
+
+      if (provider === "ALPACA") {
+        try {
+          return await fetchFrom("ALPACA");
+        } catch (err) {
+          this.logger.warning(`[L1] ALPACA fallito per ${symbol}, provo FMP`);
+          return await fetchFrom("FMP", "ALPACA");
+        }
+      }
+
+      if (provider === "FMP") {
+        try {
+          return await fetchFrom("FMP");
+        } catch (err) {
+          this.logger.warning(`[L1] FMP fallito per ${symbol}, provo IBKR`);
+          try {
+            return await fetchFrom("IBKR", "FMP");
+          } catch (err2) {
+            this.logger.warning(`[L1] IBKR fallito per ${symbol}, provo ALPACA`);
+            return await fetchFrom("ALPACA", "FMP");
+          }
+        }
+      }
+
       return await fetchFrom(provider);
     } catch (e) {
       this.logger.error(

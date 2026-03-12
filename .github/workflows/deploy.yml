@@ -327,7 +327,9 @@ jobs:
         echo "BROKER_EXECUTOR_IBKR_URL=${{vars.BROKER_EXECUTOR_IBKR_URL}}" >> .env
         echo "IBKR_LOGIN_DESKTOP_VERSION=${{vars.IBKR_LOGIN_DESKTOP_VERSION}}" >> .env
         echo "MCPGATEWAY_URL=${{vars.MCPGATEWAY_URL}}" >> .env
-         echo "IBKR_BRIDGE_URL=${{vars.IBKR_BRIDGE_URL}}" >> .env 
+        echo "IBKR_BRIDGE_URL=${{vars.IBKR_BRIDGE_URL}}" >> .env 
+        echo "TRADING_API_KEY=${{vars.TRADING_API_KEY}}" >> .env 
+         
 
     - name: Validate .env variables
       run: |

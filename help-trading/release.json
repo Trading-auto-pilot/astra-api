@@ -1,4 +1,11 @@
 {
-  "version": "1.0.0",
-  "note": "Initial release"
+  "lastUpdate": "11/03/2026", 
+  "version": "2.0.0",
+  "microservice": "help-trading",
+
+  "note": [
+    "v.1.0.0 First release.",
+    "v.2.0.0 API to create and modify the documentation once released"
+
+  ]
 }

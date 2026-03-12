@@ -1,7 +1,8 @@
 {
     "mysql": 3306,
     "redis": 6379,
-    "dbmanager": 3002,
+    "help-trading-frontend": 3002,
+    "help-trading-backend": 3006,
     "cachemanager": 3006,
     "strategyUtils": 3007,
     "alertingservice": 3008,

@@ -858,6 +858,12 @@ services:
     restart: unless-stopped
     profiles: ["mcp-gateway"]
     environment:
+      - MCP_TRANSPORT=http
+      - MCP_HTTP_PATH=/mcp
+      - TRADING_BASE_URL=http://traefik
+      - TRADING_API_KEY=${TRADING_API_KEY}
+      - DOCS_API_READ_TIMEOUT_MS=15000
+      - DOCS_API_WRITE_TIMEOUT_MS=240000
       - DATAHUB_URL=${DATAHUB_URL}
       - REDIS_URL=${REDIS_URL}
       - LOG_LEVEL=${LOG_LEVEL}
@@ -877,6 +883,7 @@ services:
       - LIQUIDITY_MANAGER_URL=${LIQUIDITY_MANAGER_URL}
       - MARKETDATASERVICE_URL=${MARKETDATASERVICE_URL}
       - BROKER_EXECUTOR_IBKR_URL=${BROKER_EXECUTOR_IBKR_URL}
+      - DOCS_API_PATH_PREFIX=/api/docs
       - TZ=${TIMEZONE}
     depends_on:
       datahub:
@@ -902,12 +909,23 @@ services:
       - "traefik.http.services.mcp-gateway.loadbalancer.server.port=3004"
       - "traefik.http.middlewares.mcp-gateway-stripprefix.stripPrefix.prefixes=/mcp-gateway"
       - "traefik.http.routers.mcp-gateway.middlewares=mcp-gateway-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.mcp-gateway-web.rule=Host(`trading.expovin.it`) && PathPrefix(`/mcp-gateway`)"
+      - "traefik.http.routers.mcp-gateway-web.entrypoints=websecure"
+      - "traefik.http.routers.mcp-gateway-web.tls.certresolver=le"
+      - "traefik.http.routers.mcp-gateway-web.service=mcp-gateway"
+      - "traefik.http.routers.mcp-gateway-web.middlewares=mcp-gateway-stripprefix,cors-default@docker,auth-forward@docker"
       - "traefik.http.routers.mcp-gateway-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/mcp-gateway`) && Method(`OPTIONS`)"
       - "traefik.http.routers.mcp-gateway-preflight.entrypoints=websecure"
       - "traefik.http.routers.mcp-gateway-preflight.tls.certresolver=le"
       - "traefik.http.routers.mcp-gateway-preflight.priority=10000"
       - "traefik.http.routers.mcp-gateway-preflight.service=mcp-gateway"
       - "traefik.http.routers.mcp-gateway-preflight.middlewares=mcp-gateway-stripprefix,cors-default@docker"
+      - "traefik.http.routers.mcp-gateway-web-preflight.rule=Host(`trading.expovin.it`) && PathPrefix(`/mcp-gateway`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.mcp-gateway-web-preflight.entrypoints=websecure"
+      - "traefik.http.routers.mcp-gateway-web-preflight.tls.certresolver=le"
+      - "traefik.http.routers.mcp-gateway-web-preflight.priority=10000"
+      - "traefik.http.routers.mcp-gateway-web-preflight.service=mcp-gateway"
+      - "traefik.http.routers.mcp-gateway-web-preflight.middlewares=mcp-gateway-stripprefix,cors-default@docker"
 
   capital-manager:
     image: expovin/capital-manager:${CAPITAL_MANAGER_VERSION:-latest}
@@ -999,6 +1017,9 @@ services:
     image: expovin/help-trading:${HELPTRADING_VERSION:-latest}
     restart: unless-stopped
     profiles: ["help-trading"]
+    expose:
+      - "3000"
+      - "3106"
     networks:
       - trading_net
     labels:
@@ -1008,7 +1029,16 @@ services:
       - "traefik.http.routers.help-trading.entrypoints=websecure"
       - "traefik.http.routers.help-trading.tls=true"
       - "traefik.http.routers.help-trading.tls.certresolver=le"
-      - "traefik.http.services.help-trading.loadbalancer.server.port=80"
+      - "traefik.http.routers.help-trading.priority=10"
+      - "traefik.http.routers.help-trading.service=help-trading@docker"
+      - "traefik.http.services.help-trading.loadbalancer.server.port=3000"
+      - "traefik.http.routers.help-trading-docs-api.rule=Host(`help.trading.expovin.it`) && PathPrefix(`/api/docs`)"
+      - "traefik.http.routers.help-trading-docs-api.entrypoints=websecure"
+      - "traefik.http.routers.help-trading-docs-api.tls=true"
+      - "traefik.http.routers.help-trading-docs-api.tls.certresolver=le"
+      - "traefik.http.routers.help-trading-docs-api.priority=100"
+      - "traefik.http.routers.help-trading-docs-api.service=help-trading-docs-api@docker"
+      - "traefik.http.services.help-trading-docs-api.loadbalancer.server.port=3106"
 
   ibkr-login-desktop:
     image: expovin/ibkr-login-desktop:${IBKR_LOGIN_DESKTOP_VERSION}

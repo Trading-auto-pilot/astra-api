@@ -49,7 +49,8 @@ Claude Desktop config (`~/.claude/claude_desktop_config.json`):
 
 ### HTTP (URL Connector)
 
-REST-based MCP transport. Protected by `X-Internal-Token` header when `INTERNAL_TOKEN` is set.
+MCP-over-HTTP transport. Supports MCP JSON-RPC on `POST /` (mounted under `MCP_HTTP_PATH`).
+Authentication is delegated to Traefik/auth-forward (API key).
 
 ```bash
 MCP_TRANSPORT=http MCP_HTTP_PATH=/mcp node server.js
@@ -63,8 +64,8 @@ MCP_TRANSPORT=http MCP_HTTP_PATH=/mcp node server.js
 | `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio` or `http` |
 | `MCP_HTTP_PATH` | `/mcp` | Mount path for HTTP transport |
 | `MCP_TOOL_ALLOWLIST` | _(all)_ | Comma-separated list of allowed tool names |
-| `INTERNAL_TOKEN` | _(none)_ | Token required in `X-Internal-Token` header for HTTP transport |
 | `TICKERSCANNER_URL` | `http://tickerscanner:3013` | Used by `strategies_list` tool |
+| `DOCS_API_PATH_PREFIX` | `/help-api/api/docs` | Traefik path prefix for help-trading docs API used by `documentazione` tool |
 
 ## Endpoints
 
@@ -81,20 +82,38 @@ curl http://localhost:3004/mcp/tools
 ### HTTP Transport (MCP_TRANSPORT=http)
 
 ```bash
+# MCP JSON-RPC initialize (Web connector style)
+curl -X POST http://localhost:3004/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-Api-Key: $API_KEY" \
+  -d '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"web-client","version":"1.0.0"}}}'
+
+# MCP JSON-RPC tools/list
+curl -X POST http://localhost:3004/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-Api-Key: $API_KEY" \
+  -d '{"jsonrpc":"2.0","id":"2","method":"tools/list","params":{}}'
+
+# MCP JSON-RPC tools/call
+curl -X POST http://localhost:3004/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-Api-Key: $API_KEY" \
+  -d '{"jsonrpc":"2.0","id":"3","method":"tools/call","params":{"name":"ping","arguments":{"message":"hello"}}}'
+
 # List tools
 curl http://localhost:3004/mcp/tools \
-  -H "X-Internal-Token: $INTERNAL_TOKEN"
+  -H "X-Api-Key: $API_KEY"
 
 # Call a tool
 curl -X POST http://localhost:3004/mcp/call \
   -H "Content-Type: application/json" \
-  -H "X-Internal-Token: $INTERNAL_TOKEN" \
+  -H "X-Api-Key: $API_KEY" \
   -d '{"tool":"ping","input":{"message":"hello"}}'
 
 # Call strategies_list
 curl -X POST http://localhost:3004/mcp/call \
   -H "Content-Type: application/json" \
-  -H "X-Internal-Token: $INTERNAL_TOKEN" \
+  -H "X-Api-Key: $API_KEY" \
   -d '{"tool":"strategies_list","input":{}}'
 ```
 
@@ -118,6 +137,7 @@ Each response is a JSON line written to stdout:
 |---|---|
 | `ping` | Connectivity check — echoes back the input message |
 | `strategies_list` | Lists trading strategies (pipes) from tickerScanner |
+| `documentazione` | Manage roadmap docs pages/paragraphs via help-trading docs API |
 
 ## Standard Endpoints
 
