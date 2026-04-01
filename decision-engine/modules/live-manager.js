@@ -1411,12 +1411,8 @@ function createMarketDataHandler(deps) {
   } = deps;
 
   return async (parsed, raw) => {
-    logger?.info?.(
-      `[live] handler invoked active=${liveState.active} pipeId=${liveState.pipeId ?? "-"} tickers=${liveState.tickers.size}`
-    );
     logger?.trace?.(
-      `[live][trace] handler invoked active=${liveState.active} ` +
-      `pipeId=${liveState.pipeId ?? "-"} tickers=${liveState.tickers.size}`
+      `[live][trace] handler invoked active=${liveState.active} pipeId=${liveState.pipeId ?? "-"} tickers=${liveState.tickers.size}`
     );
     if (!liveState.active) {
       logger?.trace?.("[live][trace] market data ignored: liveState inactive");

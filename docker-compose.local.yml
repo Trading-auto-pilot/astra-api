@@ -1051,6 +1051,7 @@ services:
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - BODY_LIMIT=${BODY_LIMIT}
       - TZ=${TIMEZONE}
+      - LOGS_ARCHIVE_PATH=${LOGS_ARCHIVE_PATH:-/app/logs-archive}
     depends_on:
       mysql:
         condition: service_healthy
@@ -1059,6 +1060,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+      - datahub_logs_archive:/app/logs-archive
     networks:
       - trading_net
     healthcheck:
@@ -1353,6 +1355,7 @@ volumes:
   cache_data:
     driver: local
   cachemanager_data:
+  datahub_logs_archive:
 
 networks:
   trading_net:
