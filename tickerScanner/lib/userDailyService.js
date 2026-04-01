@@ -475,10 +475,19 @@ function createUserDailyService({ logger, dbmanagerUrl, datahubAxios }) {
    */
   const launchJobsForUser = async ({ userId, targetDate, pipeId, modelName, modelVersion, jobKey }, ctx) => {
     if (pipeId === undefined) {
-      const url = `${dbmanagerUrl}/auth/users/${userId}/score-weights`;
-      const resp = await axios.get(url, { timeout: 8000 });
-      const list = Array.isArray(resp.data) ? resp.data : [];
-      if (!list.length) return { ok: false, status: 404, error: "Pesi/pipe non trovati per l'utente" };
+      let list = [];
+      try {
+        const url = `${dbmanagerUrl}/auth/users/${userId}/score-weights`;
+        const resp = await axios.get(url, { timeout: 8000 });
+        list = Array.isArray(resp.data) ? resp.data : [];
+      } catch (err) {
+        logger.warning(`${fn} score-weights fetch failed for user=${userId}, fallback a pipe default: ${err?.message}`);
+      }
+      // Fallback: se l'utente non ha pipe configurate, usa pipe_id=1 con pesi default
+      if (!list.length) {
+        logger.info(`${fn} nessuna pipe trovata per user=${userId}, uso pipe_id=1 con pesi default`);
+        list = [{ pipe_id: 1 }];
+      }
       const jobs = [];
       for (const row of list) {
         const pid = row.pipe_id ?? row.pipeId ?? 0;

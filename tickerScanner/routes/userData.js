@@ -409,6 +409,56 @@ module.exports = function buildUserDataRouter({ logger, getService }) {
       const rawDate = req.query.date || req.query.asOfDate || req.query.scoreDate || null;
       const asOfDate = rawDate ? String(rawDate).slice(0, 10) : new Date().toISOString().slice(0, 10);
 
+      // ---- PIPE 0: legge da AST_RANKING_DAILY (sistema) ----
+      if (String(pipeId) === "0") {
+        const [filtersResp, orderResp, rankingResp] = await Promise.all([
+          axios.get(`${dbmanagerUrl}/fundamentals/user-filters/${userId}?pipeId=0`, { timeout: 6000 }).catch(() => ({ data: [] })),
+          axios.get(`${dbmanagerUrl}/fundamentals/user-order/${userId}?pipeId=0`, { timeout: 6000 }).catch(() => ({ data: [] })),
+          axios.get(`${dbmanagerUrl}/api/table/AST_RANKING_DAILY?score_date=${encodeURIComponent(asOfDate)}&limit=500`, { timeout: 8000 }),
+        ]);
+
+        const rankingRows = Array.isArray(rankingResp.data?.data)
+          ? rankingResp.data.data
+          : Array.isArray(rankingResp.data?.items)
+            ? rankingResp.data.items
+            : [];
+
+        // Normalizza righe AST_RANKING_DAILY nel formato atteso dal frontend (stesso di scores_daily)
+        const fundamentalsList = rankingRows.map((row) => {
+          const reason = (() => { try { return typeof row.reason_json === "string" ? JSON.parse(row.reason_json) : (row.reason_json || {}); } catch { return {}; } })();
+          return {
+            symbol:              row.symbol,
+            score_date:          row.score_date || asOfDate,
+            pipe_id:             0,
+            asset_type:          row.asset_type || (String(row.bucket || "").startsWith("ETF") ? "ETF" : "EQUITY"),
+            bucket:              row.bucket || null,
+            rank_position:       row.rank_position || null,
+            total_score:         row.rank_score ?? reason.total_score ?? null,
+            quality_score:       reason.quality_score ?? null,
+            risk_score:          reason.risk_score ?? null,
+            momentum_score:      reason.momentum_score ?? null,
+            valuation_score:     reason.valuation_score ?? null,
+            price:               reason.price ?? null,
+            atr_14_pct:          reason.atr_14_pct ?? null,
+            dollar_vol_20d:      reason.dollar_vol_20d ?? null,
+            price_gt_sma50:      reason.trend?.price_gt_sma50 ?? null,
+            sma50_gt_sma200:     reason.trend?.sma50_gt_sma200 ?? null,
+            source:              "AST_RANKING_DAILY",
+          };
+        });
+
+        const normalizedList = fundamentalsList.map(normalizeRecordForFilters);
+        const filters = normalizeUserFilters(filtersResp?.data?.data || filtersResp?.data || []);
+        const orders = normalizeUserOrder(orderResp?.data?.data || orderResp?.data || []);
+        const filtered = applyUserFilters(normalizedList, filters);
+        const ordered = applyUserOrder(filtered, orders);
+        const appliedFilters = filters.filter((f) => f?.enabled);
+
+        const meta = { pipeId: 0, asOfDate, total: fundamentalsList.length, filtered: ordered.length, appliedFilters: appliedFilters.length, appliedOrder: orders.length, filters: appliedFilters, order: orders, source: "AST_RANKING_DAILY" };
+        return res.json({ ok: true, data: ordered, meta });
+      }
+
+      // ---- PIPE N: legge da scores_daily (pipe utente) ----
       const [filtersResp, orderResp, fundamentalsResp] = await Promise.all([
         axios.get(`${dbmanagerUrl}/fundamentals/user-filters/${userId}?pipeId=${encodeURIComponent(pipeId)}`, { timeout: 6000 }),
         axios.get(`${dbmanagerUrl}/fundamentals/user-order/${userId}?pipeId=${encodeURIComponent(pipeId)}`, { timeout: 6000 }),
@@ -420,7 +470,28 @@ module.exports = function buildUserDataRouter({ logger, getService }) {
 
       const fundamentalsPayload = (() => { try { return typeof fundamentalsResp.data === "string" ? JSON.parse(fundamentalsResp.data) : fundamentalsResp.data; } catch { return fundamentalsResp.data; } })();
       const fundamentalsList = Array.isArray(fundamentalsPayload?.data) ? fundamentalsPayload.data : Array.isArray(fundamentalsPayload) ? fundamentalsPayload : [];
-      const normalizedList = fundamentalsList.map(normalizeRecordForFilters);
+
+      // Arricchisce ogni row con asset_type da universe (batch, una sola query)
+      const symbolsNeedingAssetType = fundamentalsList
+        .filter((r) => !r.asset_type && r.symbol)
+        .map((r) => r.symbol);
+      let assetClassMap = {};
+      if (symbolsNeedingAssetType.length) {
+        try {
+          const uResp = await axios.get(
+            `${dbmanagerUrl}/api/table/universe?limit=1000&symbol=${encodeURIComponent(symbolsNeedingAssetType.join(","))}`,
+            { timeout: 5000 }
+          );
+          const uRows = uResp.data?.items || uResp.data?.data || [];
+          uRows.forEach((r) => { if (r.symbol) assetClassMap[r.symbol] = r.asset_class || "STOCK"; });
+        } catch { /* universe non disponibile — asset_type rimane null */ }
+      }
+      const fundamentalsListEnriched = fundamentalsList.map((r) => ({
+        ...r,
+        asset_type: r.asset_type || (assetClassMap[r.symbol] === "ETF" ? "ETF" : (assetClassMap[r.symbol] ? "EQUITY" : null)),
+      }));
+
+      const normalizedList = fundamentalsListEnriched.map(normalizeRecordForFilters);
       const filters = normalizeUserFilters(filtersResp?.data?.data || filtersResp?.data || []);
       const orders = normalizeUserOrder(orderResp?.data?.data || orderResp?.data || []);
       const filtered = applyUserFilters(normalizedList, filters);

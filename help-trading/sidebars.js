@@ -159,6 +159,7 @@ const sidebars = {
                     'developer-esterno-api/ms-traefik',
                     'developer-esterno-api/ms-mysql',
                     'developer-esterno-api/ms-redis',
+                    'developer-esterno-api/ms-ibkrgw-paper',
                   ],
                 },
                 {
@@ -396,6 +397,7 @@ const sidebars = {
       items: [
         'developer-interno/mappa-cartelle',
         'developer-interno/messages',
+        'developer-interno/servizi/overview',
         {
           type: 'category',
           label: 'authservice',
@@ -707,6 +709,12 @@ const sidebars = {
       items: [
         {
           type: 'category',
+          label: 'Release 3.7.0',
+          link: {type: 'doc', id: 'release-notes/release-3-7-0'},
+          items: [],
+        },
+        {
+          type: 'category',
           label: 'Release 3.5.0',
           link: {type: 'doc', id: 'release-notes/release-3-5-0'},
           items: [
@@ -736,23 +744,55 @@ const sidebars = {
       label: '6. Roadmap',
       link: {type: 'doc', id: 'roadmap/overview'},
       items: [
-        'roadmap/mobile',
-        'roadmap/devspot-mobile-remote-development',
-        'roadmap/strategy-to-enter',
-        'roadmap/decision-engine-gestione-ordini-aperti',
-        'roadmap/decision-engine-live-flow',
-        'roadmap/decision-engine-custom-watch-analysis',
-        'roadmap/market-simulator',
-        'roadmap/market-simulator-implementation',
-        'roadmap/cachemanager-bug-fix-e-miglioramenti',
-        'roadmap/tickerscanner-service-improvements',
-        'roadmap/tickerscanner-pipe-system-refactor',
-        'roadmap/liquidity-manager-improvements',
-        'roadmap/alerting-service-improvements',
-        'roadmap/frontend-miglioramenti',
+        {
+          type: 'category',
+          label: 'Decision Engine',
+          items: [
+            'roadmap/decision-engine/strategy-to-enter',
+            'roadmap/decision-engine/gestione-ordini-aperti',
+            'roadmap/decision-engine/custom-watch-analysis',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'Simulator',
+          items: [
+            'roadmap/simulator/market-simulator',
+            'roadmap/simulator/market-simulator-implementation',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'Tickerscanner',
+          items: [
+            'roadmap/tickerscanner/pipe-system-refactor',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'Alerting Service',
+          items: [
+            'roadmap/alerting-service/improvements',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'Frontend',
+          items: [
+            'roadmap/frontend/mobile',
+            'roadmap/frontend/miglioramenti',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'Development',
+          items: [
+            'roadmap/development/devspot-mobile-remote-development',
+            'roadmap/development/migrate-to-gcp-registry',
+            'roadmap/development/spot-instance-management',
+          ],
+        },
         'roadmap/db-improvements',
-        'roadmap/migrate-to-gcp-registry',
-        'roadmap/spot-instance-management',
         {
           type: 'category',
           label: 'ML Prediction',
@@ -762,6 +802,17 @@ const sidebars = {
             'roadmap/ml-prediction-database',
             'roadmap/ml-prediction-ms-alt-data-collector',
             'roadmap/ml-prediction-ms-correlation-engine',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'Done',
+          collapsed: true,
+          items: [
+            'roadmap/done/tickerscanner-service-improvements',
+            'roadmap/done/cachemanager-bug-fix-e-miglioramenti',
+            'roadmap/done/liquidity-manager-stabilizzazione-score',
+            'roadmap/done/decision-engine-live-flow',
           ],
         },
       ],

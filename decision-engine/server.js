@@ -322,6 +322,7 @@ app.patch("/guards/config", requireReady, (req, res) => {
 /* --------------------------- ROUTES: SPOT FINDER --------------------------- */
 const decisionEngineRouter = buildDecisionEngineRouter({
   service: serviceInstance,
+  getService: () => serviceInstance,
   logger,
 });
 

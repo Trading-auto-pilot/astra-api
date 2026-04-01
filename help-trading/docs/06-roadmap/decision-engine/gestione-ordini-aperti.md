@@ -1,8 +1,9 @@
 ---
 sidebar_position: 2
+title: Gestione ordini aperti
 ---
 
-# Decision-Engine — Gestione ordini aperti
+# Gestione ordini aperti
 
 ## Contesto attuale
 

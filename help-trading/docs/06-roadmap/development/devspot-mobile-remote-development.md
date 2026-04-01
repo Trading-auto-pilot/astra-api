@@ -1,9 +1,9 @@
 ---
 sidebar_position: 7
-title: DevSpot Mobile remote development
+title: DevSpot — Sviluppo AI da mobile
 ---
 
-# Sistema di sviluppo AI-driven da mobile — Guida completa
+# Guida completa
 
 > Obiettivo: avviare una VM spot GCP on-demand dall'iPhone con un tap,
 > che espone un MCP server accessibile via Cloudflare Tunnel.

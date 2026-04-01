@@ -1,9 +1,9 @@
 ---
-sidebar_position: 1
+sidebar_position: 6
 title: Flusso Live (post-fix)
 ---
 
-# Decision Engine — Flusso Live (post-fix)
+# Flusso Live (post-fix)
 
 ## Panoramica
 

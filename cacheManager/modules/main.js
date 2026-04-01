@@ -567,15 +567,33 @@ class CacheManager {
       this.logger.warning(
         `[getCandles] File mese mancante ${monthKey}_${tfCache}.json → fetch completo ${fromIso}→${toIso}`
       );
-      const providerCandles = await this._retrieveFromProvider(
-        symbol,
-        fromIso,
-        toIso,
-        tfCache,
-        exchange
-      );
-      const monthCandles = this._filterCandlesByRange(providerCandles, fromIso, toIso);
-      await this._writeL2MonthFile(symbol, tfCache, monthKey, monthCandles);
+      try {
+        const providerCandles = await this._retrieveFromProvider(
+          symbol,
+          fromIso,
+          toIso,
+          tfCache,
+          exchange
+        );
+        const monthCandles = this._filterCandlesByRange(providerCandles, fromIso, toIso);
+        await this._writeL2MonthFile(symbol, tfCache, monthKey, monthCandles);
+      } catch (err) {
+        // Per mesi correnti o futuri i provider possono fallire legittimamente
+        // (mercato non ancora aperto, dati non ancora disponibili).
+        // In questo caso serviamo i dati storici dalla cache senza propagare l'errore.
+        const now = new Date();
+        const [ky, km] = monthKey.split("-").map(Number);
+        const monthStart = new Date(Date.UTC(ky, km - 1, 1));
+        const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+        if (monthStart >= currentMonthStart) {
+          this.logger.warning(
+            `[getCandles] Provider fallito per mese corrente/futuro ${monthKey} ${symbol} tf=${tfCache} — nessun dato disponibile, uso cache storica: ${err.message}`
+          );
+        } else {
+          // Mese passato: errore reale, propaghiamo
+          throw err;
+        }
+      }
     }
 
     const collected = this._readL2ByMonthKeys(symbol, tfCache, monthKeys);
@@ -857,17 +875,43 @@ class CacheManager {
     return false;
   }
 
+  // Cache in-memory asset_class per symbol (evita query ripetute a universe)
+  _assetClassCache = {};
+
+  async _resolveAssetClass(symbol) {
+    if (this._assetClassCache[symbol] !== undefined) return this._assetClassCache[symbol];
+    try {
+      const resp = await axios.get(
+        `${this.dbmanagerUrl}/api/table/universe?symbol=${encodeURIComponent(symbol)}&limit=1`,
+        { timeout: 4000 }
+      );
+      const rows = resp.data?.data ?? resp.data?.items ?? [];
+      const row = Array.isArray(rows) ? rows[0] : null;
+      const assetClass = row?.asset_class || (row?.is_etf ? "ETF" : "STOCK");
+      this._assetClassCache[symbol] = assetClass;
+      return assetClass;
+    } catch {
+      this._assetClassCache[symbol] = "STOCK";
+      return "STOCK";
+    }
+  }
+
+  // Mappa asset_class → secType IBKR
+  static SEC_TYPE_MAP = { STOCK: "STK", ETF: "ETF", METAL: "CMDTY", FUTURE: "FUT" };
+
   async _ibkrResolveConid(symbol, exchange) {
     const url = `${this.ibkrbridgeUrl}/mirror/iserver/secdef/search`;
     const preferredExchange = exchange || process.env.IBKR_EXCHANGE || "NASDAQ";
+    const assetClass = await this._resolveAssetClass(symbol);
+    const secType = CacheManager.SEC_TYPE_MAP[assetClass] || "STK";
     this.logger.trace?.(
-      `[L1][IBKR] Resolve conid URL=${url} symbol=${symbol} exchange=${preferredExchange || "-"}`
+      `[L1][IBKR] Resolve conid URL=${url} symbol=${symbol} exchange=${preferredExchange || "-"} asset_class=${assetClass} secType=${secType}`
     );
     const resp = await axios.get(url, {
       params: {
         symbol,
         name: true,
-        secType: "STK",
+        secType,
         ...(preferredExchange ? { exchange: preferredExchange } : {}),
       },
       timeout: 8000,

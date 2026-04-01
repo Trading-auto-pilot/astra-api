@@ -1,9 +1,9 @@
 ---
 sidebar_position: 4
-title: AlertingService — Anti-duplicazione e throttle
+title: Anti-duplicazione e throttle
 ---
 
-# AlertingService — Anti-duplicazione e throttle
+# Anti-duplicazione e throttle
 
 ## Navigazione
 

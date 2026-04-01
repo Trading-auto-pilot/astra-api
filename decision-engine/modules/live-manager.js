@@ -551,6 +551,25 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
     logger,
   });
 
+  // Fail-safe: se il recalc non è disponibile non emettere segnali su dati stantii
+  if (recalculatedPattern === null) {
+    logger?.warning?.(
+      `[live] flagOk recalc non disponibile ticker=${ticker} — segnale bloccato (fail-safe)`
+    );
+    const updatedNoSignal = {
+      ...(payload && typeof payload === "object" ? payload : {}),
+      results: payload.results,
+      stats: { ...(payload?.stats || {}), updatedAt: new Date().toISOString() },
+    };
+    await bus.set(key, updatedNoSignal, { EX: SNAPSHOT_TTL_SECONDS });
+    return true;
+  }
+
+  // effectivePrice: usa il prezzo live se disponibile, altrimenti quello dello snapshot
+  // Elimina la discordanza tra il prezzo usato per calcolare i flag e quello usato nel check finale
+  const liveQuotePrice = liveData?.last ?? liveData?.ask ?? liveData?.bid;
+  const effectivePrice = Number.isFinite(liveQuotePrice) ? liveQuotePrice : price;
+
   const breakLevel = asNumber(
     basePattern?.breakLevel ?? basePattern?.breakoutEntry?.breakLevel,
     null
@@ -558,59 +577,74 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
   const buffer = asNumber(basePattern?.breakoutEntry?.buffer, 0);
   const volumeThreshold = asNumber(basePattern?.breakoutEntry?.volumeThreshold, null);
   const priceOk =
-    Number.isFinite(price) && Number.isFinite(breakLevel)
-      ? price > breakLevel + buffer
+    Number.isFinite(effectivePrice) && Number.isFinite(breakLevel)
+      ? effectivePrice > breakLevel + buffer
       : false;
   const volumeOk = Number.isFinite(volumeThreshold)
     ? Number.isFinite(volume) && volume >= volumeThreshold
     : true;
   const breakoutOk = priceOk && volumeOk;
-  const retracementEntryLimit = asNumber(current?.levels?.retracement?.entryLimit, null);
+
+  // Pullback sul breakout: prezzo rientrato vicino al livello di breakout dopo un breakout confermato
+  const breakoutRecent = Boolean(liveState.lastFlagByTicker.get(ticker)?.breakoutOk);
   const pullbackOk =
-    Number.isFinite(price) && Number.isFinite(retracementEntryLimit)
-      ? price <= retracementEntryLimit
+    breakoutRecent &&
+    Number.isFinite(effectivePrice) && Number.isFinite(breakLevel)
+      ? effectivePrice >= breakLevel && effectivePrice <= breakLevel + buffer
+      : false;
+
+  // Retracement su supporto: prezzo sceso nella zona di supporto strutturale
+  const retracementEntryLimit = asNumber(current?.levels?.retracement?.entryLimit, null);
+  const retracementOk =
+    Number.isFinite(effectivePrice) && Number.isFinite(retracementEntryLimit)
+      ? effectivePrice <= retracementEntryLimit
       : false;
 
   const trendOk = basePattern?.trendOk ?? null;
-  const flagOk =
-    typeof recalculatedPattern?.flagOk === "boolean"
-      ? recalculatedPattern.flagOk
-      : basePattern?.flagOk ?? null;
+  // recalculatedPattern è garantito non-null qui (fail-safe sopra blocca se null)
+  const flagOk = recalculatedPattern.flagOk ?? null;
   logger?.trace?.(
-    `[live][trace] flag source ticker=${ticker} baseFlagOk=${basePattern?.flagOk} recalculatedFlagOk=${recalculatedPattern?.flagOk} selectedFlagOk=${flagOk}`
+    `[live][trace] flag source ticker=${ticker} baseFlagOk=${basePattern?.flagOk} recalculatedFlagOk=${recalculatedPattern.flagOk} selectedFlagOk=${flagOk}`
   );
-  const actionableBreakout = Boolean(trendOk && flagOk && breakoutOk);
-  const actionablePullback = Boolean(trendOk && flagOk && pullbackOk);
+  const actionableBreakout   = Boolean(trendOk && flagOk && breakoutOk);
+  const actionablePullback   = Boolean(trendOk && flagOk && pullbackOk);
+  const actionableRetracement = Boolean(trendOk && flagOk && retracementOk);
   logger?.trace?.(
     `[live][trace] levels ticker=${ticker} breakLevel=${Number.isFinite(breakLevel) ? breakLevel : "-"} ` +
     `buffer=${Number.isFinite(buffer) ? buffer : "-"} retracementEntryLimit=${Number.isFinite(retracementEntryLimit) ? retracementEntryLimit : "-"} ` +
-    `price=${Number.isFinite(price) ? price : "-"} volume=${Number.isFinite(volume) ? volume : "-"} ` +
-    `volumeThreshold=${Number.isFinite(volumeThreshold) ? volumeThreshold : "-"}`
+    `snapshotPrice=${Number.isFinite(price) ? price : "-"} effectivePrice=${Number.isFinite(effectivePrice) ? effectivePrice : "-"} ` +
+    `volume=${Number.isFinite(volume) ? volume : "-"} volumeThreshold=${Number.isFinite(volumeThreshold) ? volumeThreshold : "-"}`
   );
   logger?.trace?.(
     `[live][trace] flags ticker=${ticker} trendOk=${trendOk} flagOk=${flagOk} ` +
-    `breakoutOk=${breakoutOk} pullbackOk=${pullbackOk} actionableBreakout=${actionableBreakout} actionablePullback=${actionablePullback}`
+    `breakoutOk=${breakoutOk} pullbackOk=${pullbackOk} retracementOk=${retracementOk} ` +
+    `actionableBreakout=${actionableBreakout} actionablePullback=${actionablePullback} actionableRetracement=${actionableRetracement}`
   );
 
-  // Log retracement evaluation ogni volta che il prezzo entra nell'area
-  if (pullbackOk) {
-    logger?.info?.(
-      `[live] RETRACEMENT AREA ticker=${ticker} price=${price} entryLimit=${retracementEntryLimit}` +
-      ` | trendOk=${trendOk} flagOk=${flagOk} → actionablePullback=${actionablePullback}`
-    );
-  }
   if (breakoutOk) {
     logger?.info?.(
-      `[live] BREAKOUT AREA ticker=${ticker} price=${price} breakLevel=${breakLevel}` +
+      `[live] BREAKOUT AREA ticker=${ticker} effectivePrice=${effectivePrice} breakLevel=${breakLevel}` +
       ` | trendOk=${trendOk} flagOk=${flagOk} → actionableBreakout=${actionableBreakout}`
+    );
+  }
+  if (pullbackOk) {
+    logger?.info?.(
+      `[live] PULLBACK AREA ticker=${ticker} effectivePrice=${effectivePrice} breakLevel=${breakLevel} buffer=${buffer}` +
+      ` | breakoutRecent=${breakoutRecent} trendOk=${trendOk} flagOk=${flagOk} → actionablePullback=${actionablePullback}`
+    );
+  }
+  if (retracementOk) {
+    logger?.info?.(
+      `[live] RETRACEMENT AREA ticker=${ticker} effectivePrice=${effectivePrice} entryLimit=${retracementEntryLimit}` +
+      ` | trendOk=${trendOk} flagOk=${flagOk} → actionableRetracement=${actionableRetracement}`
     );
   }
 
   const prevFlags = liveState.lastFlagByTicker.get(ticker) || {};
-  const nextFlags = { trendOk, flagOk, breakoutOk, pullbackOk };
+  const nextFlags = { trendOk, flagOk, breakoutOk, pullbackOk, retracementOk };
   const changes = [];
   const transitions = [];
-  ["trendOk", "flagOk", "breakoutOk", "pullbackOk"].forEach((flagKey) => {
+  ["trendOk", "flagOk", "breakoutOk", "pullbackOk", "retracementOk"].forEach((flagKey) => {
     const prevValue = prevFlags[flagKey];
     const nextValue = nextFlags[flagKey];
     if (typeof prevValue === "boolean" && typeof nextValue === "boolean" && prevValue !== nextValue) {
@@ -629,6 +663,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
     flagOk,
     breakoutOk,
     pullbackOk,
+    retracementOk,
     entryBreakoutSuggested:
       basePattern?.breakoutEntry?.entryTriggerPrice && volumeOk
         ? basePattern.breakoutEntry.entryTriggerPrice
@@ -646,7 +681,8 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
       : basePattern?.breakoutEntry,
     lastSnapshot: {
       ts: ts ?? Date.now(),
-      price: Number.isFinite(price) ? price : null,
+      price: Number.isFinite(effectivePrice) ? effectivePrice : null,
+      snapshotPrice: Number.isFinite(price) ? price : null,
       volume: Number.isFinite(volume) ? volume : null,
       dataMode: dataMode || "snapshot",
     },
@@ -684,11 +720,18 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
         actionable: actionableBreakout,
         reason: actionableBreakout ? null : "snapshot conditions not met",
       },
+      pullback: next.levels.pullback
+        ? {
+            ...next.levels.pullback,
+            actionable: actionablePullback,
+            reason: actionablePullback ? null : "snapshot conditions not met",
+          }
+        : next.levels.pullback,
       retracement: next.levels.retracement
         ? {
             ...next.levels.retracement,
-            actionable: actionablePullback,
-            reason: actionablePullback ? null : "snapshot conditions not met",
+            actionable: actionableRetracement,
+            reason: actionableRetracement ? null : "snapshot conditions not met",
           }
         : next.levels.retracement,
     };
@@ -738,14 +781,18 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
   }
 
   if (liveData) {
-    const entryMode = actionableBreakout ? "breakout" : actionablePullback ? "pullback" : null;
-    const levelsKey = entryMode === "pullback" ? "retracement" : entryMode;
+    // Priorità: breakout > pullback > retracement
+    const entryMode = actionableBreakout ? "breakout"
+      : actionablePullback    ? "pullback"
+      : actionableRetracement ? "retracement"
+      : null;
+    // pullback usa i livelli del breakout (stesso breakLevel/SL/TP); retracement usa i suoi propri livelli
+    const levelsKey = entryMode === "pullback" ? "breakout" : entryMode;
     const entryBlock = levelsKey ? next.levels?.[levelsKey] : null;
     const entryLimit = asNumber(entryBlock?.entryLimit ?? entryBlock?.entry, null);
     const stopLoss = asNumber(entryBlock?.stopLoss, null);
     const takeProfit1 = asNumber(entryBlock?.takeProfit1, null);
     const takeProfit2 = asNumber(entryBlock?.takeProfit2, null);
-    const livePrice = asNumber(liveData?.last ?? liveData?.ask ?? liveData?.bid, null);
     const liveVolume = asNumber(liveData?.volume, null);
     const liveVolumeThreshold =
       asNumber(nextPattern?.breakoutEntry?.volumeThreshold, null) ??
@@ -753,7 +800,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
     logger?.trace?.(
       `[live][trace] entry candidate ticker=${ticker} mode=${entryMode || "-"} ` +
       `entryLimit=${Number.isFinite(entryLimit) ? entryLimit : "-"} ` +
-      `livePrice=${Number.isFinite(livePrice) ? livePrice : "-"} ` +
+      `effectivePrice=${Number.isFinite(effectivePrice) ? effectivePrice : "-"} ` +
       `liveVolume=${Number.isFinite(liveVolume) ? liveVolume : "-"} ` +
       `liveVolumeThreshold=${Number.isFinite(liveVolumeThreshold) ? liveVolumeThreshold : "-"}`
     );
@@ -761,30 +808,33 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
     if (!entryMode) {
       if (pullbackOk || breakoutOk) {
         logger?.info?.(
-          `[live] NO ENTRY ticker=${ticker} price=${price} livePrice=${livePrice}` +
+          `[live] NO ENTRY ticker=${ticker} effectivePrice=${effectivePrice}` +
           ` pullbackOk=${pullbackOk} breakoutOk=${breakoutOk} trendOk=${trendOk} flagOk=${flagOk}` +
           ` — prezzo in zona ma flags non actionable`
         );
       }
     }
 
-    if (entryMode && Number.isFinite(entryLimit) && Number.isFinite(livePrice)) {
+    if (entryMode && Number.isFinite(entryLimit) && Number.isFinite(effectivePrice)) {
       const volumeOkLive =
         !Number.isFinite(liveVolumeThreshold) || (Number.isFinite(liveVolume) && liveVolume >= liveVolumeThreshold);
-      const priceOkLive = entryMode === "pullback" ? livePrice <= entryLimit : livePrice >= entryLimit;
+      const priceOkFinal = entryMode === "pullback"
+        ? effectivePrice >= entryLimit && effectivePrice <= entryLimit + asNumber(basePattern?.breakoutEntry?.buffer, 0)
+        : entryMode === "retracement"
+          ? effectivePrice <= retracementEntryLimit
+          : effectivePrice >= entryLimit; // breakout
       logger?.trace?.(
         `[live][trace] entry checks ticker=${ticker} mode=${entryMode} ` +
-        `priceOkLive=${priceOkLive} volumeOkLive=${volumeOkLive} ` +
-        `rule=${entryMode === "pullback" ? "livePrice<=entryLimit" : "livePrice>=entryLimit"}`
+        `priceOkFinal=${priceOkFinal} volumeOkLive=${volumeOkLive} effectivePrice=${effectivePrice} entryLimit=${entryLimit}`
       );
-      if (!priceOkLive || !volumeOkLive) {
+      if (!priceOkFinal || !volumeOkLive) {
         logger?.info?.(
           `[live] ENTRY PENDING ticker=${ticker} mode=${entryMode} entryLimit=${entryLimit}` +
-          ` livePrice=${livePrice} priceOkLive=${priceOkLive}` +
+          ` effectivePrice=${effectivePrice} priceOkFinal=${priceOkFinal}` +
           ` liveVolume=${liveVolume} liveVolumeThreshold=${liveVolumeThreshold} volumeOkLive=${volumeOkLive}`
         );
       }
-      if (priceOkLive && volumeOkLive) {
+      if (priceOkFinal && volumeOkLive) {
         const alertKey = `${ticker}:${entryMode}:${entryLimit}`;
         const lastAlert = liveState.lastAlertByKey.get(alertKey) || 0;
         const cooldownRemaining = ALERT_COOLDOWN_MS - (Date.now() - lastAlert);
@@ -1433,6 +1483,15 @@ function createMarketDataHandler(deps) {
     const now = Date.now();
     if (liveState.runningByTicker.has(ticker)) {
       logger?.trace?.(`[live][trace] snapshot skipped ticker=${ticker}: run already in progress`);
+      return;
+    }
+
+    const lastRun = liveState.lastRunByTicker.get(ticker) || 0;
+    if (now - lastRun < liveState.minIntervalMs) {
+      logger?.trace?.(
+        `[live][trace] snapshot rate-limited ticker=${ticker} ` +
+        `nextRunIn=${Math.ceil((liveState.minIntervalMs - (now - lastRun)) / 1000)}s`
+      );
       return;
     }
 

@@ -52,10 +52,14 @@ async function fetchLiquidityScore(market = "US") {
   const rawConfidence = Number(payload?.confidence ?? 0);
   const confidence = rawConfidence <= 1 ? rawConfidence * 100 : rawConfidence;
 
+  const scoreEmaRaw = payload?.score_ema;
+
   return {
-    score: Number(payload?.score ?? payload?.liquidityScore ?? 50),
-    riskRegime: String(payload?.riskRegime ?? payload?.regime ?? "NEUTRAL"),
-    volatility: Number(payload?.volatility ?? payload?.vol ?? 0),
+    score:              Number(payload?.score ?? payload?.liquidityScore ?? 50),
+    score_ema:          Number.isFinite(Number(scoreEmaRaw)) ? Number(scoreEmaRaw) : undefined,
+    riskRegime:         String(payload?.riskRegime ?? payload?.regime ?? "NEUTRAL"),
+    riskRegimeSmoothed: payload?.riskRegimeSmoothed ?? undefined,
+    volatility:         Number(payload?.volatility ?? payload?.vol ?? 0),
     confidence,
   };
 }

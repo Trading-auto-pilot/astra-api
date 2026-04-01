@@ -1,6 +1,6 @@
 ---
 sidebar_position: 8
-title: Migrate to GCP Registry
+title: Migrazione GCP Registry
 ---
 
 # Migrazione Docker Hub → GCP Artifact Registry

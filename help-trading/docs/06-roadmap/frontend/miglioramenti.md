@@ -1,9 +1,9 @@
 ---
 sidebar_position: 6
-title: Frontend — Miglioramenti e fix
+title: Miglioramenti e fix
 ---
 
-# Frontend — Miglioramenti e fix: note di brainstorm
+# Miglioramenti e fix: note di brainstorm
 
 > Documento di lavoro generato il 22 marzo 2026.
 > Raccoglie tutti i punti emersi dal brainstorm. Da trasformare in ticket/task.

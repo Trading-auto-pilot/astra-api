@@ -66,6 +66,7 @@ function buildUniverseRecord(fmpData) {
 
   return {
     symbol:              fmpData.symbol,
+    asset_class:         (profile.isEtf || profile.isFund) ? "ETF" : "STOCK",
     is_etf:              toTinyInt(profile.isEtf),
     is_actively_trading: toTinyInt(profile.isActivelyTrading),
     is_adr:              toTinyInt(profile.isAdr),

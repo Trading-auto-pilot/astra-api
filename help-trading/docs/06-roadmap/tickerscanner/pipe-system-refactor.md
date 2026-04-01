@@ -3,7 +3,7 @@ sidebar_position: 1
 title: Riabilitazione sistema a pipe utente
 ---
 
-# tickerScanner — Riabilitazione sistema a pipe utente
+# Riabilitazione sistema a pipe utente
 
 > Documento di analisi e fix generato il 23 marzo 2026.
 > Obiettivo: mantenere la Pipe 0 (Ranking Daily, sistema) e riabilitare le pipe utente (1+) con calcolo score personalizzato per pesi e filtri.

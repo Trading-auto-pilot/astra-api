@@ -46,7 +46,10 @@ function computeReservedCashPct(liquidity, config = {}) {
     VOL_SCALE,
   } = { ...DEFAULT_CONFIG, ...config };
 
-  const { score, riskRegime, volatility, confidence } = liquidity;
+  // Prefer EMA-smoothed score and hysteresis regime when available
+  const score = Number.isFinite(liquidity.score_ema) ? liquidity.score_ema : liquidity.score;
+  const riskRegime = liquidity.riskRegimeSmoothed ?? liquidity.riskRegime;
+  const { volatility, confidence } = liquidity;
   const reasons = [];
 
   if (confidence < CONFIDENCE_THRESHOLD) {
@@ -120,7 +123,9 @@ function computeAllocationDecision({
     reservedCashPct,
     reservedCash: Math.floor(reservedCash * 100) / 100,
     riskRegime: liquidity.riskRegime,
-    liquidityScore: liquidity.confidence >= CONFIDENCE_THRESHOLD ? liquidity.score : null,
+    liquidityScore: liquidity.confidence >= CONFIDENCE_THRESHOLD
+      ? (Number.isFinite(liquidity.score_ema) ? liquidity.score_ema : liquidity.score)
+      : null,
     confidence: liquidity.confidence,
     volatility: liquidity.volatility,
     constraints: {

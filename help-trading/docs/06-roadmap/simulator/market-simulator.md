@@ -1,9 +1,9 @@
 ---
 sidebar_position: 5
-title: Market Simulator — Replay di dati storici come mercato live
+title: Replay di dati storici come mercato live
 ---
 
-# Market Simulator — Replay di dati storici come mercato live
+# Replay di dati storici come mercato live
 
 ## Obiettivo
 

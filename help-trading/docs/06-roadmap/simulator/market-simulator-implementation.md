@@ -3,7 +3,7 @@ sidebar_position: 1
 title: Piano Implementativo Completo
 ---
 
-# Market Simulator — Piano Implementativo Completo
+# Piano Implementativo Completo
 
 > **Documento di lavoro** — aggiornato il 26 marzo 2026
 > Basato su sessione di brainstorm architetturale.

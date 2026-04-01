@@ -1,9 +1,9 @@
 ---
-sidebar_position: 3
-title: Liquidity Manager — Stabilizzazione score e regime
+sidebar_position: 5
+title: Stabilizzazione score e regime
 ---
 
-# Liquidity Manager — Stabilizzazione score e regime
+# Stabilizzazione score e regime
 
 ## Navigazione
 

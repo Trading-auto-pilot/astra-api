@@ -578,6 +578,7 @@ const startAsyncJob = async (opts) => {
       job.results.push({
         ticker,
         exchange,
+        asset_type: entry?.asset_type ?? null,
         currentPrice: data?.priceRef ?? null,
         levels: {
           retracement: data?.levels?.retracement ?? null,

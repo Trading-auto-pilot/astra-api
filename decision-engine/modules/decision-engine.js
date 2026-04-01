@@ -54,7 +54,12 @@ const relaxedSpotFinderParams = {
   clusterMultiplier: C.RELAXED_CLUSTER_MULTIPLIER,
 };
 
-module.exports = function buildDecisionEngineRouter({ service, logger }) {
+module.exports = function buildDecisionEngineRouter({ service: _service, getService, logger }) {
+  // service può essere undefined se buildDecisionEngineRouter è chiamato prima che
+  // serviceInstance sia inizializzato (pattern comune nei template). resolveService()
+  // restituisce sempre l'istanza aggiornata grazie a getService.
+  const resolveService = typeof getService === "function" ? getService : () => _service;
+  const service = _service; // usato solo per le URL di init (che hanno già fallback su process.env)
   const router = express.Router();
 
   // --- URL config ----------------------------------------------------------
@@ -300,7 +305,7 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
     try {
       const jobId = await startAsyncJob({
         bus: bus(),
-        statusChannel: service?.redisStatusChannel,
+        statusChannel: resolveService()?.redisStatusChannel,
         pipeId,
         userId,
         query: req.query,
@@ -401,7 +406,7 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
       }
     }
     const jobId = newJobId();
-    const statusChannel = service?.redisStatusChannel;
+    const statusChannel = resolveService()?.redisStatusChannel;
     setImmediate(async () => {
       try {
         const summary = await runLiveSnapshot(req, pipeId, userId);
@@ -500,7 +505,7 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
     return resp?.data;
   };
 
-  const bus = () => service?.bus;
+  const bus = () => resolveService()?.bus;
 
   const runLiveSnapshot = async (req, pipeId, userId) => {
     const b = bus();
@@ -565,46 +570,61 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
     };
   };
 
-  // --- Market data handler setup -------------------------------------------
-  if (service?.addMarketDataHandler && !service.__liveMarketHandlerAttached) {
-    const hooksChannel = `${envName}.hooks`;
-    const liquidityManagerUrl = (
-      service?.liquidityManagerUrl ||
-      process.env.LIQUIDITYMANAGER_URL ||
-      "http://liquidity-manager:3001"
-    ).replace(/\/+$/, "");
-    const brokerExecutorUrl = (
-      service?.brokerExecutorUrl ||
-      process.env.BROKER_EXECUTOR_IBKR_URL ||
-      process.env.BROKER_EXECUTOR_URL ||
-      "http://broker-executor-ibkr:3003"
-    ).replace(/\/+$/, "");
-    const capitalManagerUrl = (
-      service?.capitalmanagerUrl ||
-      process.env.CAPITALMANAGER_URL ||
-      ""
-    ).replace(/\/+$/, "") || null;
-    const ibkrBridgeUrl = (
-      service?.ibkrbridgeUrl ||
-      process.env.IBKRBRIDGE_URL ||
-      "http://ibkr-bridge:3017"
-    ).replace(/\/+$/, "");
-    const handler = createMarketDataHandler({
-      bus: service?.bus,
-      eventsChannel,
-      hooksChannel,
-      serviceName,
-      envName,
-      logger,
-      liquidityManagerUrl,
-      cachemanagerUrl,
-      brokerExecutorUrl,
-      capitalManagerUrl,
-      ibkrBridgeUrl,
-    });
-    service.addMarketDataHandler(handler);
-    service.__liveMarketHandlerAttached = true;
-  }
+  // --- Market data handler setup (lazy, eseguito alla prima richiesta) ------
+  // Non può essere eseguito subito perché buildDecisionEngineRouter è chiamato
+  // sincronicamente prima che serviceInstance sia inizializzato. resolveService()
+  // garantisce di leggere l'istanza aggiornata al momento dell'esecuzione.
+  const ensureMarketDataHandler = (() => {
+    let attached = false;
+    return () => {
+      if (attached) return;
+      const svc = resolveService();
+      if (!svc?.addMarketDataHandler || svc.__liveMarketHandlerAttached) {
+        if (svc?.__liveMarketHandlerAttached) attached = true;
+        return;
+      }
+      const hooksChannel = `${envName}.hooks`;
+      const liquidityManagerUrl = (
+        svc.liquidityManagerUrl ||
+        process.env.LIQUIDITYMANAGER_URL ||
+        "http://liquidity-manager:3001"
+      ).replace(/\/+$/, "");
+      const brokerExecutorUrl = (
+        svc.brokerExecutorUrl ||
+        process.env.BROKER_EXECUTOR_IBKR_URL ||
+        process.env.BROKER_EXECUTOR_URL ||
+        "http://broker-executor-ibkr:3003"
+      ).replace(/\/+$/, "");
+      const capitalManagerUrl = (
+        (svc.capitalmanagerUrl || process.env.CAPITALMANAGER_URL || "").replace(/\/+$/, "")
+      ) || null;
+      const ibkrBridgeUrl = (
+        svc.ibkrbridgeUrl ||
+        process.env.IBKRBRIDGE_URL ||
+        "http://ibkr-bridge:3017"
+      ).replace(/\/+$/, "");
+      const handler = createMarketDataHandler({
+        bus: svc.bus,
+        eventsChannel,
+        hooksChannel,
+        serviceName,
+        envName,
+        logger,
+        liquidityManagerUrl,
+        cachemanagerUrl,
+        brokerExecutorUrl,
+        capitalManagerUrl,
+        ibkrBridgeUrl,
+      });
+      svc.addMarketDataHandler(handler);
+      svc.__liveMarketHandlerAttached = true;
+      attached = true;
+      logger?.info?.("[decision-engine] market data handler attached (lazy init)");
+    };
+  })();
+
+  // Middleware lazy: attacca il market data handler alla prima richiesta
+  router.use((req, res, next) => { ensureMarketDataHandler(); next(); });
 
   // =========================================================================
   // Route: POST /:pipeId — start async job
@@ -784,7 +804,7 @@ module.exports = function buildDecisionEngineRouter({ service, logger }) {
       return res.status(401).json({ ok: false, error: "userId not available" });
     }
     const jobId = newJobId();
-    const statusChannel = service?.redisStatusChannel;
+    const statusChannel = resolveService()?.redisStatusChannel;
     setImmediate(async () => {
       try {
         const summary = await runLiveSnapshot(req, pipeId, userId);

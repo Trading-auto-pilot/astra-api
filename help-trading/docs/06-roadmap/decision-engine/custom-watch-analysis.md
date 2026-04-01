@@ -1,9 +1,9 @@
 ---
 sidebar_position: 2
-title: Decision Engine — Custom Watch & Allocation Analysis
+title: Custom Watch & Allocation Analysis
 ---
 
-# Decision Engine — Custom Watch & Allocation Analysis
+# Custom Watch & Allocation Analysis
 
 > **Microservizio:** `decision-engine` (porta 3018)  
 > **Data:** Marzo 2026  

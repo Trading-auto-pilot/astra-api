@@ -3,7 +3,7 @@ sidebar_position: 1
 title: Spot Instance Management
 ---
 
-# Spot Instance Management — Piano Implementativo
+# Spot Instance Management
 
 > **Documento di lavoro** — generato il 25 marzo 2026  
 > Complementare a `market-simulator-implementation.md`.  

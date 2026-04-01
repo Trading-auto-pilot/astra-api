@@ -326,4 +326,179 @@ Aprendo la modal di un file mensile (icona occhio nella riga file del tab L2) vi
 
 ---
 
-*Fix derivati dall'analisi documentata in [cachemanager-bug-fix-e-miglioramenti](../roadmap/cachemanager-bug-fix-e-miglioramenti).*
+*Fix derivati dall'analisi documentata in [cachemanager-bug-fix-e-miglioramenti](../roadmap/done/cachemanager-bug-fix-e-miglioramenti).*
+
+---
+
+### tickerScanner — Fase 1 separazione ETF
+
+#### v — Classificazione ETF nell'universo e scoring per utente
+
+**1. Campo `asset_class` nella tabella `universe`**
+
+Aggiunto il campo `asset_class VARCHAR(20) NOT NULL DEFAULT 'STOCK'` alla tabella `universe`, valorizzato da `buildUniverseRecord` in `universeService.js` in base ai flag FMP `profile.isEtf` o `profile.isFund`:
+
+```js
+asset_class: (profile.isEtf || profile.isFund) ? "ETF" : "STOCK"
+```
+
+Migrazione DB: `db/0004_UNIVERSE_ASSET_CLASS.sql` (backfill automatico su righe esistenti tramite `is_etf` / `is_fund`).
+
+**2. `asset_type` nel response di `/user-fundamentals-view/:pipeId`**
+
+Il campo `asset_type` viene ora popolato in modo affidabile:
+
+- **Pipe 0 (AST_RANKING_DAILY)**: inferito dal `bucket` — se inizia con `"ETF_"` → `"ETF"`, altrimenti `"EQUITY"`.
+- **Pipe N (scores_daily)**: batch-fetch da `universe` (una sola query `GET /api/table/universe?symbol=A,B,C,...`) per i simboli privi di `asset_type`; mappato `STOCK` → `"EQUITY"`, `ETF` → `"ETF"`.
+
+**3. Fallback pipe utente con pesi default**
+
+Se `score-weights` non restituisce pipe configurate per un utente (es. nuovo utente, errore fetch), `launchJobsForUser` ora fa fallback automatico a `[{ pipe_id: 1 }]` con pesi default, invece di non calcolare alcuno score.
+
+**4. Job EOD scheduler per `user-daily-scores`**
+
+Aggiunto job scheduler `eod-user-daily-scores` (migrazione `db/0005_SCHEDULER_USER_DAILY_SCORES_JOB.sql`) che esegue ogni giorno feriale alle 22:30 chiamando `POST /internal/fundamentals/user-daily-scores` su tickerscanner con `{ "all_users": true }`.
+
+---
+
+### decision-engine — Fix Redis snapshot e supporto ETF
+
+#### v — Fix snapshot Redis e market data handler
+
+**5. Fix: snapshot Pipe Execution non salvata in Redis**
+
+`buildDecisionEngineRouter` veniva chiamato sincronicamente in `server.js` prima che l'IIFE asincrona di init completasse, lasciando `service` (e quindi `bus()`) a `undefined`. Conseguenze:
+
+- La lista risultati spariva al refresh della pagina (Redis mai scritto)
+- Live Daily Update non funzionava (market data handler mai attachato)
+
+**Fix**: `server.js` ora passa `getService: () => serviceInstance` al router; `bus()` e `redisStatusChannel` usano `resolveService()` lazy ad ogni chiamata. Il market data handler viene attachato tramite middleware Express alla prima richiesta HTTP, quando `serviceInstance` è certamente pronto.
+
+**6. Fix: mese corrente senza dati non propaga errore (`cacheManager`)**
+
+Quando il mese corrente non ha ancora dati (mercato non ancora aperto, es. prima delle 15:30 UTC), il fetch dal provider falliva e l'intera `getCandles` restituiva errore anche se tutti i mesi storici erano in cache.
+
+Il loop su `missingMonths` ora gestisce in try/catch ogni mese: se il provider fallisce per il mese corrente o futuro viene emesso un warning e si prosegue, restituendo comunque i dati storici. Se il mese è passato l'errore viene propagato normalmente.
+
+**7. Tag ETF nel tab Pipe Execution**
+
+Nel tab **Pipe Execution** di `#/admin/microservice/decision-engine`, i simboli ETF mostrano ora un badge viola `ETF` affianco al nome del ticker nella tabella risultati.
+
+Il tab **Pipe Execution** viene ricordato al refresh della pagina (persiste in localStorage insieme agli altri parametri di navigazione).
+
+---
+
+#### v — Fix flusso Live (live-manager)
+
+**8. Fix: rate limit per ticker non applicato**
+
+Le strutture `runningByTicker` e `lastRunByTicker` esistevano ma il check `now - lastRun < minIntervalMs` non veniva mai eseguito: ogni snapshot ricevuto per un ticker avviava una valutazione indipendentemente dall'intervallo trascorso dall'ultima. Il rate limit è ora correttamente applicato prima di avviare la valutazione, con log di trace che include il `nextRunIn` in secondi.
+
+Variabile d'ambiente: `LIVE_RECALC_INTERVAL_MS` (default `60000` ms).
+
+**9. Fix: segnale emesso su dati stantii quando `recalcFlagOkFromLiveSnapshot` fallisce**
+
+Quando `cachemanagerUrl` non era raggiungibile o le candele non erano disponibili, `recalcFlagOkFromLiveSnapshot` restituiva `null` ma il codice faceva fallback silenzioso su `basePattern.flagOk` — un valore calcolato ore prima su un prezzo diverso.
+
+Ora se il recalc restituisce `null`, il segnale viene bloccato (politica **fail-safe**): il TTL Redis viene aggiornato e la funzione ritorna senza emettere eventi. Un falso segnale su pattern stantio è considerato più pericoloso di un segnale mancato.
+
+**10. Fix: `effectivePrice` unificato — prezzo live e snapshot usavano valori diversi**
+
+I flag di ingresso (`breakoutOk`, `pullbackOk`) venivano calcolati con il `price` dello snapshot, mentre il check finale di entry usava `livePrice` letto dalla cache dei tick live. I due valori potevano divergere rendendo impossibile soddisfare entrambe le condizioni contemporaneamente.
+
+Introdotto `effectivePrice = livePrice ?? snapshotPrice`: un unico prezzo di riferimento usato coerentemente per tutti i check — flag, entry, volume — eliminando la discordanza. Nei log di trace entrambi i valori sono ora visibili (`snapshotPrice` e `effectivePrice`).
+
+**11. Fix: tre scenari di ingresso separati (breakout / pullback / retracement)**
+
+`pullbackOk` era di fatto il check di retracement (`price <= retracementEntryLimit`) — i due scenari erano confusi sotto un'unica variabile. Il codice compensava con un workaround `levelsKey = entryMode === "pullback" ? "retracement" : entryMode`.
+
+I tre flag sono ora distinti e semanticamente corretti:
+
+| Flag | Condizione |
+|---|---|
+| `breakoutOk` | `effectivePrice > breakLevel + buffer` AND `volumeOk` |
+| `pullbackOk` | `breakoutRecent` AND `breakLevel ≤ effectivePrice ≤ breakLevel + buffer` |
+| `retracementOk` | `effectivePrice ≤ retracementEntryLimit` |
+
+Priorità di selezione: `breakout > pullback > retracement`. Il pullback usa i livelli del breakout (stesso entry/SL/TP); il retracement usa i propri livelli. `breakoutRecent` è derivato dal flag `breakoutOk` del tick precedente, persistito in `lastFlagByTicker`.
+
+---
+
+*Modifiche derivate dall'analisi documentata in [Verifica tickerScanner — Comportamento con gli ETF](../roadmap/done/tickerscanner-service-improvements).*
+
+---
+
+### liquidity-manager — Stabilizzazione score e regime
+
+#### v — EMA, isteresi, persistenza storica
+
+**8. EMA dello score con alpha scalato per confidence**
+
+Lo score grezzo calcolato da `liquidityScoreEngine` veniva restituito direttamente senza smoothing, rendendo il regime sensibile alle oscillazioni giornaliere dei singoli componenti (es. VIX spike temporaneo).
+
+Ora viene calcolato un `score_ema` tramite EMA configurabile:
+
+```
+alpha_effective = LIQ_EMA_ALPHA × confidence
+score_ema = alpha_effective × score_raw + (1 − alpha_effective) × score_ema_prev
+```
+
+Con `LIQ_EMA_ALPHA=0.2` e confidence=1.0, la finestra effettiva equivale a circa 9 giorni. Quando la confidence scende (dati mancanti), l'alpha si riduce proporzionalmente, rallentando automaticamente le variazioni.
+
+**9. Decay verso neutral in caso di bassa confidence**
+
+Se `confidence < LIQ_DECAY_CONFIDENCE_THRESHOLD` (default 0.3), l'EMA non viene aggiornata normalmente ma decade lentamente verso 50 (neutral) al tasso `LIQ_DECAY_RATE` (default 0.05) per ciclo:
+
+```
+score_ema = score_ema_prev + DECAY_RATE × (50 − score_ema_prev)
+```
+
+Questo evita che uno score estremo rimanga "congelato" quando i dati sono indisponibili per giorni consecutivi.
+
+**10. Rate limiting: cap variazione giornaliera**
+
+La variazione massima giornaliera di `score_ema` è limitata a `LIQ_MAX_DAILY_SCORE_CHANGE` (default ±8 punti). Se l'EMA calcolata supera il cap, viene troncata al valore massimo consentito. Nei log viene emessa una nota esplicativa.
+
+**11. Isteresi sul regime (`riskRegimeSmoothed`)**
+
+Il regime basato su `score_ema` utilizza soglie asimmetriche (banda morta) per evitare flip-flop attorno ai threshold:
+
+| Transizione | Soglia |
+|---|---|
+| Entra in RISK_OFF | `score_ema < 28` |
+| Esce da RISK_OFF | `score_ema > 32` |
+| Entra in RISK_ON | `score_ema > 62` |
+| Esce da RISK_ON | `score_ema < 58` |
+
+Il campo `riskRegimeSmoothed` viene aggiunto allo snapshot e al payload Redis accanto al `riskRegime` grezzo, che rimane invariato.
+
+**12. Persistenza storica in `liquidity_daily_scores`**
+
+Ad ogni recompute viene ora salvata una riga nella tabella `liquidity_daily_scores` via `POST /api/table/liquidity_daily_scores` (datahub). La riga contiene tutti gli score parziali (raw, normalized, weight) dei 4 componenti, bitmask `components_available`, `score_raw`, `score_ema`, entrambi i regimi, e `capital_manager_base` pre-calcolato:
+
+```
+capital_manager_base = 0.70 − (score_ema / 100) × 0.50
+```
+
+Il campo `source` (ENUM `scheduler` / `manual` / `simulation`) permette di archiviare righe di simulazione sulle stesse date senza conflitti con i dati reali.
+
+**13. capital-manager: uso di `score_ema` al posto di `score`**
+
+`computeReservedCashPct` in `capital-manager` ora utilizza `score_ema` (se presente) al posto di `score_raw`, e `riskRegimeSmoothed` al posto di `riskRegime`. Il campo `liquidityScore` nel decision output riflette anch'esso l'EMA.
+
+**Variabili d'ambiente:**
+
+```env
+LIQ_EMA_ALPHA=0.2
+LIQ_MAX_DAILY_SCORE_CHANGE=8
+LIQ_DECAY_CONFIDENCE_THRESHOLD=0.3
+LIQ_DECAY_RATE=0.05
+LIQ_HYSTERESIS_RISK_OFF_ENTER=28
+LIQ_HYSTERESIS_RISK_OFF_EXIT=32
+LIQ_HYSTERESIS_RISK_ON_ENTER=62
+LIQ_HYSTERESIS_RISK_ON_EXIT=58
+```
+
+---
+
+*Modifiche derivate dall'analisi documentata in [Stabilizzazione score e regime](../roadmap/done/liquidity-manager-stabilizzazione-score).*
