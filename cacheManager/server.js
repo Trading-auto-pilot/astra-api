@@ -7,6 +7,7 @@ const cors = require("cors");
 
 const MainModule = require("./modules/main");
 const createStatsModule = require("./modules/stats");
+const createHealModule  = require("./modules/heal");
 const createLogger = require("../shared/logger");
 const createStatusRouter = require("./status"); // router standard /status/*
 
@@ -61,6 +62,7 @@ app.use(
 
 const port = process.env.PORT || DEFAULT_PORT;
 let serviceInstance;
+let healModule = null;
 
 // -------------------------------------------------------
 // init asincrono del modulo principale
@@ -70,6 +72,7 @@ let serviceInstance;
     serviceInstance = new MainModule();
     await serviceInstance.init();
     statsModule = createStatsModule(serviceInstance);
+    healModule  = createHealModule(serviceInstance, logger);
     try {
       const rel = await serviceInstance.getReleaseInfo();
       if (rel?.version) {
@@ -555,6 +558,208 @@ app.post("/l2/clear", requireReady, async (req, res) => {
 
 
 
+
+/* --------------------------- ROUTES: L2 QUALITY ------------------------- */
+
+// Fetch paginata da datahub (max 1000 righe per request)
+const fetchAllPages = async (table, baseParams) => {
+  const base = (serviceInstance && serviceInstance.dbmanagerUrl) || process.env.DATAHUB_URL || "http://datahub:3000";
+  const headers = { "Content-Type": "application/json" };
+  const PAGE = 1000;
+  const all = [];
+  let offset = 0;
+  for (;;) {
+    const p = new URLSearchParams(baseParams);
+    p.set("limit", String(PAGE));
+    p.set("offset", String(offset));
+    const r2 = await fetch(`${base}/api/table/${table}?${p}`, { headers });
+    if (!r2.ok) throw new Error(`Datahub error: ${r2.status}`);
+    const d2 = await r2.json().catch(() => ({}));
+    const page = Array.isArray(d2?.data) ? d2.data : [];
+    all.push(...page);
+    if (page.length < PAGE) break;
+    offset += PAGE;
+  }
+  return all;
+};
+
+// GET /l2/quality?level=symbols|files&symbol=&tf=
+app.get("/l2/quality", requireReady, async (req, res) => {
+  try {
+    const { level = "symbols", symbol, tf } = req.query;
+
+    const baseParams = { sort_by: "healed_at", sort_dir: "desc" };
+    if (symbol) baseParams.symbol = String(symbol).toUpperCase();
+    if (tf && level === "files") baseParams.tf = String(tf).toLowerCase();
+
+    const rows = await fetchAllPages("cache_quality_file_scores", baseParams);
+
+    // Dedup: per ogni symbol+tf+year+month mantieni solo la riga più recente
+    const seen = new Set();
+    const deduped = [];
+    for (const row of rows) {
+      const k = `${row.symbol}|${row.tf}|${row.year}|${row.month}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      deduped.push(row);
+    }
+
+    // Retroactive fix per 1week: expected_count errato (giorni invece di settimane)
+    for (const row of deduped) {
+      if (row.tf === "1week") {
+        const actual = Number(row.actual_count ?? 0);
+        const expected = Number(row.expected_count ?? 0);
+        if (actual <= 5 && expected > 5) {
+          const fixedExpected = actual > 0 ? actual : 4;
+          row.expected_count = fixedExpected;
+          row.quality_score = actual > 0 ? Math.min(100, Math.round((actual / fixedExpected) * 10000) / 100) : 0;
+        }
+      }
+    }
+
+    if (level === "files") {
+      const data = deduped.map((row) => ({
+        symbol: row.symbol,
+        tf: row.tf,
+        year: Number(row.year),
+        month: Number(row.month),
+        expected_count: Number(row.expected_count ?? 0),
+        actual_count: Number(row.actual_count ?? 0),
+        missing_count: Number(row.missing_count ?? 0),
+        missing_dates: Array.isArray(row.missing_dates) ? row.missing_dates : [],
+        quality_score: Math.min(100, Number(row.quality_score ?? 0)),
+        healed_at: row.healed_at,
+      }));
+      return res.json({ ok: true, data });
+    }
+
+    // level=symbols: aggrega per symbol
+    const bySymbol = {};
+    for (const row of deduped) {
+      if (Number(row.actual_count ?? 0) === 0) continue; // salta file orfani
+      const sym = row.symbol;
+      if (!bySymbol[sym]) bySymbol[sym] = { scores: [], missing: 0, files: 0, symbol: sym };
+      const s = Math.min(100, Number(row.quality_score ?? 0));
+      bySymbol[sym].scores.push(s);
+      bySymbol[sym].missing += Number(row.missing_count ?? 0);
+      bySymbol[sym].files++;
+    }
+
+    const fetchLegacyScores = async (symFilter) => {
+      const p = { sort_by: "check_date", sort_dir: "desc" };
+      if (symFilter) p.symbol = String(symFilter).toUpperCase();
+      return fetchAllPages("cache_quality_scores", p).catch(() => []);
+    };
+
+    // Se non ci sono dati atomici, fallback su legacy
+    if (Object.keys(bySymbol).length === 0) {
+      const legacy = await fetchLegacyScores(symbol);
+      const legacySeen = new Set();
+      const legacyDeduped = legacy.filter((r) => {
+        const k = `${r.symbol}|${r.tf}`;
+        if (legacySeen.has(k)) return false;
+        legacySeen.add(k); return true;
+      });
+      // Aggrega legacy per symbol (può avere più TF per symbol)
+      const legBySymbol = {};
+      for (const r of legacyDeduped) {
+        const sym = r.symbol;
+        if (!legBySymbol[sym]) legBySymbol[sym] = { scores: [], missing: 0, files: 0 };
+        const s = Math.min(100, Number(r.quality_score_post_heal ?? r.quality_score ?? 0));
+        legBySymbol[sym].scores.push(s);
+        legBySymbol[sym].missing += Number(r.gaps_unhealed ?? 0);
+        legBySymbol[sym].files++;
+      }
+      const data = Object.entries(legBySymbol).map(([sym, v]) => ({
+        symbol: sym,
+        min_score:     v.scores.length > 0 ? Math.min(...v.scores) : null,
+        avg_score:     v.scores.length > 0 ? Math.round((v.scores.reduce((a, b) => a + b, 0) / v.scores.length) * 100) / 100 : null,
+        total_missing: v.missing,
+        files_count:   v.files,
+      }));
+      return res.json({ ok: true, data, source: "legacy" });
+    }
+
+    const data = Object.values(bySymbol).map(({ symbol: sym, scores, missing, files }) => ({
+      symbol:        sym,
+      min_score:     scores.length > 0 ? Math.min(...scores) : null,
+      avg_score:     scores.length > 0 ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100 : null,
+      total_missing: missing,
+      files_count:   files,
+    }));
+
+    return res.json({ ok: true, data, source: "atomic" });
+  } catch (err) {
+    logger.error(`[l2/quality] Errore: ${err.message}`);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/* --------------------------- ROUTES: HEAL ------------------------------ */
+
+// POST /l2/heal — avvia job di ispezione e riparazione
+app.post("/l2/heal", requireReady, (req, res) => {
+  try {
+    const symbol  = req.query.symbol  ?? req.body?.symbol  ?? null;
+    const tf      = req.query.tf      ?? req.body?.tf      ?? null;
+    const from    = req.query.from    ?? req.body?.from    ?? null;
+    const to      = req.query.to      ?? req.body?.to      ?? null;
+    const heal    = String(req.query.heal    ?? req.body?.heal    ?? "true").toLowerCase() !== "false";
+    const dry_run = String(req.query.dry_run ?? req.body?.dry_run ?? "false").toLowerCase() === "true";
+    const params  = { symbol: symbol ? String(symbol).toUpperCase() : null, tf, from, to, heal, dry_run };
+    const job     = healModule.startJob(params);
+    logger.info(`[heal] Job avviato: ${job.jobId} symbol=${params.symbol || "ALL"} ${from}→${to} tf=${tf} heal=${heal} dry_run=${dry_run}`);
+    return res.json({ ok: true, jobId: job.jobId });
+  } catch (err) {
+    logger.error(`[heal] Errore POST /l2/heal: ${err.message}`);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /l2/heal/scan — full scan di tutti i TF/symbol presenti in cache
+app.post("/l2/heal/scan", requireReady, (req, res) => {
+  try {
+    const heal    = String(req.query.heal    ?? req.body?.heal    ?? "true").toLowerCase() !== "false";
+    const dry_run = String(req.query.dry_run ?? req.body?.dry_run ?? "false").toLowerCase() === "true";
+    const days_back_per_tf = req.body?.days_back_per_tf ?? {};
+    const merged  = { ...healModule.DEFAULT_DAYS_BACK_PER_TF, ...days_back_per_tf };
+    const params  = { heal, dry_run, days_back_per_tf: merged };
+    const job     = healModule.startScanJob(params);
+    logger.info(`[heal/scan] Job avviato: ${job.jobId} heal=${heal} dry_run=${dry_run}`);
+    return res.json({ ok: true, jobId: job.jobId });
+  } catch (err) {
+    logger.error(`[heal] Errore POST /l2/heal/scan: ${err.message}`);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET /l2/heal/jobs — lista job recenti
+app.get("/l2/heal/jobs", requireReady, (_req, res) => {
+  res.json({ ok: true, data: healModule.listJobs() });
+});
+
+// GET /l2/heal/:jobId/report.md — report Markdown
+app.get("/l2/heal/:jobId/report.md", requireReady, (req, res) => {
+  const job = healModule.getJob(req.params.jobId);
+  if (!job) return res.status(404).json({ ok: false, error: "Job non trovato" });
+  const md = healModule.buildMarkdownReport(job);
+  res.set("Content-Type", "text/markdown").send(md);
+});
+
+// DELETE /l2/heal/:jobId — annulla job in esecuzione
+app.delete("/l2/heal/:jobId", requireReady, (req, res) => {
+  const job = healModule.getJob(req.params.jobId);
+  if (!job) return res.status(404).json({ ok: false, error: "Job non trovato" });
+  if (job.status === "running") job.aborted = true;
+  res.json({ ok: true, status: job.status });
+});
+
+// GET /l2/heal/:jobId — stato e risultato job
+app.get("/l2/heal/:jobId", requireReady, (req, res) => {
+  const job = healModule.getJob(req.params.jobId);
+  if (!job) return res.status(404).json({ ok: false, error: "Job non trovato" });
+  res.json({ ok: true, data: job });
+});
 
 /* --------------------------- ROUTES: STATUS ---------------------------- */
 /**

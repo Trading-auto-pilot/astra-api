@@ -207,21 +207,63 @@ module.exports = function createStatsModule(cacheManager) {
     async deleteL2(segments = []) {
       const root = resolveBasePath();
 
+      // Helper: dato un path di file L2, invalida la chiave Redis corrispondente
+      // Il file è strutturato come: {root}/{SYMBOL}/{YYYY-MM}_{tf}.json
+      // La chiave Redis è: candles:{SYMBOL}:{tf}
+      const evictRedis = async (filePaths) => {
+        const bus = cacheManager?.bus;
+        if (!bus) return;
+        const keysToDelete = new Set();
+        for (const fp of filePaths) {
+          const rel = path.relative(root, fp);
+          const parts = rel.split(path.sep);
+          if (parts.length < 2) continue;
+          const symbol = parts[0].toUpperCase();
+          const fileName = parts[1] || "";
+          // formato: YYYY-MM_{tf}.json
+          const m = /^\d{4}-\d{2}_(.+)\.json$/i.exec(fileName);
+          if (!m) continue;
+          const tf = cacheManager._normalizeTfCache(m[1]);
+          keysToDelete.add(`candles:${symbol}:${tf}`);
+        }
+        for (const key of keysToDelete) {
+          try {
+            await bus.del(key);
+          } catch { /* non blocca */ }
+        }
+      };
+
       // nessun segmento -> cancella tutto
       if (!segments.length) {
+        const allFiles = await listFiles(root);
         const ok = await removeChildren(root);
+        if (ok) await evictRedis(allFiles);
         return { ok, deleted: root };
       }
 
       // costruisci percorso relativo
       const safeSegments = segments.filter((s) => typeof s === "string" && s.trim() !== "");
       if (!safeSegments.length) {
+        const allFiles = await listFiles(root);
         await removePath(root);
+        await evictRedis(allFiles);
         return { ok: true, deleted: root };
       }
 
       const target = path.join(root, ...safeSegments);
+      // Raccogli i file prima di rimuoverli (potrebbe essere dir o file singolo)
+      const filesToEvict = [];
+      try {
+        const stat = await fsp.stat(target);
+        if (stat.isDirectory()) {
+          filesToEvict.push(...(await listFiles(target)));
+        } else {
+          filesToEvict.push(target);
+        }
+      } catch { /* non esiste, removePath restituirà false */ }
+
       const success = await removePath(target);
+      if (success) await evictRedis(filesToEvict);
       return { ok: success, deleted: target };
     },
 

@@ -4,6 +4,7 @@ const axios = require("axios");
 const { Router } = require("express");
 const { createDatahubAdapter } = require("../../shared/datahubAdapter");
 const { createRankingDailyService } = require("../lib/rankingDailyService");
+const { getSetting } = require("../../shared/loadSettings");
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -43,11 +44,29 @@ module.exports = function buildRankingRouter({ logger }) {
 
       const effectiveMode = mode === "force" ? "force" : "normal";
 
+      // Legge min_intraday_vol da settings e lo usa come default per min_dollar_vol
+      // se non già fornito esplicitamente nella request
+      const effectiveFilters = filters && typeof filters === "object" ? { ...filters } : {};
+      if (effectiveFilters.min_dollar_vol == null) {
+        try {
+          const minVol = getSetting("min_intraday_vol");
+          if (minVol != null) {
+            const minVolNum = Number(minVol);
+            if (Number.isFinite(minVolNum) && minVolNum > 0) {
+              effectiveFilters.min_dollar_vol = minVolNum;
+              logger.info(`${fn} filtro liquidità da settings: min_dollar_vol=${minVolNum}`);
+            }
+          }
+        } catch {
+          // settings non ancora caricati — filtro disabilitato
+        }
+      }
+
       const result = await rankingSvc.buildDailyRankingSnapshot({
         scoreDate:  score_date,
         mode:       effectiveMode,
         limits:     limits  && typeof limits  === "object" ? limits  : {},
-        filters:    filters && typeof filters === "object" ? filters : {},
+        filters:    effectiveFilters,
       });
 
       return res.json(result);

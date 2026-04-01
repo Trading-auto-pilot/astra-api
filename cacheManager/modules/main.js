@@ -1529,6 +1529,9 @@ class CacheManager {
             end: endDate,
             timeframe: tfAlpaca,
           });
+          if (!bars || bars.length === 0) {
+            throw new Error(`[ALPACA_EMPTY] 0 candele restituite per ${symbol} nel range richiesto`);
+          }
           const tagged = tagBars(bars, "ALPACA", fallbackFrom);
 
           this.L1Hit = (this.L1Hit || 0) + 1;
@@ -1553,6 +1556,9 @@ class CacheManager {
             timeframe: tfFmp,
             periodLength: 10,
           });
+          if (!bars || bars.length === 0) {
+            throw new Error(`[FMP_EMPTY] 0 candele restituite per ${symbol} nel range richiesto`);
+          }
           const tagged = tagBars(bars, "FMP", fallbackFrom);
 
           this.L1Hit = (this.L1Hit || 0) + 1;
@@ -1572,6 +1578,9 @@ class CacheManager {
             bar: tfIbkr,
             symbol,
           });
+          if (!bars || bars.length === 0) {
+            throw new Error(`[IBKR_EMPTY] 0 candele restituite per ${symbol} nel range richiesto`);
+          }
           const tagged = tagBars(bars, "IBKR", fallbackFrom);
           this.L1Hit = (this.L1Hit || 0) + 1;
           this.lastProviderCall = new Date().toISOString();

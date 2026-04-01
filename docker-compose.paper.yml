@@ -1021,6 +1021,15 @@ services:
     expose:
       - "3000"
       - "3106"
+    environment:
+      - DOCS_GIT_PUSH_ENABLED=${DOCS_GIT_PUSH_ENABLED:-true}
+      - DOCS_GIT_REMOTE=${DOCS_GIT_REMOTE:-org}
+      - DOCS_GIT_REMOTE_URL=${DOCS_GIT_REMOTE_URL:-}
+      - DOCS_GIT_BRANCH=${DOCS_GIT_BRANCH:-mcp}
+      - DOCS_GIT_HTTP_USERNAME=${DOCS_GIT_HTTP_USERNAME:-x-access-token}
+      - DOCS_GIT_HTTP_TOKEN=${DOCS_GIT_HTTP_TOKEN:-}
+      - DOCS_GIT_AUTHOR_NAME=${DOCS_GIT_AUTHOR_NAME:-help-trading-bot}
+      - DOCS_GIT_AUTHOR_EMAIL=${DOCS_GIT_AUTHOR_EMAIL:-help-trading-bot@local}
     networks:
       - trading_net
     labels:
