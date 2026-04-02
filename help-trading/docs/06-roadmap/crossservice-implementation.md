@@ -17,7 +17,7 @@ L'obiettivo e permettere una migrazione graduale microservizio per microservizio
 
 ## Libreria condivisa aggiornata
 
-La libreria condivisa coinvolta e [shared/loadSettings](/Users/vincenzo.esposito/code/trading-system/shared/loadSettings.js).
+La libreria condivisa coinvolta e `shared/loadSettings`. Per il dettaglio completo della libreria vedi la documentazione [Shared Library — loadSettings](/docs/developer-esterno-api/shared-load-settings).
 
 Le primitive gia esistenti sono rimaste invariate e quindi retrocompatibili:
 
