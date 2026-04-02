@@ -9,6 +9,7 @@ const MainModule = require("./modules/main");
 const createLogger = require("../shared/logger");
 const buildStatusRouter = require("./status"); // router standard /status/*
 const buildDecisionEngineRouter = require("./modules/decision-engine");
+const { buildGuardsRouter } = require("./routes/guards");
 const { getGuardConfig, updateGuardConfig } = require("./modules/live-manager");
 
 dotenv.config();
@@ -292,32 +293,11 @@ app.post("/settings/reload", requireReady, async (_req, res) => {
 });
 
 /* --------------------------- ROUTES: GUARDS CONFIG ------------------------- */
-/**
- * GET /guards/config
- * Returns the current volatility event guard configuration (earnings, FOMC, macro, dividend).
- */
-app.get("/guards/config", requireReady, (_req, res) => {
-  res.json({ ok: true, data: getGuardConfig() });
-});
-
-/**
- * PATCH /guards/config
- * Updates guard settings at runtime without restart.
- * Body: { earnings?: { enabled?: bool, blockDays?: number, blockWeeks?: number },
- *         fomc?:     { enabled?: bool, blockDays?: number },
- *         macro?:    { enabled?: bool, blockDays?: number },
- *         dividend?: { enabled?: bool, blockDays?: number } }
- */
-app.patch("/guards/config", requireReady, (req, res) => {
-  try {
-    const updated = updateGuardConfig(req.body || {});
-    logger.info(`[PATCH /guards/config] updated: ${JSON.stringify(updated)}`);
-    res.json({ ok: true, data: updated });
-  } catch (err) {
-    logger.error(`[PATCH /guards/config] ${err?.message || String(err)}`);
-    res.status(400).json({ ok: false, error: err?.message || String(err) });
-  }
-});
+app.use(
+  "/guards",
+  requireReady,
+  buildGuardsRouter({ getGuardConfig, updateGuardConfig, logger })
+);
 
 /* --------------------------- ROUTES: SPOT FINDER --------------------------- */
 const decisionEngineRouter = buildDecisionEngineRouter({
