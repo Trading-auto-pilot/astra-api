@@ -5,8 +5,7 @@
 // ---------------------------------------------------------------------------
 
 const { randomUUID } = require("crypto");
-const https = require("https");
-const http = require("http");
+const axios = require("axios");
 const {
   SNAPSHOT_TTL_SECONDS,
   ALERT_COOLDOWN_MS,
@@ -168,53 +167,12 @@ function minutesSinceMarketOpen(nowMs) {
   return (nowMs - todayOpen.getTime()) / 60000;
 }
 
-// Simple HTTP GET helper (no axios dependency)
 function httpGetJson(url, timeoutMs = 5000) {
-  return new Promise((resolve, reject) => {
-    const lib = url.startsWith("https") ? https : http;
-    const req = lib.get(url, { timeout: timeoutMs }, (res) => {
-      let body = "";
-      res.on("data", (chunk) => { body += chunk; });
-      res.on("end", () => {
-        try { resolve({ status: res.statusCode, data: JSON.parse(body) }); }
-        catch (e) { resolve({ status: res.statusCode, data: null }); }
-      });
-    });
-    req.on("timeout", () => { req.destroy(); reject(new Error(`timeout after ${timeoutMs}ms`)); });
-    req.on("error", reject);
-  });
+  return axios.get(url, { timeout: timeoutMs, validateStatus: () => true });
 }
 
-// Simple HTTP POST helper (no axios dependency)
 function httpPostJson(url, body, timeoutMs = 10000) {
-  return new Promise((resolve, reject) => {
-    const lib = url.startsWith("https") ? https : http;
-    const data = JSON.stringify(body);
-    const urlObj = new URL(url);
-    const options = {
-      hostname: urlObj.hostname,
-      port: urlObj.port || (url.startsWith("https") ? 443 : 80),
-      path: urlObj.pathname + urlObj.search,
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(data),
-      },
-      timeout: timeoutMs,
-    };
-    const req = lib.request(options, (res) => {
-      let resBody = "";
-      res.on("data", (chunk) => { resBody += chunk; });
-      res.on("end", () => {
-        try { resolve({ status: res.statusCode, data: JSON.parse(resBody) }); }
-        catch (e) { resolve({ status: res.statusCode, data: null }); }
-      });
-    });
-    req.on("timeout", () => { req.destroy(); reject(new Error(`timeout after ${timeoutMs}ms`)); });
-    req.on("error", reject);
-    req.write(data);
-    req.end();
-  });
+  return axios.post(url, body, { timeout: timeoutMs, validateStatus: () => true });
 }
 
 // --- Live state (singleton) ------------------------------------------------
