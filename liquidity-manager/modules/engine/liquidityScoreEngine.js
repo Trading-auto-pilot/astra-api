@@ -10,6 +10,7 @@ const { normalizeSpyTrend } = require("../normalizers/spyTrendNormalizer");
 const { normalizeDxy } = require("../normalizers/dxyNormalizer");
 const { normalizeCreditSpread } = require("../normalizers/creditNormalizer");
 const { runComponent, classifyErrorStatus } = require("../components/runComponent");
+const { getConfigNumber, getConfigString } = require("../../../shared/loadSettings");
 
 const DEFAULT_WEIGHTS = {
   vix: 0.35,
@@ -53,7 +54,7 @@ function resolveVolatilityRegime(vixComponent) {
 class LiquidityScoreEngine {
   constructor({
     logger,
-    mode = process.env.LIQUIDITY_PROVIDER_MODE || "live",
+    mode = getConfigString("LIQUIDITY_PROVIDER_MODE", "live"),
     weights,
     providers,
     normalizers,
@@ -77,8 +78,8 @@ class LiquidityScoreEngine {
       credit: normalizers?.credit || normalizeCreditSpread,
     };
     this.minConfidenceForRegime =
-      Number(minConfidenceForRegime ?? process.env.LIQ_MIN_CONFIDENCE_FOR_REGIME) || 0.6;
-    this.providerTimeoutMs = Number(providerTimeoutMs ?? process.env.LIQ_PROVIDER_TIMEOUT_MS) || 5000;
+      Number(minConfidenceForRegime ?? getConfigNumber("LIQ_MIN_CONFIDENCE_FOR_REGIME", 0.6)) || 0.6;
+    this.providerTimeoutMs = Number(providerTimeoutMs ?? getConfigNumber("LIQ_PROVIDER_TIMEOUT_MS", 5000)) || 5000;
   }
 
   _componentDefinitions() {

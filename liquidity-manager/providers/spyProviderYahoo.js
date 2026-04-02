@@ -1,15 +1,17 @@
 "use strict";
 
 const { yahooGet } = require("../modules/http/yahooHttpClient");
-const { yahooLimiter } = require("../modules/http/yahooLimiter");
+const { yahooSpyLimiter } = require("../modules/http/yahooSpyLimiter");
 const { sleep } = require("../modules/http/rateLimiter");
-const { yahooCircuit } = require("../modules/resilience/yahooCircuit");
+const { yahooSpyCircuit } = require("../modules/resilience/yahooSpyCircuit");
 const { createYahooCacheRepository } = require("../repositories/yahooCacheRepository");
 const { createProviderError } = require("./providerErrors");
 const { getConfigNumber } = require("../../shared/loadSettings");
 
-const SOURCE = "yahoo:query1.finance.yahoo.com";
-const DEFAULT_SYMBOL = "DX-Y.NYB";
+// Try query2 first (less rate-limited), fallback to query1
+const YAHOO_HOSTS = ["query2.finance.yahoo.com", "query1.finance.yahoo.com"];
+const SOURCE = "yahoo:finance.yahoo.com";
+const DEFAULT_SYMBOL = "SPY";
 const DEFAULT_RANGE = "2y";
 const DEFAULT_INTERVAL = "1d";
 
@@ -77,11 +79,11 @@ function filterByRange(series, startDate, endDate) {
   });
 }
 
-function createYahooDxyProvider({
+function createYahooSpyProvider({
   yahooGetFn = yahooGet,
-  limiter = yahooLimiter,
+  limiter = yahooSpyLimiter,
   cacheRepository = createYahooCacheRepository(),
-  circuit = yahooCircuit,
+  circuit = yahooSpyCircuit,
   sleepFn = sleep,
   nowFn = () => Date.now(),
 } = {}) {
@@ -92,27 +94,27 @@ function createYahooDxyProvider({
     const range = opts.range || DEFAULT_RANGE;
     const interval = opts.interval || DEFAULT_INTERVAL;
     const timeoutMs = Number(opts.timeoutMs || getConfigNumber("YAHOO_TIMEOUT_MS", 8000)) || 8000;
-    const retryMaxAttempts = getConfigNumber("YAHOO_RETRY_MAX_ATTEMPTS", 5);
+    const retryMaxAttempts = getConfigNumber("YAHOO_SPY_RETRY_MAX_ATTEMPTS", getConfigNumber("YAHOO_RETRY_MAX_ATTEMPTS", 3));
     const retryBaseMs = getConfigNumber("YAHOO_RETRY_BASE_MS", 1000);
     const retryMaxMs = getConfigNumber("YAHOO_RETRY_MAX_MS", 15000);
     const cacheTtlMin = getConfigNumber("YAHOO_CACHE_TTL_MIN", 360);
     const ttlMs = Math.max(1000, cacheTtlMin * 60 * 1000);
     const key = cacheKey({ symbol, range, interval });
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-      symbol
-    )}?range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}`;
+    const path = `/v8/finance/chart/${encodeURIComponent(symbol)}?range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}`;
+    // primary URL: query2 (less rate-limited); url variable used for logging
+    const url = `https://${YAHOO_HOSTS[0]}${path}`;
 
     const circuitStateAtStart = typeof circuit.state === "function" ? circuit.state() : {};
     const circuitOpen = typeof circuit.isOpen === "function" ? circuit.isOpen() : false;
     if (circuitOpen) {
-      const err = createProviderError("CIRCUIT_OPEN", "Yahoo circuit is open for DXY provider", {
+      const err = createProviderError("CIRCUIT_OPEN", "Yahoo circuit is open for SPY provider", {
         symbol,
         range,
         interval,
         circuit: circuitStateAtStart,
       });
-      logWithJson(logger, "warn", "Yahoo DXY request blocked by open circuit", {
-        provider: "dxy",
+      logWithJson(logger, "warn", "Yahoo SPY request blocked by open circuit", {
+        provider: "spyTrend",
         source: "yahoo",
         url,
         method: "GET",
@@ -128,8 +130,8 @@ function createYahooDxyProvider({
 
     const cached = await cacheRepository.get(key, nowFn());
     if (cached?.payload?.series && Array.isArray(cached.payload.series)) {
-      logWithJson(logger, "info", "Yahoo DXY cache hit", {
-        provider: "dxy",
+      logWithJson(logger, "info", "Yahoo SPY cache hit", {
+        provider: "spyTrend",
         source: "yahoo",
         url,
         method: "GET",
@@ -143,8 +145,8 @@ function createYahooDxyProvider({
       return filterByRange(cached.payload.series, startDate, endDate);
     }
 
-    logWithJson(logger, "info", "Yahoo DXY cache miss", {
-      provider: "dxy",
+    logWithJson(logger, "info", "Yahoo SPY cache miss", {
+      provider: "spyTrend",
       source: "yahoo",
       url,
       method: "GET",
@@ -158,14 +160,17 @@ function createYahooDxyProvider({
 
     let lastErr = null;
     for (let attempt = 1; attempt <= retryMaxAttempts; attempt += 1) {
+      // Rotate hosts on 429: even attempts use query2, odd use query1
+      const host = YAHOO_HOSTS[(attempt - 1) % YAHOO_HOSTS.length];
+      const attemptUrl = `https://${host}${path}`;
       try {
-        const scheduled = await limiter.schedule(() => yahooGetFn(url, { timeoutMs, requestId }));
+        const scheduled = await limiter.schedule(() => yahooGetFn(attemptUrl, { timeoutMs, requestId }));
         const response = scheduled?.result || scheduled;
         let parsed;
         try {
           parsed = JSON.parse(response.body);
         } catch (parseErr) {
-          throw createProviderError("PARSE_ERROR", "Invalid Yahoo DXY JSON payload", {
+          throw createProviderError("PARSE_ERROR", "Invalid Yahoo SPY JSON payload", {
             symbol,
             range,
             interval,
@@ -174,7 +179,7 @@ function createYahooDxyProvider({
         }
         const series = pickSeries(parsed, symbol, range, interval);
         if (!series.length) {
-          throw createProviderError("NO_DATA", "Yahoo DXY payload has no valid series", {
+          throw createProviderError("NO_DATA", "Yahoo SPY payload has no valid series", {
             symbol,
             range,
             interval,
@@ -192,10 +197,10 @@ function createYahooDxyProvider({
           ttlMs,
           nowFn()
         );
-        logWithJson(logger, "info", "Yahoo DXY fetch completed", {
-          provider: "dxy",
+        logWithJson(logger, "info", "Yahoo SPY fetch completed", {
+          provider: "spyTrend",
           source: "yahoo",
-          url,
+          url: attemptUrl,
           method: "GET",
           symbol,
           range,
@@ -216,10 +221,10 @@ function createYahooDxyProvider({
         if (statusCode === 429) {
           if (typeof circuit.onFailure === "function") circuit.onFailure({ countForOpen: true });
           const headers = err?.details?.headers || {};
-          logWithJson(logger, "debug", "Yahoo DXY response headers on 429", {
-            provider: "dxy",
+          logWithJson(logger, "debug", "Yahoo SPY response headers on 429", {
+            provider: "spyTrend",
             source: "yahoo",
-            url,
+            url: attemptUrl,
             method: "GET",
             symbol,
             range,
@@ -248,10 +253,10 @@ function createYahooDxyProvider({
               message: err?.message || String(err),
             },
           });
-          logWithJson(logger, "warn", "Yahoo DXY circuit opened", {
-            provider: "dxy",
+          logWithJson(logger, "warn", "Yahoo SPY circuit opened", {
+            provider: "spyTrend",
             source: "yahoo",
-            url,
+            url: attemptUrl,
             method: "GET",
             symbol,
             range,
@@ -275,10 +280,10 @@ function createYahooDxyProvider({
         const waitMs = retryAfterMs == null ? backoffMs : Math.min(retryMaxMs, Math.max(backoffMs, retryAfterMs));
 
         if (retryable && attempt < retryMaxAttempts) {
-          logWithJson(logger, "warn", "Yahoo DXY request failed, scheduling retry", {
-            provider: "dxy",
+          logWithJson(logger, "warn", "Yahoo SPY request failed, scheduling retry", {
+            provider: "spyTrend",
             source: "yahoo",
-            url,
+            url: attemptUrl,
             method: "GET",
             symbol,
             range,
@@ -302,7 +307,7 @@ function createYahooDxyProvider({
           continue;
         }
 
-        const finalErr = createProviderError("YAHOO_FETCH_FAILED", "Yahoo DXY fetch failed", {
+        const finalErr = createProviderError("YAHOO_FETCH_FAILED", "Yahoo SPY fetch failed", {
           symbol,
           range,
           interval,
@@ -316,10 +321,10 @@ function createYahooDxyProvider({
             message: err?.message || String(err),
           },
         });
-        logWithJson(logger, "error", "Yahoo DXY request failed after retries", {
-          provider: "dxy",
+        logWithJson(logger, "error", "Yahoo SPY request failed after retries", {
+          provider: "spyTrend",
           source: "yahoo",
-          url,
+          url: attemptUrl,
           method: "GET",
           symbol,
           range,
@@ -337,22 +342,11 @@ function createYahooDxyProvider({
             name: finalErr.name || "Error",
           },
         });
-        logWithJson(logger, "debug", "Yahoo DXY failure stack trace", {
-          provider: "dxy",
-          source: "yahoo",
-          requestId,
-          error: {
-            code: err?.code || "UNKNOWN",
-            message: err?.message || String(err),
-            name: err?.name || "Error",
-            stack: err?.stack || null,
-          },
-        });
         throw finalErr;
       }
     }
 
-    const fallbackErr = createProviderError("YAHOO_FETCH_FAILED", "Yahoo DXY exhausted retries", {
+    const fallbackErr = createProviderError("YAHOO_FETCH_FAILED", "Yahoo SPY exhausted retries", {
       cause: {
         code: lastErr?.code || "UNKNOWN",
         message: lastErr?.message || String(lastErr || "unknown"),
@@ -365,7 +359,7 @@ function createYahooDxyProvider({
     const series = await fetchHistory(undefined, undefined, opts);
     const latest = series[series.length - 1];
     if (!latest) {
-      throw createProviderError("NO_DATA", "No DXY data from Yahoo");
+      throw createProviderError("NO_DATA", "No SPY data from Yahoo");
     }
     return latest;
   }
@@ -380,10 +374,10 @@ function createYahooDxyProvider({
   };
 }
 
-const defaultProvider = createYahooDxyProvider();
+const defaultProvider = createYahooSpyProvider();
 
 module.exports = {
-  createYahooDxyProvider,
+  createYahooSpyProvider,
   getLatest: (opts) => defaultProvider.getLatest(opts),
   getHistory: (startDate, endDate, opts) => defaultProvider.getHistory(startDate, endDate, opts),
 };

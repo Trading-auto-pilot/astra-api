@@ -3,6 +3,7 @@
 
 const axios = require("axios");
 const BaseService = require("../../shared/BaseService");
+const { getConfigInt, getConfigNumber, getConfigString } = require("../../shared/loadSettings");
 const LiquidityScoreEngine = require("./engine/liquidityScoreEngine");
 const { createLiquidityScoreRepository } = require("../repositories/liquidityScoreRepository");
 const RecomputeTaskManager = require("./tasks/recomputeTaskManager");
@@ -26,20 +27,20 @@ class LiquidityManager extends BaseService {
       moduleVersion: "1.0.0",
     });
 
-    this.historyDays = Number(process.env.LIQUIDITY_HISTORY_DAYS) || 365;
-    this.providerMode = process.env.LIQUIDITY_PROVIDER_MODE || "live";
-    this.redisLiquidityTtlSec = Number(process.env.LIQUIDITY_REDIS_TTL_SEC) || (23 * 60 * 60 + 59 * 60);
+    this.historyDays = getConfigInt("LIQUIDITY_HISTORY_DAYS", 365);
+    this.providerMode = getConfigString("LIQUIDITY_PROVIDER_MODE", "live");
+    this.redisLiquidityTtlSec = getConfigInt("LIQUIDITY_REDIS_TTL_SEC", 23 * 60 * 60 + 59 * 60);
 
     // EMA stabilization params
-    this.emaAlpha             = Number(process.env.LIQ_EMA_ALPHA)                    || 0.2;
-    this.emaMaxDailyChange    = Number(process.env.LIQ_MAX_DAILY_SCORE_CHANGE)        || 8;
-    this.emaDecayThreshold    = Number(process.env.LIQ_DECAY_CONFIDENCE_THRESHOLD)    || 0.3;
-    this.emaDecayRate         = Number(process.env.LIQ_DECAY_RATE)                    || 0.05;
+    this.emaAlpha             = getConfigNumber("LIQ_EMA_ALPHA", 0.2);
+    this.emaMaxDailyChange    = getConfigNumber("LIQ_MAX_DAILY_SCORE_CHANGE", 8);
+    this.emaDecayThreshold    = getConfigNumber("LIQ_DECAY_CONFIDENCE_THRESHOLD", 0.3);
+    this.emaDecayRate         = getConfigNumber("LIQ_DECAY_RATE", 0.05);
     // Hysteresis thresholds (score_ema-based regime flip)
-    this.hysteresisRiskOffEnter = Number(process.env.LIQ_HYSTERESIS_RISK_OFF_ENTER)  || 28;
-    this.hysteresisRiskOffExit  = Number(process.env.LIQ_HYSTERESIS_RISK_OFF_EXIT)   || 32;
-    this.hysteresisRiskOnEnter  = Number(process.env.LIQ_HYSTERESIS_RISK_ON_ENTER)   || 62;
-    this.hysteresisRiskOnExit   = Number(process.env.LIQ_HYSTERESIS_RISK_ON_EXIT)    || 58;
+    this.hysteresisRiskOffEnter = getConfigNumber("LIQ_HYSTERESIS_RISK_OFF_ENTER", 28);
+    this.hysteresisRiskOffExit  = getConfigNumber("LIQ_HYSTERESIS_RISK_OFF_EXIT", 32);
+    this.hysteresisRiskOnEnter  = getConfigNumber("LIQ_HYSTERESIS_RISK_ON_ENTER", 62);
+    this.hysteresisRiskOnExit   = getConfigNumber("LIQ_HYSTERESIS_RISK_ON_EXIT", 58);
 
     this.repository = createLiquidityScoreRepository({ logger: this.logger });
     this.engine = new LiquidityScoreEngine({
@@ -47,7 +48,7 @@ class LiquidityManager extends BaseService {
       mode: this.providerMode,
     });
     this.taskManager = new RecomputeTaskManager({
-      maxTasks: Number(process.env.LIQUIDITY_MAX_TASKS) || 500,
+      maxTasks: getConfigInt("LIQUIDITY_MAX_TASKS", 500),
     });
   }
 
@@ -248,7 +249,7 @@ class LiquidityManager extends BaseService {
    * If the row already exists for today+source (duplicate key), logs a warning and skips.
    */
   async _persistDailyScore(snapshot, { source = "scheduler" } = {}) {
-    const datahubUrl = (process.env.DATAHUB_URL || process.env.DBMANAGER_URL || "http://datahub:3000").replace(/\/+$/, "");
+    const datahubUrl = getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], "http://datahub:3000").replace(/\/+$/, "");
     const c = snapshot.components || {};
     const ema = snapshot._ema || {};
 

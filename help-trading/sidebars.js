@@ -792,6 +792,7 @@ const sidebars = {
             'roadmap/development/spot-instance-management',
           ],
         },
+        'roadmap/crossservice-implementation',
         'roadmap/db-improvements',
         {
           type: 'category',

@@ -13,6 +13,33 @@ const MODULE_VERSION = '1.0';
 
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, process.env.LOG_LEVEL || 'info');
 
+function hasValue(value) {
+  return value !== undefined && value !== null && value !== '';
+}
+
+function normalizeKeys(keys) {
+  return Array.isArray(keys) ? keys : [keys];
+}
+
+function readSettingSafe(key) {
+  try {
+    return getSetting(key);
+  } catch (_err) {
+    return null;
+  }
+}
+
+function parseBoolean(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'n', 'off'].includes(normalized)) return false;
+  }
+  return fallback;
+}
+
 /**
  * Carica i settings da datahub con retry + backoff esponenziale.
  * @param {string} datahubUrl - Base URL di datahub (es. http://datahub:3000)
@@ -135,6 +162,47 @@ function setSetting(key, value) {
   return { ...settingsCache };
 }
 
+function getConfigValue(keys, fallback = null) {
+  const normalizedKeys = normalizeKeys(keys);
+
+  for (const key of normalizedKeys) {
+    const settingValue = readSettingSafe(key);
+    if (hasValue(settingValue)) {
+      return settingValue;
+    }
+  }
+
+  for (const key of normalizedKeys) {
+    const envValue = process.env[key];
+    if (hasValue(envValue)) {
+      return envValue;
+    }
+  }
+
+  return fallback;
+}
+
+function getConfigString(keys, fallback = '') {
+  const value = getConfigValue(keys, fallback);
+  return hasValue(value) ? String(value) : fallback;
+}
+
+function getConfigNumber(keys, fallback = 0) {
+  const value = getConfigValue(keys, fallback);
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function getConfigInt(keys, fallback = 0) {
+  const value = getConfigValue(keys, fallback);
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function getConfigBoolean(keys, fallback = false) {
+  return parseBoolean(getConfigValue(keys, fallback), fallback);
+}
+
 /**
  * Persiste un setting nel DB (tabella `settings`) tramite PUT /settings/:key su datahub,
  * e aggiorna anche la cache in-memoria.
@@ -172,4 +240,9 @@ module.exports = {
   reloadSettings,
   setSetting,
   persistSetting,
+  getConfigValue,
+  getConfigString,
+  getConfigNumber,
+  getConfigInt,
+  getConfigBoolean,
 };

@@ -191,7 +191,6 @@ const liveState = {
   lastLiveByTicker: new Map(),
   lastAlertByKey: new Map(),
   lastFlagByTicker: new Map(),
-  signalCandlesByTicker: new Map(),
   lastRiskOnCheck: { ts: 0, riskRegime: null, score: null },
   ibkrAccountCheck: { ts: 0, isPaper: null, accountId: null, ttlMs: 5 * 60 * 1000 },
   lastOpenBlockNotifByKey: new Map(),
@@ -212,7 +211,6 @@ const resetLiveState = (reason = "unspecified", logger = null) => {
   liveState.exchangeByTicker = new Map();
   liveState.lastRunByTicker.clear();
   liveState.runningByTicker.clear();
-  liveState.signalCandlesByTicker.clear();
 };
 
 const activateLiveState = ({ pipeId, asOfDate, userId, tickers, exchangeByTicker, query, authHeaders }) => {
@@ -226,7 +224,6 @@ const activateLiveState = ({ pipeId, asOfDate, userId, tickers, exchangeByTicker
   liveState.authHeaders = authHeaders;
   liveState.lastRunByTicker.clear();
   liveState.runningByTicker.clear();
-  liveState.signalCandlesByTicker.clear();
 };
 
 const getLiveStatus = (pipeId) => ({
@@ -290,6 +287,7 @@ const recalcFlagOkFromLiveSnapshot = async ({
   volume,
   cachemanagerUrl,
   logger,
+  bus,
 }) => {
   if (!cachemanagerUrl) return null;
   try {
@@ -310,19 +308,23 @@ const recalcFlagOkFromLiveSnapshot = async ({
     const volMult = asNumber(liveState.query?.volMult, DEFAULT_VOL_MULT);
     const exchange = liveState.exchangeByTicker.get(ticker);
 
+    // Redis key for signal candles cache: live:signal-candles:{pipeId}:{userId}:{ticker}
+    const signalCacheKey = bus?.key?.("live", "signal-candles", String(liveState.pipeId ?? "0"), String(liveState.userId ?? "0"), ticker)
+      ?? `live:signal-candles:${liveState.pipeId ?? "0"}:${liveState.userId ?? "0"}:${ticker}`;
+    const signalCacheTtlSec = Math.ceil(LIVE_SIGNAL_CANDLE_CACHE_TTL_MS / 1000);
+
     let baseCandles = null;
-    const cached = liveState.signalCandlesByTicker.get(ticker);
+    const cached = bus && typeof bus.get === "function" ? await bus.get(signalCacheKey) : null;
     const cacheFresh =
       cached &&
       Array.isArray(cached.candles) &&
       cached.candles.length > 0 &&
-      Date.now() - (cached.fetchedAt || 0) <= LIVE_SIGNAL_CANDLE_CACHE_TTL_MS &&
-      cached.tf === signalTf;
+      cached.tf === signalTf; // TTL enforced by Redis — no manual fetchedAt check needed
 
     if (cacheFresh) {
       baseCandles = cached.candles;
       logger?.trace?.(
-        `[live][trace] flag recalc using in-memory candles ticker=${ticker} tf=${signalTf} count=${baseCandles.length}`
+        `[live][trace] flag recalc using Redis candles ticker=${ticker} tf=${signalTf} count=${baseCandles.length}`
       );
     } else {
       const endDate = new Date();
@@ -355,11 +357,9 @@ const recalcFlagOkFromLiveSnapshot = async ({
           normalized.length > signalLookbackBars
             ? normalized.slice(-signalLookbackBars)
             : normalized.slice();
-        liveState.signalCandlesByTicker.set(ticker, {
-          tf: signalTf,
-          fetchedAt: Date.now(),
-          candles: baseCandles,
-        });
+        if (bus && typeof bus.set === "function") {
+          await bus.set(signalCacheKey, { tf: signalTf, fetchedAt: Date.now(), candles: baseCandles }, { EX: signalCacheTtlSec });
+        }
       }
     }
 
@@ -444,7 +444,10 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
     capitalManagerUrl,
     ibkrBridgeUrl,
   } = deps;
-  if (!bus || typeof bus.get !== "function" || typeof bus.set !== "function") return false;
+  if (!bus || typeof bus.get !== "function" || typeof bus.set !== "function") {
+    logger?.trace?.(`[live][trace] updateSnapshot skipped ticker=${ticker}: bus not available`);
+    return false;
+  }
   const hasPipeId = liveState.pipeId !== null && liveState.pipeId !== undefined;
   const hasUserId = liveState.userId !== null && liveState.userId !== undefined;
   const hasAsOfDate = Boolean(liveState.asOfDate);
@@ -507,6 +510,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
     volume,
     cachemanagerUrl,
     logger,
+    bus,
   });
 
   // Fail-safe: se il recalc non è disponibile non emettere segnali su dati stantii
@@ -527,6 +531,12 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
   // Elimina la discordanza tra il prezzo usato per calcolare i flag e quello usato nel check finale
   const liveQuotePrice = liveData?.last ?? liveData?.ask ?? liveData?.bid;
   const effectivePrice = Number.isFinite(liveQuotePrice) ? liveQuotePrice : price;
+  logger?.trace?.(
+    `[live][trace] effectivePrice ticker=${ticker} ` +
+    `source=${Number.isFinite(liveQuotePrice) ? "liveQuote" : "snapshotPrice"} ` +
+    `liveQuotePrice=${Number.isFinite(liveQuotePrice) ? liveQuotePrice : "-"} ` +
+    `snapshotPrice=${Number.isFinite(price) ? price : "-"} effectivePrice=${effectivePrice}`
+  );
 
   const breakLevel = asNumber(
     basePattern?.breakLevel ?? basePattern?.breakoutEntry?.breakLevel,
@@ -763,12 +773,23 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
       `liveVolumeThreshold=${Number.isFinite(liveVolumeThreshold) ? liveVolumeThreshold : "-"}`
     );
 
+    logger?.trace?.(
+      `[live][trace] entryMode ticker=${ticker} selected=${entryMode || "none"} ` +
+      `actionableBreakout=${actionableBreakout} actionablePullback=${actionablePullback} actionableRetracement=${actionableRetracement}`
+    );
     if (!entryMode) {
-      if (pullbackOk || breakoutOk) {
+      if (pullbackOk || breakoutOk || retracementOk) {
         logger?.info?.(
           `[live] NO ENTRY ticker=${ticker} effectivePrice=${effectivePrice}` +
-          ` pullbackOk=${pullbackOk} breakoutOk=${breakoutOk} trendOk=${trendOk} flagOk=${flagOk}` +
-          ` — prezzo in zona ma flags non actionable`
+          ` breakoutOk=${breakoutOk} pullbackOk=${pullbackOk} retracementOk=${retracementOk}` +
+          ` trendOk=${trendOk} flagOk=${flagOk} — prezzo in zona ma flags non actionable`
+        );
+      } else {
+        logger?.trace?.(
+          `[live][trace] no entry ticker=${ticker} effectivePrice=${effectivePrice}` +
+          ` — nessuna condizione di prezzo soddisfatta` +
+          ` trendOk=${trendOk} flagOk=${flagOk}` +
+          ` breakoutOk=${breakoutOk} pullbackOk=${pullbackOk} retracementOk=${retracementOk}`
         );
       }
     }
@@ -808,7 +829,14 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
           // --- riskOn check (cached with TTL) ---
           let riskRegime = liveState.lastRiskOnCheck.riskRegime;
           let riskScore = liveState.lastRiskOnCheck.score;
-          if (Date.now() - liveState.lastRiskOnCheck.ts > RISK_ON_TTL_MS) {
+          const riskCacheAge = Date.now() - liveState.lastRiskOnCheck.ts;
+          if (riskCacheAge <= RISK_ON_TTL_MS) {
+            logger?.trace?.(
+              `[live][trace] riskOn from cache ticker=${ticker} regime=${riskRegime ?? "unknown"} ` +
+              `score=${riskScore ?? "-"} cacheAgeMs=${riskCacheAge}`
+            );
+          }
+          if (riskCacheAge > RISK_ON_TTL_MS) {
             const liqUrl = (liquidityManagerUrl || "http://liquidity-manager:3001").replace(/\/+$/, "");
             try {
               const resp = await httpGetJson(`${liqUrl}/liquidity-score`, 4000);
@@ -837,6 +865,9 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
             );
             return true;
           }
+          logger?.trace?.(
+            `[live][trace] riskOn PASS ticker=${ticker} regime=${riskRegime ?? "unknown (null=pass-through)"} score=${riskScore ?? "-"}`
+          );
 
           // ----------------------------------------------------------------
           // Volatility event guards (earnings, FOMC, macro, dividend)
@@ -845,6 +876,11 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
           // lastAlertByKey so the signal is re-evaluated each tick.
           // ----------------------------------------------------------------
           const fmpApiKey = process.env.FMP_API_KEY || "";
+          if (!fmpApiKey) {
+            logger?.trace?.(
+              `[live][trace] volatility guards skipped ticker=${ticker} — FMP_API_KEY not configured (earnings/fomc/macro/dividend disabled)`
+            );
+          }
           const resolvedHooksChannelGuards = hooksChannel || `${envName}.hooks`;
 
           // Helper: publish block hook + event with cooldown per guard
@@ -882,7 +918,16 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
                   extraPayload: { earningsDate: earningsDateStr, daysToEarnings: parseFloat(daysToEarnings.toFixed(1)), blockDays: guardConfig.earnings.blockDays } });
                 return true;
               }
+              logger?.trace?.(
+                `[live][trace] guard:earnings PASS ticker=${ticker} nearestDate=${new Date(nearestEarningsDate).toISOString().split("T")[0]} daysAway=${Math.abs(Date.now() - nearestEarningsDate) / (24 * 60 * 60 * 1000) | 0} blockDays=${guardConfig.earnings.blockDays}`
+              );
+            } else {
+              logger?.trace?.(`[live][trace] guard:earnings PASS ticker=${ticker} — no earnings date found`);
             }
+          } else {
+            logger?.trace?.(
+              `[live][trace] guard:earnings SKIP ticker=${ticker} enabled=${guardConfig.earnings.enabled} hasFmpKey=${Boolean(fmpApiKey)}`
+            );
           }
 
           // --- Guard 2: FOMC proximity (all entry modes) ---
@@ -905,7 +950,16 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
                   extraPayload: { fomcDate: fomcDateStr, daysToFomc: parseFloat(daysToFomc.toFixed(1)), blockDays: guardConfig.fomc.blockDays } });
                 return true;
               }
+              logger?.trace?.(
+                `[live][trace] guard:fomc PASS ticker=${ticker} nearestFomc=${new Date(nearestFomc).toISOString().split("T")[0]} daysAway=${(daysToFomc).toFixed(1)} blockDays=${guardConfig.fomc.blockDays}`
+              );
+            } else {
+              logger?.trace?.(`[live][trace] guard:fomc PASS ticker=${ticker} — no FOMC event found in calendar`);
             }
+          } else {
+            logger?.trace?.(
+              `[live][trace] guard:fomc SKIP ticker=${ticker} enabled=${guardConfig.fomc.enabled} hasFmpKey=${Boolean(fmpApiKey)}`
+            );
           }
 
           // --- Guard 3: Macro event proximity — CPI / NFP (all entry modes) ---
@@ -932,7 +986,16 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
                   extraPayload: { macroDate: macroDateStr, daysToMacro: parseFloat(daysToMacro.toFixed(1)), blockDays: guardConfig.macro.blockDays } });
                 return true;
               }
+              logger?.trace?.(
+                `[live][trace] guard:macro PASS ticker=${ticker} nearestMacro=${new Date(nearestMacro).toISOString().split("T")[0]} daysAway=${(daysToMacro).toFixed(1)} blockDays=${guardConfig.macro.blockDays}`
+              );
+            } else {
+              logger?.trace?.(`[live][trace] guard:macro PASS ticker=${ticker} — no high-impact macro event found`);
             }
+          } else {
+            logger?.trace?.(
+              `[live][trace] guard:macro SKIP ticker=${ticker} enabled=${guardConfig.macro.enabled} hasFmpKey=${Boolean(fmpApiKey)}`
+            );
           }
 
           // --- Guard 4: Dividend ex-date proximity (all entry modes) ---
@@ -949,7 +1012,16 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
                   extraPayload: { exDate: exDateStr, daysToExDate: parseFloat(daysToEx.toFixed(1)), blockDays: guardConfig.dividend.blockDays } });
                 return true;
               }
+              logger?.trace?.(
+                `[live][trace] guard:dividend PASS ticker=${ticker} nearestExDate=${new Date(nearestExDate).toISOString().split("T")[0]} daysToEx=${(daysToEx).toFixed(1)} blockDays=${guardConfig.dividend.blockDays}`
+              );
+            } else {
+              logger?.trace?.(`[live][trace] guard:dividend PASS ticker=${ticker} — no upcoming ex-dividend date found`);
             }
+          } else {
+            logger?.trace?.(
+              `[live][trace] guard:dividend SKIP ticker=${ticker} enabled=${guardConfig.dividend.enabled} hasFmpKey=${Boolean(fmpApiKey)}`
+            );
           }
 
           // --- Candle range check (BREAKOUT only): range <= flagAtrK * atrLast ---
@@ -1062,6 +1134,10 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
               }
               // Do NOT set lastAlertByKey — signal remains active for re-evaluation
               return true;
+            } else {
+              logger?.trace?.(
+                `[live][trace] guard:openBlock PASS ticker=${ticker} minSinceOpen=${minSinceOpen.toFixed(1)} blockWindow=${BREAKOUT_OPEN_BLOCK_MINUTES}min`
+              );
             }
           }
 
@@ -1084,7 +1160,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
             `tp1=${Number.isFinite(takeProfit1) ? takeProfit1.toFixed(4) : "-"} ` +
             `tp2=${Number.isFinite(takeProfit2) ? takeProfit2.toFixed(4) : "-"} | ` +
             `conditions: trendOk=${trendOk} flagOk=${flagOk} ${entryMode}Ok=true riskRegime=${riskRegime ?? "unknown"} | ` +
-            `live: price=${livePrice} volume=${liveVolume} threshold=${liveVolumeThreshold}`
+            `live: price=${effectivePrice} volume=${liveVolume} threshold=${liveVolumeThreshold}`
           );
 
           const correlationId = randomUUID();
@@ -1111,7 +1187,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
               riskRegime,
             },
             live: {
-              price: livePrice,
+              price: effectivePrice,
               volume: liveVolume,
               threshold: liveVolumeThreshold,
             },
@@ -1142,7 +1218,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
                   takeProfit2,
                 },
                 live: {
-                  price: livePrice,
+                  price: effectivePrice,
                   volume: liveVolume,
                   threshold: liveVolumeThreshold,
                 },
@@ -1209,6 +1285,10 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
                     `[live] ibkr account check error: ${err?.message || String(err)} — order BLOCKED (fail-closed)`
                   );
                 }
+              } else {
+                logger?.trace?.(
+                  `[live][trace] ibkr account from cache accountId=${liveState.ibkrAccountCheck.accountId} isPaper=${liveState.ibkrAccountCheck.isPaper}`
+                );
               }
 
               if (liveState.ibkrAccountCheck.isPaper !== true) {

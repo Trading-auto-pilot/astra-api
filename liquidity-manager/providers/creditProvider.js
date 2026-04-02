@@ -3,6 +3,7 @@
 const { requestRawDetailed } = require("./httpClient");
 const { createProviderError } = require("./providerErrors");
 const { markSuccess, markFailure } = require("./providerHealthRegistry");
+const { getConfigNumber, getConfigString } = require("../../shared/loadSettings");
 
 const FRED_BASE = "https://api.stlouisfed.org/fred/series/observations";
 const PROVIDER_NAME = "credit";
@@ -32,12 +33,12 @@ function logWarn(logger, msg) {
 }
 
 function getCreditProviderMode() {
-  return String(process.env.LIQ_CREDIT_PROVIDER || "fred").toLowerCase();
+  return String(getConfigString("LIQ_CREDIT_PROVIDER", "fred")).toLowerCase();
 }
 
 async function fetchFromFred({ timeoutMs, logger }) {
-  const seriesId = process.env.LIQ_CREDIT_SERIES || "BAA10Y";
-  const apiKey = process.env.FRED_API_KEY || "";
+  const seriesId = getConfigString("LIQ_CREDIT_SERIES", "BAA10Y");
+  const apiKey = getConfigString("FRED_API_KEY", "");
   if (!apiKey) {
     throw createProviderError("CONFIG_MISSING", "FRED_API_KEY not set for credit provider", {
       provider: "fred",
@@ -105,7 +106,7 @@ async function fetchFromFred({ timeoutMs, logger }) {
   return series;
 }
 
-async function loadSeries({ mode = process.env.LIQUIDITY_PROVIDER_MODE || "live", timeoutMs, logger } = {}) {
+async function loadSeries({ mode = getConfigString("LIQUIDITY_PROVIDER_MODE", "live"), timeoutMs, logger } = {}) {
   if (mode === "mock") {
     const series = createMockSeries();
     markSuccess(PROVIDER_NAME, { timestamp: series[series.length - 1]?.timestamp });
@@ -119,7 +120,7 @@ async function loadSeries({ mode = process.env.LIQUIDITY_PROVIDER_MODE || "live"
     throw err;
   }
 
-  const effectiveTimeout = Number(timeoutMs || process.env.LIQ_PROVIDER_TIMEOUT_MS) || 5000;
+  const effectiveTimeout = Number(timeoutMs || getConfigNumber("LIQ_PROVIDER_TIMEOUT_MS", 5000)) || 5000;
   try {
     const series = await fetchFromFred({ timeoutMs: effectiveTimeout, logger });
     markSuccess(PROVIDER_NAME, { timestamp: series[series.length - 1]?.timestamp });

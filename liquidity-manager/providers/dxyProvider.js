@@ -4,12 +4,13 @@ const { requestRawDetailed, parseCsv } = require("./httpClient");
 const { createProviderError } = require("./providerErrors");
 const { markSuccess, markFailure } = require("./providerHealthRegistry");
 const yahooDxyProvider = require("./dxyProviderYahoo");
+const { getConfigNumber, getConfigString } = require("../../shared/loadSettings");
 
 const PROVIDER_NAME = "dxy";
 const STOOQ_SYMBOL = "dx.f";
 const STOOQ_DXY_CSV_URL = "https://stooq.com/q/d/l/?s=dx.f&i=d";
 const FRED_URL = "https://api.stlouisfed.org/fred/series/observations";
-const FRED_DXY_SERIES = process.env.LIQ_DXY_FRED_SERIES || "DTWEXBGS";
+const FRED_DXY_SERIES = getConfigString("LIQ_DXY_FRED_SERIES", "DTWEXBGS");
 function toNumber(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
@@ -96,16 +97,16 @@ async function fetchFromYahoo({ timeoutMs, logger }) {
 
 async function fetchFromFred({ timeoutMs, logger }) {
   const params = new URLSearchParams({
-    series_id: process.env.LIQ_DXY_FRED_SERIES || FRED_DXY_SERIES,
+    series_id: getConfigString("LIQ_DXY_FRED_SERIES", FRED_DXY_SERIES),
     file_type: "json",
   });
-  const apiKey = process.env.FRED_API_KEY || "";
+  const apiKey = getConfigString("FRED_API_KEY", "");
   if (apiKey) params.set("api_key", apiKey);
   const url = `${FRED_URL}?${params.toString()}`;
   const startedAt = new Date().toISOString();
   logDebug(
     logger,
-    `provider=${PROVIDER_NAME} requestUrl=${url} series=${process.env.LIQ_DXY_FRED_SERIES || FRED_DXY_SERIES} timeoutMs=${timeoutMs} startTimestamp=${startedAt}`
+    `provider=${PROVIDER_NAME} requestUrl=${url} series=${getConfigString("LIQ_DXY_FRED_SERIES", FRED_DXY_SERIES)} timeoutMs=${timeoutMs} startTimestamp=${startedAt}`
   );
 
   const response = await requestRawDetailed(url, timeoutMs);
@@ -120,7 +121,7 @@ async function fetchFromFred({ timeoutMs, logger }) {
   } catch (err) {
     throw createProviderError("PARSE_ERROR", "Invalid JSON from FRED DXY", {
       source: "fred",
-      series: process.env.LIQ_DXY_FRED_SERIES || FRED_DXY_SERIES,
+      series: getConfigString("LIQ_DXY_FRED_SERIES", FRED_DXY_SERIES),
       cause: err?.message || String(err),
     });
   }
@@ -128,7 +129,7 @@ async function fetchFromFred({ timeoutMs, logger }) {
   const observations = Array.isArray(parsed?.observations) ? parsed.observations : [];
   logDebug(
     logger,
-    `provider=${PROVIDER_NAME} parse observations=${observations.length} source=fred series=${process.env.LIQ_DXY_FRED_SERIES || FRED_DXY_SERIES}`
+    `provider=${PROVIDER_NAME} parse observations=${observations.length} source=fred series=${getConfigString("LIQ_DXY_FRED_SERIES", FRED_DXY_SERIES)}`
   );
 
   const series = observations
@@ -138,7 +139,7 @@ async function fetchFromFred({ timeoutMs, logger }) {
       return {
         timestamp: Number.isFinite(d.getTime()) ? d.toISOString() : null,
         value: Number.isFinite(value) ? value : null,
-        source: `fred:${process.env.LIQ_DXY_FRED_SERIES || FRED_DXY_SERIES}`,
+        source: `fred:${getConfigString("LIQ_DXY_FRED_SERIES", FRED_DXY_SERIES)}`,
       };
     })
     .filter((item) => item.timestamp && item.value != null)
@@ -147,7 +148,7 @@ async function fetchFromFred({ timeoutMs, logger }) {
   if (!series.length) {
     throw createProviderError("NO_DATA", "No DXY data from FRED", {
       source: "fred",
-      series: process.env.LIQ_DXY_FRED_SERIES || FRED_DXY_SERIES,
+      series: getConfigString("LIQ_DXY_FRED_SERIES", FRED_DXY_SERIES),
     });
   }
   const latest = series[series.length - 1];
@@ -159,21 +160,21 @@ async function fetchFromFred({ timeoutMs, logger }) {
 }
 
 function attemptOrder() {
-  const mode = String(process.env.LIQ_DXY_PROVIDER || "auto").toLowerCase();
+  const mode = String(getConfigString("LIQ_DXY_PROVIDER", "auto")).toLowerCase();
   if (mode === "stooq") return ["stooq"];
   if (mode === "yahoo") return ["yahoo", "fred", "stooq"];
   if (mode === "fred") return ["fred", "yahoo", "stooq"];
   return ["fred", "yahoo", "stooq"];
 }
 
-async function loadSeries({ mode = process.env.LIQUIDITY_PROVIDER_MODE || "live", timeoutMs, logger } = {}) {
+async function loadSeries({ mode = getConfigString("LIQUIDITY_PROVIDER_MODE", "live"), timeoutMs, logger } = {}) {
   if (mode === "mock") {
     const series = createMockSeries();
     markSuccess(PROVIDER_NAME, { timestamp: series[series.length - 1]?.timestamp });
     return series;
   }
 
-  const effectiveTimeout = Number(timeoutMs || process.env.LIQ_PROVIDER_TIMEOUT_MS) || 5000;
+  const effectiveTimeout = Number(timeoutMs || getConfigNumber("LIQ_PROVIDER_TIMEOUT_MS", 5000)) || 5000;
   const attempts = [];
 
   for (const source of attemptOrder()) {

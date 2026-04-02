@@ -1,5 +1,7 @@
 "use strict";
 
+const { getConfigNumber } = require("../../../shared/loadSettings");
+
 function round(value, precision = 2) {
   const f = 10 ** precision;
   return Math.round(value * f) / f;
@@ -41,7 +43,7 @@ async function runComponent({
   fetchFn,
   normalizeFn,
   logger,
-  timeoutMs = Number(process.env.LIQ_PROVIDER_TIMEOUT_MS) || 5000,
+  timeoutMs = getConfigNumber("LIQ_PROVIDER_TIMEOUT_MS", 5000),
 }) {
   const startedAt = new Date().toISOString();
   try {
@@ -99,4 +101,3 @@ module.exports = {
   runComponent,
   classifyErrorStatus,
 };
-

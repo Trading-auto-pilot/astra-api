@@ -3,6 +3,7 @@
 const { requestRawDetailed, parseCsv } = require("./httpClient");
 const { createProviderError } = require("./providerErrors");
 const { markSuccess, markFailure } = require("./providerHealthRegistry");
+const { getConfigNumber, getConfigString } = require("../../shared/loadSettings");
 
 const PROVIDER_NAME = "vix";
 const STOOQ_SYMBOL = "^vix";
@@ -88,7 +89,7 @@ async function fetchFromFred({ timeoutMs, logger }) {
     series_id: FRED_SERIES,
     file_type: "json",
   });
-  const fredApiKey = process.env.FRED_API_KEY || "";
+  const fredApiKey = getConfigString("FRED_API_KEY", "");
   if (fredApiKey) params.set("api_key", fredApiKey);
   const url = `${FRED_URL}?${params.toString()}`;
 
@@ -144,20 +145,20 @@ async function fetchFromFred({ timeoutMs, logger }) {
 }
 
 function attemptOrder() {
-  const mode = String(process.env.LIQ_VIX_PROVIDER || "auto").toLowerCase();
+  const mode = String(getConfigString("LIQ_VIX_PROVIDER", "auto")).toLowerCase();
   if (mode === "stooq") return ["stooq"];
   if (mode === "fred") return ["fred"];
   return ["stooq", "fred"];
 }
 
-async function loadSeries({ mode = process.env.LIQUIDITY_PROVIDER_MODE || "live", timeoutMs, logger } = {}) {
+async function loadSeries({ mode = getConfigString("LIQUIDITY_PROVIDER_MODE", "live"), timeoutMs, logger } = {}) {
   if (mode === "mock") {
     const series = createMockSeries();
     markSuccess(PROVIDER_NAME, { timestamp: series[series.length - 1]?.timestamp });
     return series;
   }
 
-  const effectiveTimeout = Number(timeoutMs || process.env.LIQ_PROVIDER_TIMEOUT_MS) || 5000;
+  const effectiveTimeout = Number(timeoutMs || getConfigNumber("LIQ_PROVIDER_TIMEOUT_MS", 5000)) || 5000;
   const attempts = [];
 
   for (const source of attemptOrder()) {

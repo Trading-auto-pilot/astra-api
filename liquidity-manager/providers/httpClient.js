@@ -2,8 +2,9 @@
 
 const https = require("https");
 const http = require("http");
+const { getConfigNumber } = require("../../shared/loadSettings");
 
-const DEFAULT_TIMEOUT_MS = Number(process.env.LIQUIDITY_HTTP_TIMEOUT_MS) || 10000;
+const DEFAULT_TIMEOUT_MS = getConfigNumber("LIQUIDITY_HTTP_TIMEOUT_MS", 10000);
 
 function requestRawDetailed(url, timeoutMs = DEFAULT_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {

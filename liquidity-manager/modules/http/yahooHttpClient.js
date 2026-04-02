@@ -2,8 +2,9 @@
 
 const https = require("https");
 const http = require("http");
+const { getConfigNumber } = require("../../../shared/loadSettings");
 
-const DEFAULT_TIMEOUT_MS = Number(process.env.YAHOO_TIMEOUT_MS) || 8000;
+const DEFAULT_TIMEOUT_MS = getConfigNumber("YAHOO_TIMEOUT_MS", 8000);
 
 const DEFAULT_HEADERS = {
   "User-Agent":
@@ -95,4 +96,3 @@ async function yahooGet(url, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
 module.exports = {
   yahooGet,
 };
-

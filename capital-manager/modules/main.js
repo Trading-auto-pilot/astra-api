@@ -7,7 +7,7 @@ const { publishEventsManifest } = require("../../shared/eventsManifestRegistry")
 const { countryToArea } = require("./utils/geoUtils");
 const { fetchAccountSummary, fetchOpenOrders, fetchPositions } = require("./adapters/ibkrBridge");
 const { fetchLiquidityScore } = require("./adapters/liquidityManager");
-const { computeAllocationDecision, getDefaultConfig } = require("./allocation/decisionEngine");
+const { computeAllocationDecision, computeReservedCashPct, getDefaultConfig } = require("./allocation/decisionEngine");
 const { computeOpenOrdersReserved } = require("./allocation/exposureCalculator");
 const { computeExposure, applyConcentrationLimits } = require("./allocation/concentrationLimits");
 const { getFundamentalsMap, setFundamentalsMap } = require("./store/fundamentalsStore");
@@ -559,8 +559,10 @@ class CapitalManager extends BaseService {
   }
 
   /**
-   * Return persisted derived cash limits from DB (via settings cache).
-   * @returns {Promise<{MAX_TICKER:number|null, MAX_SECTOR:number|null, MAX_INDUSTRY:number|null, MAX_AREA:number|null, MAX_INVESTMENT:number|null}>}
+   * Return persisted derived cash limits, augmented with a dynamically computed cashToSave.
+   * cashToSave = MAX_INVESTMENT * reservedCashPct(latestLiquidityScore)
+   * — no Redis write required; computed on every GET from live data.
+   * @returns {Promise<{MAX_TICKER:number|null, MAX_SECTOR:number|null, MAX_INDUSTRY:number|null, MAX_AREA:number|null, MAX_INVESTMENT:number|null, maxInvestment:number|null, cashToSave:number|null}>}
    */
   async getDerivedLimits() {
     const stored = await this.getAllSettings();
@@ -569,6 +571,25 @@ class CapitalManager extends BaseService {
       const v = parseFloat(stored[key]);
       result[key] = Number.isFinite(v) ? v : null;
     }
+    // camelCase aliases for frontend compatibility
+    result.maxInvestment = result.MAX_INVESTMENT;
+
+    // Compute cashToSave dynamically from live liquidity score — no frontend write needed.
+    const maxInv = result.MAX_INVESTMENT;
+    if (Number.isFinite(maxInv) && maxInv > 0) {
+      try {
+        const liquidity = await fetchLiquidityScore("US");
+        const config = this._allocationConfig || {};
+        const { reservedCashPct } = computeReservedCashPct(liquidity, config);
+        result.cashToSave = Math.round(maxInv * reservedCashPct * 100) / 100;
+      } catch (err) {
+        this.logger.warning(`[getDerivedLimits] could not fetch liquidity score for cashToSave: ${err?.message || err}`);
+        result.cashToSave = null;
+      }
+    } else {
+      result.cashToSave = null;
+    }
+
     return result;
   }
 }

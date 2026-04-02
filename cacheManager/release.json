@@ -1,6 +1,6 @@
 {
-  "lastUpdate": "12/03/2026", 
-  "version": "2.5.0",
+  "lastUpdate": "02/04/2026", 
+  "version": "2.6.0",
   "microservice": "cacheManager",
 
   "note": [
@@ -13,6 +13,7 @@
     "2.4.0 Refactoring completo fatto con Claud.ai, taglio su sole candele richieste",
     "2.4.1 Aggiunta messaggi su canale HOOK per alerting piu fix minori",
     "2.4.2 Fix per candele sui bordi",
-    "2.5.0 File con tutte le candele del periodo. Non si entra piu nel merito delle candele presenti per ogni file"
+    "2.5.0 File con tutte le candele del periodo. Non si entra piu nel merito delle candele presenti per ogni file",
+    "2.6.0 Preparata la migrazione cross-service della configurazione con precedence settings -> env -> default"
   ]
 }

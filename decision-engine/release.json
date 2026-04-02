@@ -1,6 +1,6 @@
 {
-  "lastUpdate": "11/03/2026", 
-  "version": "3.1.0",
+  "lastUpdate": "02/04/2026", 
+  "version": "3.2.0",
   "microservice": "decision-engine",
 
   "note": [
@@ -11,6 +11,7 @@
     "v.2.0.1 Minor Fix",
     "v.2.0.2 Fix entry on Pullback, didn't work",
     "v.3.0.0 Implementata interfaccia con market-simulator per simulazione mercato",
-    "v.3.1.0 La Pipe Execution quando trova dei tikers con trend positivo fa subscribe ai dati di mercato"
+    "v.3.1.0 La Pipe Execution quando trova dei tikers con trend positivo fa subscribe ai dati di mercato",
+    "v.3.2.0 Allineati alias configurazione e preparata la migrazione cross-service settings -> env -> default"
   ]
 }

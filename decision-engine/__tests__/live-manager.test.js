@@ -119,17 +119,15 @@ describe("activateLiveState", () => {
     expect(liveState.authHeaders.authorization).toBe("Bearer test");
   });
 
-  test("svuota lastRunByTicker, runningByTicker, signalCandlesByTicker", () => {
+  test("svuota lastRunByTicker e runningByTicker", () => {
     // Popoliamo prima
     liveState.lastRunByTicker.set("AAPL", Date.now());
     liveState.runningByTicker.add("MSFT");
-    liveState.signalCandlesByTicker.set("GOOGL", { candles: [] });
 
     activateLiveState(baseParams);
 
     expect(liveState.lastRunByTicker.size).toBe(0);
     expect(liveState.runningByTicker.size).toBe(0);
-    expect(liveState.signalCandlesByTicker.size).toBe(0);
   });
 
   test("chiamate successive sovrascrivono correttamente lo stato", () => {
@@ -170,14 +168,12 @@ describe("resetLiveState", () => {
     expect(liveState.tickers.size).toBe(0);
   });
 
-  test("svuota lastRunByTicker, runningByTicker, signalCandlesByTicker", () => {
+  test("svuota lastRunByTicker e runningByTicker", () => {
     liveState.lastRunByTicker.set("X", 1000);
     liveState.runningByTicker.add("Y");
-    liveState.signalCandlesByTicker.set("Z", {});
     resetLiveState("test");
     expect(liveState.lastRunByTicker.size).toBe(0);
     expect(liveState.runningByTicker.size).toBe(0);
-    expect(liveState.signalCandlesByTicker.size).toBe(0);
   });
 
   test("reset su stato già inattivo non lancia errori", () => {
