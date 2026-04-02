@@ -331,6 +331,15 @@ jobs:
         echo "MPC_GATEWAY_VERSION=${{vars.MPC_GATEWAY_VERSION}}" >> .env
         echo "IBKR_BRIDGE_URL=${{vars.IBKR_BRIDGE_URL}}" >> .env 
         echo "TRADING_API_KEY=${{secrets.TRADING_API_KEY}}" >> .env 
+        echo "DOCS_GIT_HTTP_TOKEN=${{secrets.DOCS_GIT_HTTP_TOKEN}}" >> .env
+        echo "POLYGON_API_KEY=${{secrets.POLYGON_API_KEY}}" >> .env
+        echo "DOCS_GIT_HTTP_USERNAME=${{env.DOCS_GIT_HTTP_USERNAME}}" >> .env
+        echo "DOCS_GIT_REMOTE_URL=${{env.DOCS_GIT_REMOTE_URL}}" >> .env
+        echo "DOCS_GIT_AUTHOR_EMAIL=${{env.DOCS_GIT_AUTHOR_EMAIL}}" >> .env
+        echo "DOCS_GIT_AUTHOR_NAME=${{env.DOCS_GIT_AUTHOR_NAME}}" >> .env
+        echo "DOCS_GIT_BRANCH=${{env.DOCS_GIT_BRANCH}}" >> .env
+        echo "DOCS_GIT_REMOTE=${{env.DOCS_GIT_REMOTE}}" >> .env
+        echo "DOCS_GIT_PUSH_ENABLED=${{env.DOCS_GIT_PUSH_ENABLED}}" >> .env
          
 
     - name: Validate .env variables
