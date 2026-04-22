@@ -377,7 +377,8 @@ jobs:
 
     - name: Copy .env to server
       run: |
-        scp -o StrictHostKeyChecking=no .env $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/.env
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "mkdir -p /home/$GCP_USER/deploy/trading-system"
+        scp -o StrictHostKeyChecking=no .env $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/trading-system/.env
 
     - name: Copy docker-compose files to server
       run: |
@@ -398,10 +399,10 @@ jobs:
 
         scp -o StrictHostKeyChecking=no \
           "$SRC_COMPOSE_FILE" \
-          $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/
+          $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/trading-system/
 
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << EOF
-          cd ~/deploy
+          cd ~/deploy/trading-system
           echo "🔁 Rinomino $SRC_COMPOSE_FILE → docker-compose.${LOWER_ENV_NAME}.yml"
           mv "$SRC_COMPOSE_FILE" "docker-compose.${LOWER_ENV_NAME}.yml"
           echo "✅ docker-compose.${LOWER_ENV_NAME}.yml aggiornato"
@@ -483,10 +484,10 @@ jobs:
       run: |
         scp -o StrictHostKeyChecking=no \
           deploy-with-profiles.sh \
-          $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/deploy-with-profiles.sh
+          $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/trading-system/deploy-with-profiles.sh
 
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << 'EOF'
-          cd ~/deploy
+          cd ~/deploy/trading-system
           chmod +x deploy-with-profiles.sh
         EOF
 
@@ -495,7 +496,7 @@ jobs:
       run: |
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -e -s" <<'EOF'
           set -e
-          cd ~/deploy
+          cd ~/deploy/trading-system
 
           LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
 
@@ -508,7 +509,7 @@ jobs:
           fi
 
           if [ ! -f "./deploy-with-profiles.sh" ]; then
-            echo "❌ Script deploy-with-profiles.sh non trovato in ~/deploy!"
+            echo "❌ Script deploy-with-profiles.sh non trovato in ~/deploy/trading-system!"
             exit 1
           fi
 
@@ -546,7 +547,7 @@ jobs:
       run: |
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -e -s" <<'EOF'
           set -e
-          cd ~/deploy
+          cd ~/deploy/trading-system
           LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
           docker compose -f "docker-compose.${ENV_NAME,,}.yml" --env-file .env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans --no-recreate
           docker image prune -a -f
@@ -577,7 +578,7 @@ jobs:
         EOF
 
     - name: Cleanup .env on server
+      if: always()
       run: |
-        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST << 'EOF'
-          rm -f /home/$GCP_USER/deploy/.env
-        EOF
+        ssh -o StrictHostKeyChecking=no "$GCP_USER@$GCP_HOST" \
+          "rm -f /home/$GCP_USER/deploy/trading-system/.env" || true
