@@ -1,7 +1,8 @@
 // server.js
 "use strict";
 
-const MCP_TRANSPORT = process.env.MCP_TRANSPORT || "stdio";
+const { getConfigString } = require("../shared/loadSettings");
+const MCP_TRANSPORT = getConfigString("MCP_TRANSPORT", "stdio");
 
 // In stdio mode stdout is the MCP JSON-RPC 2.0 channel.
 // Redirect all console output to stderr so log messages don't corrupt the stream.
@@ -22,7 +23,7 @@ if (MCP_TRANSPORT === "stdio") {
 
   const logger = createLogger(
     "mcp-gateway", "main", "1.0.0",
-    process.env.LOG_LEVEL || "info"
+    getConfigString("LOG_LEVEL", "info")
   );
 
   const mcp = new McpSubsystem({ service: null, logger });
@@ -41,7 +42,7 @@ if (MCP_TRANSPORT === "stdio") {
   const createMcpDebugRouter         = require("./routes.mcpDebug");
   const createMcpHttpRouter          = require("./routes.mcpHttp");
 
-  const MCP_HTTP_PATH = process.env.MCP_HTTP_PATH || "/mcp";
+  const MCP_HTTP_PATH = getConfigString("MCP_HTTP_PATH", "/mcp");
 
   const routes = [
     { path: "/mcp",        router: createMcpDebugRouter, protected: true  },

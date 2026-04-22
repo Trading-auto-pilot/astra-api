@@ -4,6 +4,7 @@
 const axios = require("axios");
 const https = require("https");
 const { asBool, asInt } = require("../../shared/helpers");
+const { getConfigString, getConfigInt, getConfigBoolean } = require("../../shared/loadSettings");
 
 class IbkrConnectivity {
   constructor({
@@ -56,7 +57,7 @@ class IbkrConnectivity {
     const payload = {
       type: "keepalive",
       ts: Date.now(),
-      env: typeof this.getEnv === "function" ? this.getEnv() : process.env.ENV || "DEV",
+      env: typeof this.getEnv === "function" ? this.getEnv() : getConfigString(["ENV", "APP_ENV"], "DEV"),
       status: typeof this.getStatus === "function" ? this.getStatus() : null,
       lastAuthStatus: this.state.authStatusCode ?? 401,
       lastTickleStatus: this.state.lastTickleStatus,
@@ -78,7 +79,7 @@ class IbkrConnectivity {
     const payload = {
       type: "ssodhInit",
       ts: Date.now(),
-      env: typeof this.getEnv === "function" ? this.getEnv() : process.env.ENV || "DEV",
+      env: typeof this.getEnv === "function" ? this.getEnv() : getConfigString(["ENV", "APP_ENV"], "DEV"),
       status: typeof this.getStatus === "function" ? this.getStatus() : null,
       ssodhInit: result || null,
       lastSsodhInitAt: this.state.lastSsodhInitAt,
@@ -99,7 +100,7 @@ class IbkrConnectivity {
     const payload = {
       type: "telemetry",
       ts: Date.now(),
-      env: typeof this.getEnv === "function" ? this.getEnv() : process.env.ENV || "DEV",
+      env: typeof this.getEnv === "function" ? this.getEnv() : getConfigString(["ENV", "APP_ENV"], "DEV"),
       status: typeof this.getStatus === "function" ? this.getStatus() : null,
       authStatus: {
         status: this.state.authStatusCode,
@@ -187,36 +188,16 @@ class IbkrConnectivity {
   }
 
   _readSettings() {
-    const baseUrl =
-      this.getSetting?.("IBKRGW_BASE_URL") ||
-      process.env.IBKRGW_BASE_URL ||
-      this.getSetting?.("IBKR_BASE_URL") ||
-      process.env.IBKR_BASE_URL ||
-      "";
-    const ssoDispatcherUrl =
-      this.getSetting?.("IBKRGW_SSO_URL") ||
-      process.env.IBKRGW_SSO_URL ||
-      "http://ibkrgw-paper:5000/sso/Dispatcher?hardware_info=eyJpZCI6IjNjYzU0NWJmIiwibWFjIjoiMTY6RUY6QUY6NkQ6QzY6OUEifQ%3D%3D";
-    const insecureTls = asBool(
-      this.getSetting?.("IBKR_INSECURE_TLS") ?? process.env.IBKR_INSECURE_TLS,
-      false
+    const baseUrl = getConfigString(["IBKRGW_BASE_URL", "IBKR_BASE_URL"], "");
+    const ssoDispatcherUrl = getConfigString(
+      "IBKRGW_SSO_URL",
+      "http://ibkrgw-paper:5000/sso/Dispatcher?hardware_info=eyJpZCI6IjNjYzU0NWJmIiwibWFjIjoiMTY6RUY6QUY6NkQ6QzY6OUEifQ%3D%3D"
     );
-    const tickleIntervalMs = asInt(
-      this.getSetting?.("TICKLE_INTERVAL_MS") ?? process.env.TICKLE_INTERVAL_MS,
-      50000
-    );
-    const authCheckIntervalMs = asInt(
-      this.getSetting?.("AUTH_CHECK_INTERVAL_MS") ?? process.env.AUTH_CHECK_INTERVAL_MS,
-      15000
-    );
-    const requestTimeoutMs = asInt(
-      this.getSetting?.("IBKR_REQUEST_TIMEOUT_MS") ?? process.env.IBKR_REQUEST_TIMEOUT_MS,
-      20000
-    );
-    const ssodhInitIntervalMs = asInt(
-      this.getSetting?.("IBKR_SSODH_INIT_INTERVAL_MS") ?? process.env.IBKR_SSODH_INIT_INTERVAL_MS,
-      60000
-    );
+    const insecureTls = asBool(getConfigBoolean("IBKR_INSECURE_TLS", false), false);
+    const tickleIntervalMs = asInt(getConfigInt("TICKLE_INTERVAL_MS", 50000), 50000);
+    const authCheckIntervalMs = asInt(getConfigInt("AUTH_CHECK_INTERVAL_MS", 15000), 15000);
+    const requestTimeoutMs = asInt(getConfigInt("IBKR_REQUEST_TIMEOUT_MS", 20000), 20000);
+    const ssodhInitIntervalMs = asInt(getConfigInt("IBKR_SSODH_INIT_INTERVAL_MS", 60000), 60000);
     return {
       baseUrl,
       insecureTls,

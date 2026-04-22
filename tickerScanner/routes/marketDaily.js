@@ -2,6 +2,7 @@
 
 const axios = require("axios");
 const { Router } = require("express");
+const { getConfigString } = require("../../shared/loadSettings");
 const { createDatahubAdapter } = require("../../shared/datahubAdapter");
 const { createFetchUserId } = require("../lib/filterEngine");
 const { createFetchApiKeyId } = require("../lib/weightsConfig");
@@ -22,8 +23,8 @@ const normalizeMarketDate = (value) => {
 
 module.exports = function buildMarketDailyRouter({ logger, getService }) {
   const router = Router();
-  const dbmanagerUrl = (process.env.DATAHUB_URL || process.env.DBMANAGER_URL || "http://datahub:3000").replace(/\/+$/, "");
-  const authServiceUrl = (process.env.AUTHSERVICE_URL || "http://authservice:3015").replace(/\/+$/, "");
+  const dbmanagerUrl = (getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], "http://datahub:3000")).replace(/\/+$/, "");
+  const authServiceUrl = (getConfigString("AUTHSERVICE_URL", "http://authservice:3015")).replace(/\/+$/, "");
 
   const datahubAxios = createDatahubAdapter(axios.create({ baseURL: dbmanagerUrl, timeout: 8000 }));
 
@@ -39,15 +40,20 @@ module.exports = function buildMarketDailyRouter({ logger, getService }) {
       (typeof req.headers["x-job-key"] === "string" && req.headers["x-job-key"].trim()) ||
       (typeof req.body?.jobKey === "string" && req.body.jobKey.trim()) ||
       "manual";
+    const date =
+      (typeof req.body?.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.body.date.trim()) ? req.body.date.trim() : null) ||
+      (typeof req.query.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date.trim()) ? req.query.date.trim() : null) ||
+      null;
     const job = marketDailySvc.createJob();
     setImmediate(() =>
       marketDailySvc.runJob(job.id, jobKey, {
         bus: service.bus,
         redisStatusChannel: service.redisStatusChannel,
         redisTelemetryChannel: service.redisTelemetryChannel,
+        date,
       })
     );
-    return res.json({ ok: true, type: "async", jobId: job.id, jobKey, startedAt: job.createdAt });
+    return res.json({ ok: true, type: "async", jobId: job.id, jobKey, date: date ?? "today", startedAt: job.createdAt });
   });
 
   // GET /fundamentals/update-market-daily - lista job attivi

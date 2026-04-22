@@ -1,11 +1,12 @@
 "use strict";
 
 const { traefikFetch } = require("./_http");
+const { getConfigString, getConfigInt } = require("../../../../shared/loadSettings");
 
-const DOCS_API_BASE_URL = String(process.env.DOCS_API_BASE_URL || "").trim().replace(/\/+$/, "");
-const DOCS_API_PATH_PREFIX = (process.env.DOCS_API_PATH_PREFIX || "/help-api/api/docs").replace(/\/+$/, "");
-const DOCS_API_READ_TIMEOUT_MS = Number(process.env.DOCS_API_READ_TIMEOUT_MS || 15000);
-const DOCS_API_WRITE_TIMEOUT_MS = Number(process.env.DOCS_API_WRITE_TIMEOUT_MS || 180000);
+const DOCS_API_BASE_URL = String(getConfigString("DOCS_API_BASE_URL", "")).trim().replace(/\/+$/, "");
+const DOCS_API_PATH_PREFIX = getConfigString("DOCS_API_PATH_PREFIX", "/help-api/api/docs").replace(/\/+$/, "");
+const DOCS_API_READ_TIMEOUT_MS = getConfigInt("DOCS_API_READ_TIMEOUT_MS", 15000);
+const DOCS_API_WRITE_TIMEOUT_MS = getConfigInt("DOCS_API_WRITE_TIMEOUT_MS", 180000);
 
 const ACTIONS = new Set([
   "list_pages",

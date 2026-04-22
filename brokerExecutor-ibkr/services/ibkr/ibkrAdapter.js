@@ -2,6 +2,7 @@
 
 const axios = require("axios");
 const https = require("https");
+const { getConfigString, getConfigNumber, getConfigBoolean } = require("../../../shared/loadSettings");
 
 function createError(code, message, statusCode = 500, details = null) {
   const err = new Error(message);
@@ -14,16 +15,14 @@ function createError(code, message, statusCode = 500, details = null) {
 class IbkrAdapter {
   constructor({ logger }) {
     this.logger = logger;
-    this.bridgeUrl = (process.env.IBKRBRIDGE_URL || "").trim();
-    this.preferBridge = String(process.env.IBKR_EXECUTOR_USE_BRIDGE || "true").toLowerCase() !== "false";
+    this.bridgeUrl = getConfigString("IBKRBRIDGE_URL", "").trim();
+    this.preferBridge = getConfigBoolean("IBKR_EXECUTOR_USE_BRIDGE", true);
     this.baseUrl =
-      process.env.IBKRGW_BASE_URL ||
-      process.env.IBKR_BASE_URL ||
-      "http://ibkrgw-paper:5000";
-    this.timeoutMs = Number(process.env.IBKR_REQUEST_TIMEOUT_MS) || 20000;
-    this.insecureTls = String(process.env.IBKR_INSECURE_TLS || "false").toLowerCase() === "true";
+      getConfigString(["IBKRGW_BASE_URL", "IBKR_BASE_URL"], "http://ibkrgw-paper:5000");
+    this.timeoutMs = getConfigNumber("IBKR_REQUEST_TIMEOUT_MS", 20000);
+    this.insecureTls = getConfigBoolean("IBKR_INSECURE_TLS", false);
     this.autoReplyConfirm =
-      String(process.env.IBKR_AUTO_REPLY_CONFIRM || "true").toLowerCase() === "true";
+      getConfigBoolean("IBKR_AUTO_REPLY_CONFIRM", true);
 
     const axiosCfg = {
       baseURL: this.baseUrl.replace(/\/+$/, ""),

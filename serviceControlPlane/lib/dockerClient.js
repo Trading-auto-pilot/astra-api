@@ -2,8 +2,9 @@
 "use strict";
 
 const http = require("http");
+const { getConfigString } = require("../../shared/loadSettings");
 
-const SOCKET_PATH = process.env.DOCKER_SOCKET || "/var/run/docker.sock";
+const SOCKET_PATH = getConfigString("DOCKER_SOCKET", "/var/run/docker.sock");
 
 function dockerRequest(method, path, body = null) {
   return new Promise((resolve, reject) => {

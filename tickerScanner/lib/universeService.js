@@ -1,5 +1,7 @@
 "use strict";
 
+const { getConfigInt } = require("../../shared/loadSettings");
+
 /**
  * universeService.js — Phase 1: Universe scan
  *
@@ -216,9 +218,9 @@ function createUniverseScanService({ logger, datahubAxios, fmpFundamentals, scre
     );
 
     // Step 3 — FMP fundamentals + upsert (batched + concurrency controllata)
-    const batchSize      = Math.max(1, Number(process.env.SCAN_MISSING_BATCH)    || 50);
-    const fmpConcurrency = Math.max(1, Number(process.env.SCAN_FMP_CONCURRENCY)  || 3);
-    const upsertConc     = Math.max(1, Number(process.env.SCAN_UPSERT_CONCURRENCY) || 5);
+    const batchSize      = Math.max(1, getConfigInt("SCAN_MISSING_BATCH", 50));
+    const fmpConcurrency = Math.max(1, getConfigInt("SCAN_FMP_CONCURRENCY", 3));
+    const upsertConc     = Math.max(1, getConfigInt("SCAN_UPSERT_CONCURRENCY", 5));
 
     for (const batch of chunkArray(toProcess, batchSize)) {
       abortIfCancelled();

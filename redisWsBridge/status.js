@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { getConfigInt, getConfigString } = require('../shared/loadSettings');
 
 module.exports = ({ cfg, hub, bus }) => {
   const r = Router();
@@ -34,7 +35,7 @@ module.exports = ({ cfg, hub, bus }) => {
 
   // /status/communicationChannels (PUT)
   r.put('/communicationChannels', (req, res) => {
-    const maxInterval = parseInt(process.env.MAX_RETRY_DELAY, 10) || 60000;
+    const maxInterval = getConfigInt('MAX_RETRY_DELAY', 60000);
     try {
       const input = (req.body && (req.body.communicationChannels || req.body)) || {};
       if (typeof input !== 'object' || Array.isArray(input)) {
@@ -88,7 +89,7 @@ module.exports = ({ cfg, hub, bus }) => {
     const current =
       cfg?.logger && typeof cfg.logger.getLevel === 'function'
         ? cfg.logger.getLevel()
-        : process.env.LOG_LEVEL;
+        : getConfigString('LOG_LEVEL', 'info');
     res.status(200).json({ redisWsBridge: current });
   });
 

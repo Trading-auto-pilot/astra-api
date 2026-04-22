@@ -4,6 +4,8 @@
 // sessionState — singleton for the active simulation session
 // ---------------------------------------------------------------------------
 
+const simClock = require("../../shared/simClock");
+
 // ms per timeframe unit
 const TF_MS = {
   "1min":   60 * 1000,
@@ -42,9 +44,10 @@ const state = {
   dataSourceConfig: {},         // source-specific config (e.g. { path: "..." })
   tickCount: 0,
   lastTickAt: null,
-  // Mode: "passive" — serve on GET requests (decision-engine pulls)
+  // Mode: "sync"    — POST /sim/tick driven, no timers, no Redis push (fastest)
+  //       "passive" — serve on GET requests (decision-engine pulls)
   //       "inject"  — push directly onto Redis bus at intervalMs speed
-  mode: "passive",
+  mode: "sync",
   intervalMs: 1000,
   getRequestsCount: 0,
   lastGetAt: null,
@@ -53,6 +56,8 @@ const state = {
   lastGetDate: null,
   // Per-symbol overrides for the next GET /candle (Mode 1 compatible)
   pendingCandles: {},      // { [SYMBOL]: candle }
+  // Passive mode: track which subscribed tickers have been served at currentDate
+  servedAtCurrentDate: new Set(),
 };
 
 function configure({ startDate, endDate, tf, dataSource, dataSourceConfig, mode, intervalMs }) {
@@ -65,7 +70,9 @@ function configure({ startDate, endDate, tf, dataSource, dataSourceConfig, mode,
   state.active = true;
   state.tickCount = 0;
   state.lastTickAt = null;
-  state.mode = mode === "inject" ? "inject" : "passive";
+  if (mode === "inject") state.mode = "inject";
+  else if (mode === "passive") state.mode = "passive";
+  else state.mode = "sync";
   state.intervalMs = (intervalMs && intervalMs > 0) ? Number(intervalMs) : 1000;
   state.getRequestsCount = 0;
   state.lastGetAt = null;
@@ -73,19 +80,34 @@ function configure({ startDate, endDate, tf, dataSource, dataSourceConfig, mode,
   state.lastGetSymbol = null;
   state.lastGetDate = null;
   state.pendingCandles = {};
+  state.servedAtCurrentDate = new Set();
 }
 
-// Advance currentDate by one TF step. Returns true if there are more steps.
-function advance() {
+// Advance currentDate. Returns true if there are more steps.
+// In sync mode, pass nextDate = candle.t + TF_MS to advance per actual candle
+// (avoids re-serving the same candle when currentDate falls between candle timestamps).
+// Falls back to fixed TF step when nextDate is null.
+function advance(nextDate = null) {
   if (!state.active || !state.currentDate) return false;
   const tfMs = TF_MS[normalizeTf(state.tf)] || TF_MS["1Day"];
   const current = new Date(state.currentDate).getTime();
   const end = new Date(state.endDate).getTime();
   if (current >= end) return false;
-  const next = Math.min(current + tfMs, end);
+
+  let next;
+  if (nextDate != null) {
+    next = Math.min(new Date(nextDate).getTime(), end);
+  } else {
+    next = Math.min(current + tfMs, end);
+  }
+
   state.currentDate = new Date(next).toISOString();
   state.tickCount++;
   state.lastTickAt = new Date().toISOString();
+  // Inject virtual time into simClock so decision-engine business logic
+  // uses the candle timestamp instead of wall-clock time.
+  try { simClock.inject(next); } catch (_) { /* non-fatal */ }
+  state.servedAtCurrentDate = new Set(); // reset served set for next step
   return new Date(state.currentDate).getTime() < end;
 }
 
@@ -93,6 +115,7 @@ function stop() {
   state.active = false;
   state.tickers.clear();
   state.tickCount = 0;
+  simClock.reset(); // restore wall-clock time
   state.lastTickAt = null;
   state.getRequestsCount = 0;
   state.lastGetAt = null;
@@ -100,6 +123,21 @@ function stop() {
   state.lastGetSymbol = null;
   state.lastGetDate = null;
   state.pendingCandles = {};
+  state.servedAtCurrentDate = new Set();
+}
+
+// Passive mode helpers — track which subscribed tickers have been served at currentDate
+function markServedPassive(symbol) {
+  state.servedAtCurrentDate.add(String(symbol).toUpperCase());
+}
+
+// Returns true if all subscribed tickers have been served for currentDate
+function shouldAdvancePassive() {
+  if (!state.tickers.size) return false;
+  for (const t of state.tickers) {
+    if (!state.servedAtCurrentDate.has(t)) return false;
+  }
+  return true;
 }
 
 function registerGetRequest({ type = "candle", symbol = null, date = null } = {}) {
@@ -169,4 +207,5 @@ module.exports = {
   getSnapshot,
   registerGetRequest,
   setPendingCandle, getPendingCandle, clearPendingCandle,
+  markServedPassive, shouldAdvancePassive,
 };

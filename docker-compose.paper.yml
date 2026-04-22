@@ -2,62 +2,6 @@ name: "${ENV}"
 
 services:
 
-  traefik:
-    image: traefik:v3.1
-    container_name: traefik
-    restart: unless-stopped
-    command:
-      # Provider Docker
-      - "--providers.docker=true"
-      - "--providers.docker.exposedByDefault=false"
-      - "--providers.docker.network=${NETWORK}"
-      # EntryPoints
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-
-      # Redirect HTTP → HTTPS
-      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
-
-      # Let’s Encrypt (ACME via HTTP-01)
-      - "--certificatesresolvers.le.acme.email=expovin@gmail.com"
-      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
-      - "--certificatesresolvers.le.acme.httpchallenge=true"
-      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
-
-      # Dashboard (puoi disabilitarla in produzione o proteggerla via IP)
-      - "--api.dashboard=true"
-      - "--api.insecure=false"
-
-      # log (opzionale)
-      - "--log.level=INFO"
-
-    ports:
-      - "80:80"
-      - "443:443"
-
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - "traefik_letsencrypt:/letsencrypt"
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-    networks:
-      - trading_net
-
-    labels:
-      - "traefik.enable=true"
-
-      # 🔐 middleware di autenticazione → chiama authService /auth/validate
-      - "traefik.http.middlewares.auth-forward.forwardauth.address=http://authservice:3015/auth/validate"
-      - "traefik.http.middlewares.auth-forward.forwardauth.trustForwardHeader=true"
-      - "traefik.http.middlewares.auth-forward.forwardauth.authResponseHeaders=X-User-Id,X-Auth-Subject-Type,X-Api-Key-Id"
-
-      # CORS Configuration
-      - "traefik.http.middlewares.cors-default.headers.accessControlAllowOriginList=https://trading.expovin.it,https://api.trading.expovin.it,https://claude.ai,https://app.claude.ai,http://localhost:5173,http://localhost:8080"
-      - "traefik.http.middlewares.cors-default.headers.accessControlAllowMethods=GET,OPTIONS,PUT,POST,DELETE"
-      - "traefik.http.middlewares.cors-default.headers.accessControlAllowHeaders=Content-Type,Authorization,X-Requested-With,X-Api-Key,Upgrade,Connection,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Extensions,Sec-WebSocket-Accept"
-      - "traefik.http.middlewares.cors-default.headers.accessControlAllowCredentials=true"
-
   # ======================
   # CORE SERVICES (sempre ON)
   # ======================
@@ -125,6 +69,7 @@ services:
     restart: unless-stopped
     networks:
       - trading_net
+      - traefik_web
     ports:
       - "5001:5000"
     volumes:
@@ -167,13 +112,13 @@ services:
       - "traefik.http.routers.ibkr-keepalive.tls.certresolver=le"
       - "traefik.http.services.ibkr-keepalive.loadbalancer.server.port=3019"
       - "traefik.http.middlewares.ibkr-keepalive-stripprefix.stripPrefix.prefixes=/ibkr-keepalive"
-      - "traefik.http.routers.ibkr-keepalive.middlewares=ibkr-keepalive-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.ibkr-keepalive.middlewares=ibkr-keepalive-stripprefix,trading-cors@docker,trading-auth@docker"
       - "traefik.http.routers.ibkr-keepalive-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/ibkr-keepalive`) && Method(`OPTIONS`)"
       - "traefik.http.routers.ibkr-keepalive-preflight.entrypoints=websecure"
       - "traefik.http.routers.ibkr-keepalive-preflight.tls.certresolver=le"
       - "traefik.http.routers.ibkr-keepalive-preflight.priority=10000"
       - "traefik.http.routers.ibkr-keepalive-preflight.service=ibkr-keepalive"
-      - "traefik.http.routers.ibkr-keepalive-preflight.middlewares=ibkr-keepalive-stripprefix,cors-default@docker"
+      - "traefik.http.routers.ibkr-keepalive-preflight.middlewares=ibkr-keepalive-stripprefix,trading-cors@docker"
 
   datahub:
     image: expovin/datahub:${DATAHUB_VERSION}
@@ -219,26 +164,34 @@ services:
       retries: 5
     networks:
       - trading_net
+      - traefik_web
     labels:
       - "traefik.enable=true"
+      - "traefik.http.middlewares.trading-auth.forwardauth.address=http://authservice:3015/auth/validate"
+      - "traefik.http.middlewares.trading-auth.forwardauth.trustForwardHeader=true"
+      - "traefik.http.middlewares.trading-auth.forwardauth.authResponseHeaders=X-User-Id,X-Auth-Subject-Type,X-Api-Key-Id"
+      - "traefik.http.middlewares.trading-cors.headers.accessControlAllowOriginList=https://trading.expovin.it,https://api.trading.expovin.it,https://claude.ai,https://app.claude.ai,http://localhost:5173,http://localhost:8080"
+      - "traefik.http.middlewares.trading-cors.headers.accessControlAllowMethods=GET,OPTIONS,PUT,POST,DELETE"
+      - "traefik.http.middlewares.trading-cors.headers.accessControlAllowHeaders=Content-Type,Authorization,X-Requested-With,X-Api-Key,Upgrade,Connection,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Extensions,Sec-WebSocket-Accept"
+      - "traefik.http.middlewares.trading-cors.headers.accessControlAllowCredentials=true"
       - "traefik.http.routers.datahub.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/datahub`)"
       - "traefik.http.routers.datahub.entrypoints=websecure"
       - "traefik.http.routers.datahub.tls.certresolver=le"
       - "traefik.http.services.datahub.loadbalancer.server.port=3000"
       - "traefik.http.middlewares.datahub-stripprefix.stripPrefix.prefixes=/datahub"
-      - "traefik.http.routers.datahub.middlewares=datahub-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.datahub.middlewares=datahub-stripprefix,trading-cors@docker,trading-auth@docker"
       - "traefik.http.routers.datahub-settings.rule=Host(`api.trading.expovin.it`) && Path(`/datahub/settings`)"
       - "traefik.http.routers.datahub-settings.entrypoints=websecure"
       - "traefik.http.routers.datahub-settings.tls.certresolver=le"
       - "traefik.http.routers.datahub-settings.priority=10000"
       - "traefik.http.routers.datahub-settings.service=datahub"
-      - "traefik.http.routers.datahub-settings.middlewares=datahub-stripprefix,cors-default@docker"
+      - "traefik.http.routers.datahub-settings.middlewares=datahub-stripprefix,trading-cors@docker"
       - "traefik.http.routers.datahub-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/datahub`) && Method(`OPTIONS`)"
       - "traefik.http.routers.datahub-preflight.entrypoints=websecure"
       - "traefik.http.routers.datahub-preflight.tls.certresolver=le"
       - "traefik.http.routers.datahub-preflight.priority=10000"
       - "traefik.http.routers.datahub-preflight.service=datahub"
-      - "traefik.http.routers.datahub-preflight.middlewares=datahub-stripprefix,cors-default@docker"
+      - "traefik.http.routers.datahub-preflight.middlewares=datahub-stripprefix,trading-cors@docker"
 
   # ======================
   # MICROSERVIZI ABILITABILI (via profiles)
@@ -299,6 +252,7 @@ services:
       start_period: 15s
     networks:
       - trading_net
+      - traefik_web
     profiles: ["cachemanager"]
     labels:
       - "traefik.enable=true"
@@ -311,7 +265,7 @@ services:
       # ✅ Middleware corretto: stripPrefix (camelCase)
       - "traefik.http.middlewares.cachemanager-stripprefix.stripPrefix.prefixes=/cachemanager"
       # 🔐 protetto via forwardAuth → /auth/validate
-      - "traefik.http.routers.cachemanager.middlewares=cachemanager-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.cachemanager.middlewares=cachemanager-stripprefix,trading-cors@docker,trading-auth@docker"
 
   decision-engine:
     image: expovin/decision-engine:${DECISIONENGINE_VERSION}
@@ -380,6 +334,7 @@ services:
       - /etc/timezone:/etc/timezone:ro
     networks:
       - trading_net
+      - traefik_web
     profiles: ["decision-engine"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3018/status/health"]
@@ -394,13 +349,13 @@ services:
       - "traefik.http.routers.decision-engine.tls.certresolver=le"
       - "traefik.http.services.decision-engine.loadbalancer.server.port=3018"
       - "traefik.http.middlewares.decision-engine-stripprefix.stripPrefix.prefixes=/decision-engine"
-      - "traefik.http.routers.decision-engine.middlewares=decision-engine-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.decision-engine.middlewares=decision-engine-stripprefix,trading-cors@docker,trading-auth@docker"
       - "traefik.http.routers.decision-engine-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/decision-engine`) && Method(`OPTIONS`)"
       - "traefik.http.routers.decision-engine-preflight.entrypoints=websecure"
       - "traefik.http.routers.decision-engine-preflight.tls.certresolver=le"
       - "traefik.http.routers.decision-engine-preflight.priority=10000"
       - "traefik.http.routers.decision-engine-preflight.service=decision-engine"
-      - "traefik.http.routers.decision-engine-preflight.middlewares=decision-engine-stripprefix,cors-default@docker"
+      - "traefik.http.routers.decision-engine-preflight.middlewares=decision-engine-stripprefix,trading-cors@docker"
 
   market-data-service:
     image: expovin/market-data-service:${MARKETDATASERVICE_VERSION}
@@ -428,6 +383,7 @@ services:
       - /etc/timezone:/etc/timezone:ro
     networks:
       - trading_net
+      - traefik_web
     profiles: ["market-data-service"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3020/status/health"]
@@ -442,13 +398,13 @@ services:
       - "traefik.http.routers.market-data-service.tls.certresolver=le"
       - "traefik.http.services.market-data-service.loadbalancer.server.port=3020"
       - "traefik.http.middlewares.market-data-service-stripprefix.stripPrefix.prefixes=/market-data-service"
-      - "traefik.http.routers.market-data-service.middlewares=market-data-service-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.market-data-service.middlewares=market-data-service-stripprefix,trading-cors@docker,trading-auth@docker"
       - "traefik.http.routers.market-data-service-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/market-data-service`) && Method(`OPTIONS`)"
       - "traefik.http.routers.market-data-service-preflight.entrypoints=websecure"
       - "traefik.http.routers.market-data-service-preflight.tls.certresolver=le"
       - "traefik.http.routers.market-data-service-preflight.priority=10000"
       - "traefik.http.routers.market-data-service-preflight.service=market-data-service"
-      - "traefik.http.routers.market-data-service-preflight.middlewares=market-data-service-stripprefix,cors-default@docker"
+      - "traefik.http.routers.market-data-service-preflight.middlewares=market-data-service-stripprefix,trading-cors@docker"
 
   redis-ws-bridge:
     image: expovin/redis-ws-bridge:${REDISWSBRIDGE_VERSION}
@@ -471,6 +427,7 @@ services:
       - /etc/timezone:/etc/timezone:ro
     networks:
       - trading_net
+      - traefik_web
     profiles: ["redis-ws-bridge"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3030/status/health"]
@@ -485,13 +442,13 @@ services:
       - "traefik.http.routers.redis-ws-bridge.tls.certresolver=le"
       - "traefik.http.services.redis-ws-bridge.loadbalancer.server.port=3030"
       - "traefik.http.middlewares.redis-ws-bridge-stripprefix.stripPrefix.prefixes=/redis-ws-bridge"
-      - "traefik.http.routers.redis-ws-bridge.middlewares=redis-ws-bridge-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.redis-ws-bridge.middlewares=redis-ws-bridge-stripprefix,trading-cors@docker,trading-auth@docker"
       - "traefik.http.routers.redis-ws-bridge-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/redis-ws-bridge`) && Method(`OPTIONS`)"
       - "traefik.http.routers.redis-ws-bridge-preflight.entrypoints=websecure"
       - "traefik.http.routers.redis-ws-bridge-preflight.tls.certresolver=le"
       - "traefik.http.routers.redis-ws-bridge-preflight.priority=10000"
       - "traefik.http.routers.redis-ws-bridge-preflight.service=redis-ws-bridge"
-      - "traefik.http.routers.redis-ws-bridge-preflight.middlewares=redis-ws-bridge-stripprefix,cors-default@docker"
+      - "traefik.http.routers.redis-ws-bridge-preflight.middlewares=redis-ws-bridge-stripprefix,trading-cors@docker"
       - "traefik.http.routers.redis-ws-bridge-ws.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/redis-ws-bridge/ws`)"
       - "traefik.http.routers.redis-ws-bridge-ws.entrypoints=websecure"
       - "traefik.http.routers.redis-ws-bridge-ws.tls.certresolver=le"
@@ -526,6 +483,7 @@ services:
       - /etc/timezone:/etc/timezone:ro
     networks:
       - trading_net
+      - traefik_web
     profiles: ["ibkr-bridge"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3017/status/health"]
@@ -540,13 +498,13 @@ services:
       - "traefik.http.routers.ibkr-bridge.tls.certresolver=le"
       - "traefik.http.services.ibkr-bridge.loadbalancer.server.port=3017"
       - "traefik.http.middlewares.ibkr-bridge-stripprefix.stripPrefix.prefixes=/ibkr-bridge"
-      - "traefik.http.routers.ibkr-bridge.middlewares=ibkr-bridge-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.ibkr-bridge.middlewares=ibkr-bridge-stripprefix,trading-cors@docker,trading-auth@docker"
       - "traefik.http.routers.ibkr-bridge-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/ibkr-bridge`) && Method(`OPTIONS`)"
       - "traefik.http.routers.ibkr-bridge-preflight.entrypoints=websecure"
       - "traefik.http.routers.ibkr-bridge-preflight.tls.certresolver=le"
       - "traefik.http.routers.ibkr-bridge-preflight.priority=10000"
       - "traefik.http.routers.ibkr-bridge-preflight.service=ibkr-bridge"
-      - "traefik.http.routers.ibkr-bridge-preflight.middlewares=ibkr-bridge-stripprefix,cors-default@docker"
+      - "traefik.http.routers.ibkr-bridge-preflight.middlewares=ibkr-bridge-stripprefix,trading-cors@docker"
 
   alertingservice:
     image: expovin/alertingservice:${ALERTINGSERVICE_VERSION}
@@ -555,6 +513,7 @@ services:
       - datahub
     networks:
       - trading_net
+      - traefik_web
     profiles: ["alertingservice"]
     environment:
       - DATAHUB_URL=${DATAHUB_URL}
@@ -590,13 +549,13 @@ services:
       - "traefik.http.routers.alertingservice.tls.certresolver=le"
       - "traefik.http.services.alertingservice.loadbalancer.server.port=3008"
       - "traefik.http.middlewares.alertingservice-stripprefix.stripPrefix.prefixes=/alertingservice"
-      - "traefik.http.routers.alertingservice.middlewares=alertingservice-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.alertingservice.middlewares=alertingservice-stripprefix,trading-cors@docker,trading-auth@docker"
       - "traefik.http.routers.alertingservice-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/alertingservice`) && Method(`OPTIONS`)"
       - "traefik.http.routers.alertingservice-preflight.entrypoints=websecure"
       - "traefik.http.routers.alertingservice-preflight.tls.certresolver=le"
       - "traefik.http.routers.alertingservice-preflight.priority=10000"
       - "traefik.http.routers.alertingservice-preflight.service=alertingservice"
-      - "traefik.http.routers.alertingservice-preflight.middlewares=alertingservice-stripprefix,cors-default@docker"
+      - "traefik.http.routers.alertingservice-preflight.middlewares=alertingservice-stripprefix,trading-cors@docker"
 
   scheduler:
     image: expovin/scheduler:${SCHEDULER_VERSION}
@@ -606,6 +565,7 @@ services:
           condition: service_healthy
     networks:
       - trading_net
+      - traefik_web
     profiles: ["scheduler"]
     environment:
       - DATAHUB_URL=${DATAHUB_URL}
@@ -641,7 +601,7 @@ services:
       # Strip del prefisso /scheduler
       - "traefik.http.middlewares.scheduler-stripprefix.stripPrefix.prefixes=/scheduler"
       # 🔐 protetto via forwardAuth → /auth/validate
-      - "traefik.http.routers.scheduler.middlewares=scheduler-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.scheduler.middlewares=scheduler-stripprefix,trading-cors@docker,trading-auth@docker"
 
   tickerscanner:
     image: expovin/tickerscanner:${TICKERSCANNER_VERSION}
@@ -684,6 +644,7 @@ services:
       - /etc/timezone:/etc/timezone:ro
     networks:
       - trading_net
+      - traefik_web
     profiles: ["tickerscanner"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3013/status/health"]
@@ -699,7 +660,7 @@ services:
       - "traefik.http.services.tickerscanner.loadbalancer.server.port=3013"
       - "traefik.http.middlewares.tickerscanner-stripprefix.stripPrefix.prefixes=/tickerscanner"
       # 🔐 protetto via forwardAuth → /auth/validate
-      - "traefik.http.routers.tickerscanner.middlewares=tickerscanner-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.tickerscanner.middlewares=tickerscanner-stripprefix,trading-cors@docker,trading-auth@docker"
 
   servicecontrolplane:
     image: expovin/servicecontrolplane:${SERVICECONTROLPLANE_VERSION}
@@ -734,6 +695,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - trading_net
+      - traefik_web
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3016/status/health"]
       interval: 10s
@@ -747,19 +709,19 @@ services:
       - "traefik.http.routers.servicecontrolplane.tls.certresolver=le"
       - "traefik.http.services.servicecontrolplane.loadbalancer.server.port=3016"
       - "traefik.http.middlewares.servicecontrolplane-stripprefix.stripPrefix.prefixes=/servicecontrolplane"
-      - "traefik.http.routers.servicecontrolplane.middlewares=servicecontrolplane-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.servicecontrolplane.middlewares=servicecontrolplane-stripprefix,trading-cors@docker,trading-auth@docker"
       # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
       - "traefik.http.routers.servicecontrolplane-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/servicecontrolplane`) && Method(`OPTIONS`)"
       - "traefik.http.routers.servicecontrolplane-preflight.entrypoints=websecure"
       - "traefik.http.routers.servicecontrolplane-preflight.priority=10000"
       - "traefik.http.routers.servicecontrolplane-preflight.service=servicecontrolplane"
-      - "traefik.http.routers.servicecontrolplane-preflight.middlewares=servicecontrolplane-stripprefix,cors-default@docker"
+      - "traefik.http.routers.servicecontrolplane-preflight.middlewares=servicecontrolplane-stripprefix,trading-cors@docker"
       # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
       - "traefik.http.routers.tickerscanner-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/tickerscanner`) && Method(`OPTIONS`)"
       - "traefik.http.routers.tickerscanner-preflight.entrypoints=websecure"
       - "traefik.http.routers.tickerscanner-preflight.priority=10000"
       - "traefik.http.routers.tickerscanner-preflight.service=tickerscanner"
-      - "traefik.http.routers.tickerscanner-preflight.middlewares=tickerscanner-stripprefix,cors-default@docker"
+      - "traefik.http.routers.tickerscanner-preflight.middlewares=tickerscanner-stripprefix,trading-cors@docker"
   authService:
     image: expovin/authservice:${AUTHSERVICE_VERSION}
     restart: unless-stopped
@@ -777,6 +739,7 @@ services:
       trading_net:
         aliases:
           - authservice
+      traefik_web:
     depends_on:
       datahub:
         condition: service_healthy
@@ -792,21 +755,21 @@ services:
       - "traefik.http.routers.auth-public.entrypoints=websecure"
       - "traefik.http.routers.auth-public.tls.certresolver=le"
       - "traefik.http.routers.auth-public.service=auth-svc"
-      - "traefik.http.routers.auth-public.middlewares=cors-default@docker"
+      - "traefik.http.routers.auth-public.middlewares=trading-cors@docker"
       # Preflight (CORS) for public auth endpoints
       - "traefik.http.routers.auth-public-preflight.rule=Host(`api.trading.expovin.it`) && (PathPrefix(`/auth/login`) || PathPrefix(`/auth/validate`) || PathPrefix(`/auth/renew`)) && Method(`OPTIONS`)"
       - "traefik.http.routers.auth-public-preflight.entrypoints=websecure"
       - "traefik.http.routers.auth-public-preflight.tls.certresolver=le"
       - "traefik.http.routers.auth-public-preflight.priority=10000"
       - "traefik.http.routers.auth-public-preflight.service=auth-svc"
-      - "traefik.http.routers.auth-public-preflight.middlewares=cors-default@docker"
+      - "traefik.http.routers.auth-public-preflight.middlewares=trading-cors@docker"
 
       # 🔐 router ADMIN:
       # /auth/admin/... → protetto da JWT/API_KEY via forwardAuth
       - "traefik.http.routers.auth-admin.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/auth/admin`)"
       - "traefik.http.routers.auth-admin.entrypoints=websecure"
       - "traefik.http.routers.auth-admin.tls.certresolver=le"
-      - "traefik.http.routers.auth-admin.middlewares=cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.auth-admin.middlewares=trading-cors@docker,trading-auth@docker"
       - "traefik.http.routers.auth-admin.service=auth-svc"
       # Preflight (CORS): bypass auth-forward for browser OPTIONS requests
       - "traefik.http.routers.auth-admin-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/auth/admin`) && Method(`OPTIONS`)"
@@ -814,7 +777,7 @@ services:
       - "traefik.http.routers.auth-admin-preflight.tls.certresolver=le"
       - "traefik.http.routers.auth-admin-preflight.priority=10000"
       - "traefik.http.routers.auth-admin-preflight.service=auth-svc"
-      - "traefik.http.routers.auth-admin-preflight.middlewares=cors-default@docker"
+      - "traefik.http.routers.auth-admin-preflight.middlewares=trading-cors@docker"
 
       # service condiviso che punta alla porta interna 3015
       - "traefik.http.services.auth-svc.loadbalancer.server.port=3015"
@@ -888,6 +851,7 @@ services:
       - /etc/timezone:/etc/timezone:ro
     networks:
       - trading_net
+      - traefik_web
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/status/health"]
       interval: 10s
@@ -901,13 +865,13 @@ services:
       - "traefik.http.routers.liquidity-manager.tls.certresolver=le"
       - "traefik.http.services.liquidity-manager.loadbalancer.server.port=3001"
       - "traefik.http.middlewares.liquidity-manager-stripprefix.stripPrefix.prefixes=/liquidity-manager"
-      - "traefik.http.routers.liquidity-manager.middlewares=liquidity-manager-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.liquidity-manager.middlewares=liquidity-manager-stripprefix,trading-cors@docker,trading-auth@docker"
       - "traefik.http.routers.liquidity-manager-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/liquidity-manager`) && Method(`OPTIONS`)"
       - "traefik.http.routers.liquidity-manager-preflight.entrypoints=websecure"
       - "traefik.http.routers.liquidity-manager-preflight.tls.certresolver=le"
       - "traefik.http.routers.liquidity-manager-preflight.priority=10000"
       - "traefik.http.routers.liquidity-manager-preflight.service=liquidity-manager"
-      - "traefik.http.routers.liquidity-manager-preflight.middlewares=liquidity-manager-stripprefix,cors-default@docker"
+      - "traefik.http.routers.liquidity-manager-preflight.middlewares=liquidity-manager-stripprefix,trading-cors@docker"
 
   broker-executor-ibkr:
     image: expovin/broker-executor-ibkr:${BROKER_EXECUTOR_IBKR_VERSION:-latest}
@@ -945,6 +909,7 @@ services:
       - /etc/timezone:/etc/timezone:ro
     networks:
       - trading_net
+      - traefik_web
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3003/status/health"]
       interval: 10s
@@ -958,13 +923,13 @@ services:
       - "traefik.http.routers.broker-executor-ibkr.tls.certresolver=le"
       - "traefik.http.services.broker-executor-ibkr.loadbalancer.server.port=3003"
       - "traefik.http.middlewares.broker-executor-ibkr-stripprefix.stripPrefix.prefixes=/broker-executor-ibkr"
-      - "traefik.http.routers.broker-executor-ibkr.middlewares=broker-executor-ibkr-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.broker-executor-ibkr.middlewares=broker-executor-ibkr-stripprefix,trading-cors@docker,trading-auth@docker"
       - "traefik.http.routers.broker-executor-ibkr-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/broker-executor-ibkr`) && Method(`OPTIONS`)"
       - "traefik.http.routers.broker-executor-ibkr-preflight.entrypoints=websecure"
       - "traefik.http.routers.broker-executor-ibkr-preflight.tls.certresolver=le"
       - "traefik.http.routers.broker-executor-ibkr-preflight.priority=10000"
       - "traefik.http.routers.broker-executor-ibkr-preflight.service=broker-executor-ibkr"
-      - "traefik.http.routers.broker-executor-ibkr-preflight.middlewares=broker-executor-ibkr-stripprefix,cors-default@docker"
+      - "traefik.http.routers.broker-executor-ibkr-preflight.middlewares=broker-executor-ibkr-stripprefix,trading-cors@docker"
 
   mcp-gateway:
     image: expovin/mcp-gateway:${MPC_GATEWAY_VERSION:-latest}
@@ -1009,6 +974,7 @@ services:
       - /etc/timezone:/etc/timezone:ro
     networks:
       - trading_net
+      - traefik_web
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3004/status/health"]
       interval: 10s
@@ -1022,24 +988,24 @@ services:
       - "traefik.http.routers.mcp-gateway.tls.certresolver=le"
       - "traefik.http.services.mcp-gateway.loadbalancer.server.port=3004"
       - "traefik.http.middlewares.mcp-gateway-stripprefix.stripPrefix.prefixes=/mcp-gateway"
-      - "traefik.http.routers.mcp-gateway.middlewares=mcp-gateway-stripprefix,cors-default@docker"
+      - "traefik.http.routers.mcp-gateway.middlewares=mcp-gateway-stripprefix,trading-cors@docker"
       - "traefik.http.routers.mcp-gateway-web.rule=Host(`trading.expovin.it`) && PathPrefix(`/mcp-gateway`)"
       - "traefik.http.routers.mcp-gateway-web.entrypoints=websecure"
       - "traefik.http.routers.mcp-gateway-web.tls.certresolver=le"
       - "traefik.http.routers.mcp-gateway-web.service=mcp-gateway"
-      - "traefik.http.routers.mcp-gateway-web.middlewares=mcp-gateway-stripprefix,cors-default@docker"
+      - "traefik.http.routers.mcp-gateway-web.middlewares=mcp-gateway-stripprefix,trading-cors@docker"
       - "traefik.http.routers.mcp-gateway-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/mcp-gateway`) && Method(`OPTIONS`)"
       - "traefik.http.routers.mcp-gateway-preflight.entrypoints=websecure"
       - "traefik.http.routers.mcp-gateway-preflight.tls.certresolver=le"
       - "traefik.http.routers.mcp-gateway-preflight.priority=10000"
       - "traefik.http.routers.mcp-gateway-preflight.service=mcp-gateway"
-      - "traefik.http.routers.mcp-gateway-preflight.middlewares=mcp-gateway-stripprefix,cors-default@docker"
+      - "traefik.http.routers.mcp-gateway-preflight.middlewares=mcp-gateway-stripprefix,trading-cors@docker"
       - "traefik.http.routers.mcp-gateway-web-preflight.rule=Host(`trading.expovin.it`) && PathPrefix(`/mcp-gateway`) && Method(`OPTIONS`)"
       - "traefik.http.routers.mcp-gateway-web-preflight.entrypoints=websecure"
       - "traefik.http.routers.mcp-gateway-web-preflight.tls.certresolver=le"
       - "traefik.http.routers.mcp-gateway-web-preflight.priority=10000"
       - "traefik.http.routers.mcp-gateway-web-preflight.service=mcp-gateway"
-      - "traefik.http.routers.mcp-gateway-web-preflight.middlewares=mcp-gateway-stripprefix,cors-default@docker"
+      - "traefik.http.routers.mcp-gateway-web-preflight.middlewares=mcp-gateway-stripprefix,trading-cors@docker"
 
   capital-manager:
     image: expovin/capital-manager:${CAPITAL_MANAGER_VERSION:-latest}
@@ -1097,6 +1063,7 @@ services:
       - /etc/timezone:/etc/timezone:ro
     networks:
       - trading_net
+      - traefik_web
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3005/status/health"]
       interval: 10s
@@ -1110,13 +1077,13 @@ services:
       - "traefik.http.routers.capital-manager.tls.certresolver=le"
       - "traefik.http.services.capital-manager.loadbalancer.server.port=3005"
       - "traefik.http.middlewares.capital-manager-stripprefix.stripPrefix.prefixes=/capital-manager"
-      - "traefik.http.routers.capital-manager.middlewares=capital-manager-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.capital-manager.middlewares=capital-manager-stripprefix,trading-cors@docker,trading-auth@docker"
       - "traefik.http.routers.capital-manager-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/capital-manager`) && Method(`OPTIONS`)"
       - "traefik.http.routers.capital-manager-preflight.entrypoints=websecure"
       - "traefik.http.routers.capital-manager-preflight.tls.certresolver=le"
       - "traefik.http.routers.capital-manager-preflight.priority=10000"
       - "traefik.http.routers.capital-manager-preflight.service=capital-manager"
-      - "traefik.http.routers.capital-manager-preflight.middlewares=capital-manager-stripprefix,cors-default@docker"
+      - "traefik.http.routers.capital-manager-preflight.middlewares=capital-manager-stripprefix,trading-cors@docker"
 
 
   astraai-frontend:
@@ -1125,6 +1092,7 @@ services:
     profiles: ["frontend"]      # se usi i profiles come per gli altri
     networks:
       - trading_net             # stessa network di traefik
+      - traefik_web
 
     labels:
       - "traefik.enable=true"
@@ -1139,7 +1107,7 @@ services:
       # (opzionale) redirect http→https se non già fatto a livello globale
       #- "traefik.http.routers.astraai-frontend-web.rule=Host(`trading.expovin.it`)"
       #- "traefik.http.routers.astraai-frontend-web.entrypoints=web"
-      - "traefik.http.routers.astraai-frontend-web.middlewares=cors-default@docker"
+      - "traefik.http.routers.astraai-frontend-web.middlewares=trading-cors@docker"
 
   help-trading:
     image: expovin/help-trading:${HELPTRADING_VERSION:-latest}
@@ -1159,6 +1127,7 @@ services:
       - DOCS_GIT_AUTHOR_EMAIL=${DOCS_GIT_AUTHOR_EMAIL:-help-trading-bot@local}
     networks:
       - trading_net
+      - traefik_web
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${NETWORK}"
@@ -1213,12 +1182,12 @@ services:
       - "traefik.http.routers.ibkr-login-desktop.tls.certresolver=le"
       - "traefik.http.routers.ibkr-login-desktop.service=ibkr-login-desktop-api"
       - "traefik.http.middlewares.ibkr-login-desktop-stripprefix.stripPrefix.prefixes=/ibkr-login-desktop"
-      - "traefik.http.routers.ibkr-login-desktop.middlewares=ibkr-login-desktop-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.ibkr-login-desktop.middlewares=ibkr-login-desktop-stripprefix,trading-cors@docker,trading-auth@docker"
       - "traefik.http.routers.ibkr-login-desktop-preflight.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/ibkr-login-desktop`) && Method(`OPTIONS`)"
       - "traefik.http.routers.ibkr-login-desktop-preflight.entrypoints=websecure"
       - "traefik.http.routers.ibkr-login-desktop-preflight.priority=10000"
       - "traefik.http.routers.ibkr-login-desktop-preflight.service=ibkr-login-desktop-api"
-      - "traefik.http.routers.ibkr-login-desktop-preflight.middlewares=ibkr-login-desktop-stripprefix,cors-default@docker"
+      - "traefik.http.routers.ibkr-login-desktop-preflight.middlewares=ibkr-login-desktop-stripprefix,trading-cors@docker"
       # VNC desktop (websockify/noVNC — Desktop remoto)
       - "traefik.http.services.ibkr-login-desktop-vnc.loadbalancer.server.port=6080"
       - "traefik.http.routers.ibkr-login.rule=Host(`trading.expovin.it`) && PathPrefix(`/ibkr-login`)"
@@ -1236,7 +1205,6 @@ volumes:
   redis-data:
   shared_cache_data:
     external: true
-  traefik_letsencrypt:
   cache_data:
     driver: local
   cachemanager_data:
@@ -1245,3 +1213,5 @@ networks:
   trading_net:
     name: ${NETWORK}
     driver: bridge
+  traefik_web:
+    external: true

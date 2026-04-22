@@ -100,7 +100,7 @@ jobs:
           capital-manager
           help-trading
           ibkr-login-desktop
-          market-simulator
+          simulator
         )
 
         for service in "${services[@]}"; do
@@ -340,6 +340,8 @@ jobs:
         echo "DOCS_GIT_BRANCH=${{env.DOCS_GIT_BRANCH}}" >> .env
         echo "DOCS_GIT_REMOTE=${{env.DOCS_GIT_REMOTE}}" >> .env
         echo "DOCS_GIT_PUSH_ENABLED=${{env.DOCS_GIT_PUSH_ENABLED}}" >> .env
+        echo "CAPITAL_MANAGER_VERSION=${{env.CAPITAL_MANAGER_VERSION}}" >> .env
+        
          
 
     - name: Validate .env variables

@@ -3,8 +3,10 @@
 // using TRADING_BASE_URL and TRADING_API_KEY environment variables.
 "use strict";
 
-const BASE_URL = (process.env.TRADING_BASE_URL || "http://localhost:8080").replace(/\/+$/, "");
-const API_KEY  = process.env.TRADING_API_KEY || "";
+const { getConfigString } = require("../../../../shared/loadSettings");
+
+const BASE_URL = (getConfigString("TRADING_BASE_URL", "http://localhost:8080")).replace(/\/+$/, "");
+const API_KEY  = getConfigString("TRADING_API_KEY", "");
 
 /**
  * Authenticated request through Traefik.

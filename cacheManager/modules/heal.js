@@ -5,7 +5,7 @@ const fs    = require("fs");
 const path  = require("path");
 const axios = require("axios");
 const { randomUUID } = require("crypto");
-const { getSetting } = require("../../shared/loadSettings");
+const { getSetting, getConfigString, getConfigInt } = require("../../shared/loadSettings");
 
 // -------------------------------------------------------
 // Default days-back per TF (usati dal full scan)
@@ -179,11 +179,16 @@ function mergeCandles(existing, newC, tfCache = "") {
 // -------------------------------------------------------
 // Discover TF → symbols from cache directory
 // -------------------------------------------------------
-function discoverTfSymbols(cacheBasePath, normalizeTf) {
+// Returns Array<{ tf, exchange, symbols: Set<string> }> where:
+//   - legacy files (no suffix)   → exchange = undefined  (healable, no exchange context needed)
+//   - SIP files (_SIP suffix)    → exchange = "SIP"      (healable, US stocks via default providers)
+//   - non-US files (_LSE, etc.)  → skipped               (heal cannot re-fetch without exchange)
+function discoverTfSymbols(cacheBasePath, normalizeTf, usOnlyProviders) {
   const root = path.isAbsolute(cacheBasePath) ? cacheBasePath : path.resolve(process.cwd(), cacheBasePath);
-  const tfMap = {}; // tf → Set<symbol>
+  // key: `${tf}|||${exchange ?? ""}` → Set<symbol>
+  const tfExMap = {};
   let entries;
-  try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return tfMap; }
+  try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return []; }
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const symbol = entry.name.toUpperCase();
@@ -191,14 +196,18 @@ function discoverTfSymbols(cacheBasePath, normalizeTf) {
     let files;
     try { files = fs.readdirSync(symDir); } catch { continue; }
     for (const f of files) {
-      const m = /^\d{4}-\d{2}_(.+)\.json$/i.exec(f);
+      const m = /^\d{4}-\d{2}_([^_]+)(?:_([A-Z]{2,}))?\.json$/i.exec(f);
       if (!m) continue;
       const tf = normalizeTf(m[1]);
-      if (!tfMap[tf]) tfMap[tf] = new Set();
-      tfMap[tf].add(symbol);
+      const exchange = m[2] ? m[2].toUpperCase() : undefined;
+      // Skip non-US exchange files — heal cannot re-fetch without the right exchange context
+      if (exchange && exchange !== "SIP") continue;
+      const key = `${tf}|||${exchange ?? ""}`;
+      if (!tfExMap[key]) tfExMap[key] = { tf, exchange, symbols: new Set() };
+      tfExMap[key].symbols.add(symbol);
     }
   }
-  return tfMap;
+  return Object.values(tfExMap);
 }
 
 // -------------------------------------------------------
@@ -218,9 +227,24 @@ async function publishProgress(bus, env, jobId, progress) {
 // Core: heal a single symbol/TF for a date range
 // Returns metrics object + unhealed arrays + monthData (per-file breakdown)
 // -------------------------------------------------------
-async function healOneSymbol({ symbol, tfCache, from, to, heal, dry_run, cacheManager, logger }) {
+async function healOneSymbol({ symbol, tfCache, exchange, from, to, heal, dry_run, cacheManager, logger }) {
   const today       = todayStr();
-  const effectiveTo = to > today ? today : to;
+  // Se oggi è un giorno di borsa, la candela odierna potrebbe non essere ancora disponibile
+  // (il heal può girare prima della chiusura mercato). Usiamo l'ultimo giorno di borsa CHIUSO
+  // (= il giorno di borsa precedente a oggi) per evitare falsi "missing" sul mese corrente.
+  const lastClosedTradingDay = (() => {
+    let d = new Date(today + "T12:00:00Z");
+    d.setUTCDate(d.getUTCDate() - 1);
+    let candidate = d.toISOString().slice(0, 10);
+    let safety = 0;
+    while (!isNyseOpen(candidate) && safety++ < 10) {
+      d.setUTCDate(d.getUTCDate() - 1);
+      candidate = d.toISOString().slice(0, 10);
+    }
+    return candidate;
+  })();
+  const safeToday   = isNyseOpen(today) ? lastClosedTradingDay : today;
+  const effectiveTo = to > safeToday ? safeToday : to;
   const monthKeys   = listMonthKeysBetween(from, effectiveTo);
 
   const m = {
@@ -261,7 +285,7 @@ async function healOneSymbol({ symbol, tfCache, from, to, heal, dry_run, cacheMa
     const expectedCount    = expectedKeys.length > 0 ? expectedKeys.length : countExpectedForTf(expectedDays);
     m.trading_days_expected += expectedCount;
 
-    const filePath   = cacheManager._l2MonthFilePath(symbol, tfCache, monthKey);
+    const filePath   = cacheManager._l2MonthFilePath(symbol, tfCache, monthKey, exchange);
     const fileExists = fs.existsSync(filePath) && fs.statSync(filePath).size > 0;
 
     // ── File mancante ─────────────────────────────────
@@ -274,10 +298,10 @@ async function healOneSymbol({ symbol, tfCache, from, to, heal, dry_run, cacheMa
         continue;
       }
       try {
-        const rawCandles = await cacheManager._retrieveFromProvider(symbol, mFrom+"T00:00:00.000Z", effectiveMonthTo+"T23:59:59.999Z", tfCache, undefined);
+        const rawCandles = await cacheManager._retrieveFromProvider(symbol, mFrom+"T00:00:00.000Z", effectiveMonthTo+"T23:59:59.999Z", tfCache, exchange);
         if (!rawCandles || rawCandles.length === 0) throw new Error("0 candele restituite");
         const candles = mergeCandles([], rawCandles, tfCache);
-        await cacheManager._writeL2MonthFile(symbol, tfCache, monthKey, candles);
+        await cacheManager._writeL2MonthFile(symbol, tfCache, monthKey, candles, exchange);
         m.months_ok++;
         m.trading_days_present_post += candles.length;
         m.candles_added += candles.length;
@@ -299,13 +323,13 @@ async function healOneSymbol({ symbol, tfCache, from, to, heal, dry_run, cacheMa
       const deduped = mergeCandles([], existing, "1week");
       if (deduped.length !== existing.length) {
         existing = deduped;
-        try { await cacheManager._writeL2MonthFile(symbol, tfCache, monthKey, existing); } catch { /* non critico */ }
+        try { await cacheManager._writeL2MonthFile(symbol, tfCache, monthKey, existing, exchange); } catch { /* non critico */ }
       }
     }
     existing.length === 0 ? m.months_empty++ : m.months_ok++;
 
     if (isCurrentMonth) {
-      try { const staleHours = parseInt(process.env.CURRENT_MONTH_STALE_THRESHOLD_HOURS||"12",10); if ((Date.now()-fs.statSync(filePath).mtimeMs) > staleHours*3600000) m.freshness = 50; } catch { m.freshness = 50; }
+      try { const staleHours = getConfigInt("CURRENT_MONTH_STALE_THRESHOLD_HOURS", 12); if ((Date.now()-fs.statSync(filePath).mtimeMs) > staleHours*3600000) m.freshness = 50; } catch { m.freshness = 50; }
     }
 
     const normalizedExisting = normalizeCandles(existing, tfCache);
@@ -345,8 +369,8 @@ async function healOneSymbol({ symbol, tfCache, from, to, heal, dry_run, cacheMa
         const fetchTo = tfCache === "1week"
           ? (() => { const d = new Date(range.to+"T12:00:00Z"); d.setUTCDate(d.getUTCDate()+6); return d.toISOString().slice(0,10); })()
           : range.to;
-        const newC = await cacheManager._retrieveFromProvider(symbol, range.from+"T00:00:00.000Z", fetchTo+"T23:59:59.999Z", tfCache, undefined);
-        if (newC && newC.length > 0) { const merged = mergeCandles(existing, newC, tfCache); addedThisMonth += merged.length - existing.length; existing = merged; await cacheManager._writeL2MonthFile(symbol, tfCache, monthKey, existing); }
+        const newC = await cacheManager._retrieveFromProvider(symbol, range.from+"T00:00:00.000Z", fetchTo+"T23:59:59.999Z", tfCache, exchange);
+        if (newC && newC.length > 0) { const merged = mergeCandles(existing, newC, tfCache); addedThisMonth += merged.length - existing.length; existing = merged; await cacheManager._writeL2MonthFile(symbol, tfCache, monthKey, existing, exchange); }
       } catch (err) { failError = err.message || "All providers failed"; }
     }
 
@@ -405,7 +429,7 @@ function toScoreRow(m) {
 // Datahub persistence
 // -------------------------------------------------------
 async function persistToDb(job, allMetrics, logger) {
-  const db      = axios.create({ baseURL: process.env.DATAHUB_URL || process.env.DBMANAGER_URL || "http://datahub:3000", timeout: 15000 });
+  const db      = axios.create({ baseURL: getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], "http://datahub:3000"), timeout: 15000 });
   const today   = todayStr();
   const scores  = allMetrics;
   const weighted = scores.reduce((s,x) => s + x.quality_score_post_heal * (x.trading_days_expected || 1), 0);
@@ -460,7 +484,7 @@ async function persistToDb(job, allMetrics, logger) {
 // allMonthData: array di { metrics, monthData[] }
 // -------------------------------------------------------
 async function persistFileScoresToDb(job, allMonthData, logger) {
-  const db  = axios.create({ baseURL: process.env.DATAHUB_URL || process.env.DBMANAGER_URL || "http://datahub:3000", timeout: 15000 });
+  const db  = axios.create({ baseURL: getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], "http://datahub:3000"), timeout: 15000 });
   const now = new Date().toISOString().replace("T", " ").replace("Z", "");
   let written = 0, errors = 0;
 
@@ -579,15 +603,20 @@ async function runFullScanJob(job, cacheManager, logger) {
   // Merge default con custom
   const daysBackPerTf = { ...DEFAULT_DAYS_BACK_PER_TF, ...customDaysBack };
 
-  // Discover TF → symbols
-  const tfMap = discoverTfSymbols(cacheManager.cacheBasePath || "cache", (tf) => cacheManager._normalizeTfCache(tf));
-  const tfList = Object.keys(tfMap);
+  // Discover TF+exchange → symbols (skips non-US exchange files)
+  const tfEntries = discoverTfSymbols(cacheManager.cacheBasePath || "cache", (tf) => cacheManager._normalizeTfCache(tf));
 
-  if (tfList.length === 0) {
-    job.status = "error"; job.error = "Nessun file trovato in cache L2"; job.finishedAt = new Date().toISOString(); return;
+  if (tfEntries.length === 0) {
+    job.status = "done"; job.error = null;
+    job.summary = { message: "Nessun file healabile trovato in cache L2 (i file con exchange non-US vengono saltati)" };
+    job.finishedAt = new Date().toISOString();
+    logger.info(`[heal/scan] Nessun file healabile trovato — la cache contiene solo file con exchange non-US o è vuota`);
+    return;
   }
 
-  logger.info(`[heal/scan] TF trovati: ${tfList.join(", ")} — totale symbols: ${new Set(Object.values(tfMap).flatMap((s) => [...s])).size}`);
+  const tfList = [...new Set(tfEntries.map((e) => e.tf))];
+  const totalSymbols = new Set(tfEntries.flatMap((e) => [...e.symbols])).size;
+  logger.info(`[heal/scan] TF trovati: ${tfList.join(", ")} — entries: ${tfEntries.length} — totale symbols unici: ${totalSymbols}`);
 
   // Filtro liquidità per TF intraday
   // min_intraday_vol letto da settings (es. 1000000 = $1M/giorno)
@@ -595,7 +624,7 @@ async function runFullScanJob(job, cacheManager, logger) {
     try { const v = getSetting("min_intraday_vol"); return v != null ? Number(v) : null; } catch { return null; }
   })();
   const dollarVolMap = (minIntradayVol != null && tfList.some(isIntradayTf))
-    ? await fetchDollarVolMap(cacheManager.dbmanagerUrl || process.env.DATAHUB_URL || "http://datahub:3000", logger)
+    ? await fetchDollarVolMap(cacheManager.dbmanagerUrl || getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], "http://datahub:3000"), logger)
     : new Map();
   if (minIntradayVol != null) {
     logger.info(`[heal/scan] Filtro liquidità intraday: min_intraday_vol=$${minIntradayVol.toLocaleString()}`);
@@ -607,17 +636,17 @@ async function runFullScanJob(job, cacheManager, logger) {
   const allMonthData = []; // raccoglie { metrics, monthData } per persistFileScoresToDb
 
   // Pre-compute total for progress tracking
-  const total   = tfList.reduce((s, tf) => s + tfMap[tf].size, 0);
+  const total   = tfEntries.reduce((s, e) => s + e.symbols.size, 0);
   const startTs = Date.now();
   let done      = 0;
 
-  for (const tfCache of tfList) {
-    const symbols  = [...tfMap[tfCache]].sort();
+  for (const { tf: tfCache, exchange, symbols: symbolSet } of tfEntries) {
+    const symbols  = [...symbolSet].sort();
     const daysBack = daysBackPerTf[tfCache] ?? 365;
     const from     = daysBackToFrom(daysBack);
     const to       = today;
 
-    logger.info(`[heal/scan] TF=${tfCache} symbols=${symbols.length} from=${from} to=${to}`);
+    logger.info(`[heal/scan] TF=${tfCache} exchange=${exchange ?? "legacy"} symbols=${symbols.length} from=${from} to=${to}`);
 
     for (const symbol of symbols) {
       if (job.aborted) break;
@@ -635,7 +664,7 @@ async function runFullScanJob(job, cacheManager, logger) {
       job.progress = { done, total, currentSymbol: symbol, tf: tfCache, pct: total ? Math.round((done / total) * 100) : 0, eta_seconds: null };
       await publishProgress(cacheManager.bus, cacheManager.env, job.jobId, job.progress);
 
-      const { metrics, unhealedMissing, unhealedGaps, monthData } = await healOneSymbol({ symbol, tfCache, from, to, heal, dry_run, cacheManager, logger });
+      const { metrics, unhealedMissing, unhealedGaps, monthData } = await healOneSymbol({ symbol, tfCache, exchange, from, to, heal, dry_run, cacheManager, logger });
       aggregateToSummary(summary, metrics);
       allMetrics.push(metrics);
       allMonthData.push({ metrics, monthData });

@@ -1,7 +1,7 @@
 "use strict";
 
 const https = require("https");
-const { asInt } = require("../../../../shared/helpers");
+const { getConfigString, getConfigInt, getConfigBoolean } = require("../../../../shared/loadSettings");
 const {
   SUBSCRIBE_LIVE_ORDERS,
   UNSUBSCRIBE_LIVE_ORDERS,
@@ -27,18 +27,12 @@ class IbkrWsClient {
     this.onStatus = onStatus;
 
     this.wsUrl =
-      process.env.IBKR_WS_URL ||
-      process.env.IBKRGW_WS_URL ||
-      "wss://ibkrgw-paper:5000/v1/api/ws";
-    this.reconnectMinMs = asInt(process.env.IBKR_WS_RECONNECT_MIN_MS, 1000);
-    this.reconnectMaxMs = asInt(process.env.IBKR_WS_RECONNECT_MAX_MS, 30000);
-    this.heartbeatMs = asInt(process.env.IBKR_WS_HEARTBEAT_MS, 25000);
+      getConfigString(["IBKR_WS_URL", "IBKRGW_WS_URL"], "wss://ibkrgw-paper:5000/v1/api/ws");
+    this.reconnectMinMs = getConfigInt("IBKR_WS_RECONNECT_MIN_MS", 1000);
+    this.reconnectMaxMs = getConfigInt("IBKR_WS_RECONNECT_MAX_MS", 30000);
+    this.heartbeatMs = getConfigInt("IBKR_WS_HEARTBEAT_MS", 25000);
     this.insecureTls =
-      String(
-        process.env.IBKR_WS_INSECURE_TLS ??
-          process.env.IBKR_INSECURE_TLS ??
-          "false"
-      ).toLowerCase() === "true";
+      getConfigBoolean(["IBKR_WS_INSECURE_TLS", "IBKR_INSECURE_TLS"], false);
 
     this.wsRuntime = resolveWebSocketImpl();
     this.WebSocketImpl = this.wsRuntime?.impl || null;

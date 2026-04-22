@@ -11,6 +11,7 @@ const {
   getAllSettings,
   reloadSettings,
   setSetting,
+  getConfigString,
 } = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
 const { publishEventsManifest } = require("../../shared/eventsManifestRegistry");
@@ -32,31 +33,31 @@ class AlertingService {
 
     //     // Auto-generated service URLs from doc/ports.json
     // Use datahub if available, fallback to dbmanager for backward compatibility
-    this.dbmanagerUrl = process.env.DATAHUB_URL || process.env.DBMANAGER_URL || "http://datahub:3000";
-    this.marketsimulatorUrl = process.env.MARKETSIMULATOR_URL || "http://marketsimulator:3003";
-    this.ordersimulatorUrl = process.env.ORDERSIMULATOR_URL || "http://ordersimulator:3004";
-    this.orderlistnerUrl = process.env.ORDERLISTNER_URL || "http://orderlistner:3005";
-    this.cachemanagerUrl = process.env.CACHEMANAGER_URL || "http://cachemanager:3006";
-    this.strategyUtilsUrl = process.env.STRATEGYUTILS_URL || "http://strategyUtils:3007";
-    this.alertingserviceUrl = process.env.ALERTINGSERVICE_URL || "http://alertingservice:3008";
-    this.capitalmanagerUrl = process.env.CAPITALMANAGER_URL || "http://capitalmanager:3009";
-    this.smaUrl = process.env.SMA_URL || "http://sma:3010";
-    this.sltpUrl = process.env.SLTP_URL || "http://sltp:3011";
-    this.livemarketlistnerUrl = process.env.LIVEMARKETLISTNER_URL || "http://livemarketlistner:3012";
-    this.tickerscannerUrl = process.env.TICKERSCANNER_URL || "http://tickerscanner:3013";
-    this.schedulerUrl = process.env.SCHEDULER_URL || "http://scheduler:3014";
-    this.authServiceUrl = process.env.AUTHSERVICE_URL || "http://authService:3015";
-    this.servicecontrolplaneUrl = process.env.SERVICECONTROLPLANE_URL || "http://servicecontrolplane:3016";
-    this.ibkrbridgeUrl = process.env.IBKRBRIDGE_URL || "http://ibkr-bridge:3017";
-    this.decisionengineUrl = process.env.DECISIONENGINE_URL || "http://decision-engine:3018";
-    this.ibkrkeepaliveUrl = process.env.IBKRKEEPALIVE_URL || "http://ibkr-keepalive:3019";
-    this.marketdataserviceUrl = process.env.MARKETDATASERVICE_URL || "http://market-data-service:3020";
+    this.dbmanagerUrl = getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], "http://datahub:3000");
+    this.marketsimulatorUrl = getConfigString("MARKETSIMULATOR_URL", "http://marketsimulator:3003");
+    this.ordersimulatorUrl = getConfigString("ORDERSIMULATOR_URL", "http://ordersimulator:3004");
+    this.orderlistnerUrl = getConfigString("ORDERLISTNER_URL", "http://orderlistner:3005");
+    this.cachemanagerUrl = getConfigString("CACHEMANAGER_URL", "http://cachemanager:3006");
+    this.strategyUtilsUrl = getConfigString("STRATEGYUTILS_URL", "http://strategyUtils:3007");
+    this.alertingserviceUrl = getConfigString("ALERTINGSERVICE_URL", "http://alertingservice:3008");
+    this.capitalmanagerUrl = getConfigString("CAPITALMANAGER_URL", "http://capitalmanager:3009");
+    this.smaUrl = getConfigString("SMA_URL", "http://sma:3010");
+    this.sltpUrl = getConfigString("SLTP_URL", "http://sltp:3011");
+    this.livemarketlistnerUrl = getConfigString("LIVEMARKETLISTNER_URL", "http://livemarketlistner:3012");
+    this.tickerscannerUrl = getConfigString("TICKERSCANNER_URL", "http://tickerscanner:3013");
+    this.schedulerUrl = getConfigString("SCHEDULER_URL", "http://scheduler:3014");
+    this.authServiceUrl = getConfigString("AUTHSERVICE_URL", "http://authService:3015");
+    this.servicecontrolplaneUrl = getConfigString("SERVICECONTROLPLANE_URL", "http://servicecontrolplane:3016");
+    this.ibkrbridgeUrl = getConfigString("IBKRBRIDGE_URL", "http://ibkr-bridge:3017");
+    this.decisionengineUrl = getConfigString("DECISIONENGINE_URL", "http://decision-engine:3018");
+    this.ibkrkeepaliveUrl = getConfigString("IBKRKEEPALIVE_URL", "http://ibkr-keepalive:3019");
+    this.marketdataserviceUrl = getConfigString("MARKETDATASERVICE_URL", "http://market-data-service:3020");
 
 
     // =====================================================
     // Ambiente
     // =====================================================
-    this.env = process.env.ENV || "DEV";
+    this.env = getConfigString(["ENV", "APP_ENV"], "DEV");
 
     // =====================================================
     // Canali Redis standard
@@ -93,12 +94,12 @@ class AlertingService {
     // =====================================================
     // LOGGER
     // =====================================================
-    process.env.MICROSERVICE_NAME = process.env.MICROSERVICE_NAME || MICROSERVICE;
+    process.env.MICROSERVICE_NAME = getConfigString("MICROSERVICE_NAME", MICROSERVICE);
     this.logger = createLogger(
       MICROSERVICE,
       MODULE_NAME,
       MODULE_VERSION,
-      process.env.LOG_LEVEL || "info",
+      getConfigString("LOG_LEVEL", "info"),
       {
         bus: null,
         busTopicPrefix: this.env,
@@ -395,9 +396,9 @@ class AlertingService {
   getLogLevel() {
     if (typeof this.logger.getLevel === "function") {
       const lvl = this.logger.getLevel();
-      return lvl || process.env.LOG_LEVEL;
+      return lvl || getConfigString("LOG_LEVEL", "info");
     }
-    return process.env.LOG_LEVEL;
+    return getConfigString("LOG_LEVEL", "info");
   }
 
   setLogLevel(level) {
@@ -406,7 +407,7 @@ class AlertingService {
       return { level };
     }
     this.logger.warning("[setLogLevel] Not supported by this logger | ", { level });
-    return { level: process.env.LOG_LEVEL || null };
+    return { level: getConfigString("LOG_LEVEL", "") || null };
   }
 
   // Accesso diretto

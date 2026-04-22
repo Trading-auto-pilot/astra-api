@@ -1,6 +1,7 @@
 "use strict";
 
 const axios = require("axios");
+const { getConfigString, getConfigInt } = require("../../shared/loadSettings");
 
 /**
  * AlpacaProvider
@@ -155,11 +156,11 @@ class AlpacaProvider {
  */
 function createAlpacaFromEnv(logger) {
   return new AlpacaProvider({
-    restUrl: process.env.ALPACA_REST_URL || "https://data.alpaca.markets",
-    apiKey: process.env.APCA_API_KEY_ID,
-    apiSecret: process.env.APCA_API_SECRET_KEY,
+    restUrl: getConfigString("ALPACA_REST_URL", "https://data.alpaca.markets"),
+    apiKey: getConfigString(["APCA_API_KEY_ID", "APCA-API-KEY-ID"], ""),
+    apiSecret: getConfigString(["APCA_API_SECRET_KEY", "APCA-API-SECRET-KEY"], ""),
     logger,
-    timeout: parseInt(process.env.ALPACA_TIMEOUT || "10000", 10),
+    timeout: getConfigInt("ALPACA_TIMEOUT", 10000),
   });
 }
 

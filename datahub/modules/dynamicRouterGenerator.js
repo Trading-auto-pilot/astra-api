@@ -17,10 +17,14 @@ class DynamicRouterGenerator {
   generateRouterForTable(tableInfo) {
     const router = express.Router();
     const tableName = tableInfo.name;
+    const tableSchema = tableInfo.schema;
     const tableType = tableInfo.type;
     const primaryKeys = tableInfo.primaryKeys || [];
     const isView = tableType === "view";
     const columns = tableInfo.columns || [];
+    const safeTable = String(tableName).replace(/`/g, '``');
+    const safeSchema = String(tableSchema || "").replace(/`/g, '``');
+    const qualifiedTable = safeSchema ? `\`${safeSchema}\`.\`${safeTable}\`` : `\`${safeTable}\``;
 
     // Create a map of JSON columns for efficient lookup
     const jsonColumns = new Set(
@@ -65,7 +69,7 @@ class DynamicRouterGenerator {
     };
 
     this.logger.info(
-      `[dynamicRouter] Generating endpoints for ${tableType} ${tableName} (PK: ${primaryKeys.join(", ") || "none"}, JSON columns: ${Array.from(jsonColumns).join(", ") || "none"})`
+      `[dynamicRouter] Generating endpoints for ${tableType} ${safeSchema ? `${safeSchema}.` : ""}${tableName} (PK: ${primaryKeys.join(", ") || "none"}, JSON columns: ${Array.from(jsonColumns).join(", ") || "none"})`
     );
 
     // ========================================
@@ -193,12 +197,11 @@ class DynamicRouterGenerator {
         this.logger.log(`[CACHE MISS or DISABLED] cacheEnabled=${cacheEnabled} table=${tableName}`);
 
         // Query database - use backticks for table name to avoid ?? + backtick mixing issues
-        const safeTable = String(tableName).replace(/`/g, '``');
         // ORDER BY: use sort_by param if provided, otherwise default for logs table
         const orderBy = sortBy
           ? `ORDER BY \`${sortBy}\` ${sortDir}`
           : tableName === 'logs' ? 'ORDER BY id DESC' : '';
-        const querySQL = `SELECT * FROM \`${safeTable}\` ${whereClause} ${orderBy} LIMIT ? OFFSET ?`;
+        const querySQL = `SELECT * FROM ${qualifiedTable} ${whereClause} ${orderBy} LIMIT ? OFFSET ?`;
         const queryParams = [...filterParams, limit, offset];
 
         // Debug - log query for multi-level filters
@@ -219,7 +222,7 @@ class DynamicRouterGenerator {
         }
 
         const [countResult] = await this.schemaReader.query(
-          `SELECT COUNT(*) as total FROM \`${safeTable}\` ${whereClause}`,
+          `SELECT COUNT(*) as total FROM ${qualifiedTable} ${whereClause}`,
           filterParams
         );
 
@@ -293,8 +296,8 @@ class DynamicRouterGenerator {
           });
 
           const [rows] = await this.schemaReader.query(
-            `SELECT * FROM ?? WHERE ${whereClause}`,
-            [tableName, ...queryParams]
+            `SELECT * FROM ${qualifiedTable} WHERE ${whereClause}`,
+            queryParams
           );
 
           if (rows.length === 0) {
@@ -347,18 +350,21 @@ class DynamicRouterGenerator {
           // Serialize JSON column values
           const values = columns.map((col) => serializeValue(col, data[col]));
           const placeholders = columns.map(() => "?").join(", ");
+          const columnClause = columns
+            .map((columnName) => `\`${String(columnName).replace(/`/g, '``')}\``)
+            .join(", ");
 
           const [result] = await this.schemaReader.query(
-            `INSERT INTO ?? (${columns.map(() => "??").join(", ")}) VALUES (${placeholders})`,
-            [tableName, ...columns, ...values]
+            `INSERT INTO ${qualifiedTable} (${columnClause}) VALUES (${placeholders})`,
+            values
           );
 
           // Get inserted record if we have auto-increment or primary keys
           let insertedRecord = null;
           if (result.insertId) {
             const [rows] = await this.schemaReader.query(
-              `SELECT * FROM ?? WHERE ${primaryKeys[0]} = ?`,
-              [tableName, result.insertId]
+              `SELECT * FROM ${qualifiedTable} WHERE \`${String(primaryKeys[0]).replace(/`/g, '``')}\` = ?`,
+              [result.insertId]
             );
             insertedRecord = rows[0] || null;
           }
@@ -448,8 +454,8 @@ class DynamicRouterGenerator {
           });
 
           const [result] = await this.schemaReader.query(
-            `UPDATE ?? SET ${setClause} WHERE ${whereClause}`,
-            [tableName, ...setParams, ...whereParams]
+            `UPDATE ${qualifiedTable} SET ${setClause} WHERE ${whereClause}`,
+            [...setParams, ...whereParams]
           );
 
           if (result.affectedRows === 0) {
@@ -466,8 +472,8 @@ class DynamicRouterGenerator {
           });
 
           const [rows] = await this.schemaReader.query(
-            `SELECT * FROM ?? WHERE ${whereClause}`,
-            [tableName, ...queryParams]
+            `SELECT * FROM ${qualifiedTable} WHERE ${whereClause}`,
+            queryParams
           );
 
           // Invalidate cache for this table
@@ -510,8 +516,8 @@ class DynamicRouterGenerator {
           });
 
           const [result] = await this.schemaReader.query(
-            `DELETE FROM ?? WHERE ${whereClause}`,
-            [tableName, ...whereParams]
+            `DELETE FROM ${qualifiedTable} WHERE ${whereClause}`,
+            whereParams
           );
 
           if (result.affectedRows === 0) {

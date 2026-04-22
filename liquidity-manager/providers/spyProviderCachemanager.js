@@ -3,6 +3,7 @@
 const { requestRawDetailed } = require("./httpClient");
 const { createProviderError } = require("./providerErrors");
 const { getConfigString, getConfigNumber } = require("../../shared/loadSettings");
+const simClock = require("../../shared/simClock");
 
 const PROVIDER_NAME = "spyTrend";
 const SOURCE = "cachemanager:SPY";
@@ -30,8 +31,8 @@ async function fetchFromCachemanager({ timeoutMs, logger } = {}) {
     getConfigString("CACHEMANAGER_URL", "http://cachemanager:3006")
   ).replace(/\/+$/, "");
 
-  const endDate = formatDate(Date.now());
-  const startDate = formatDate(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  const endDate = formatDate(simClock.now());
+  const startDate = formatDate(simClock.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
   const url = `${baseUrl}/candles?symbol=SPY&startDate=${startDate}&endDate=${endDate}&tf=1Day`;
 
   const effectiveTimeout = Number(timeoutMs || getConfigNumber("LIQ_PROVIDER_TIMEOUT_MS", 5000)) || 5000;

@@ -1,5 +1,7 @@
 "use strict";
 
+const { getConfigString } = require("../../../../shared/loadSettings");
+
 function buildEventType(status) {
   if (status === "FILLED" || status === "PARTIALLY_FILLED") return "broker.ibkr.order.filled";
   if (status === "CANCELLED") return "broker.ibkr.order.cancelled";
@@ -11,7 +13,7 @@ class OrdersStateUpdater {
     this.logger = logger;
     this.bus = bus;
     this.eventsChannel = eventsChannel;
-    this.env = env || process.env.ENV || "DEV";
+    this.env = env || getConfigString(["ENV", "APP_ENV"], "DEV");
     this.state = new Map(); // orderId -> { status, filledQty, ts }
   }
 

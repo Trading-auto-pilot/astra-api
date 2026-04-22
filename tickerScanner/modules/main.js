@@ -26,7 +26,7 @@ const ScoringService = require("./scoringService");
 const MomentumCalculator = require("./momentumCalculator");
 const FundamentalsService = require("./fundamentalsService");
 
-const { getSetting } = require("../../shared/loadSettings");
+const { getSetting, getConfigString, getConfigInt } = require("../../shared/loadSettings");
 
 // ---- helpers ----
 
@@ -147,8 +147,8 @@ class TickerScanner extends BaseService {
     this.momentumCalculator = new MomentumCalculator({
       logger: this.logger,
       cachemanagerUrl: this.cachemanagerUrl,
-      tf: process.env.MOMENTUM_TF || "1Day",
-      lookbackDays: Number(process.env.MOMENTUM_LOOKBACK_DAYS || 365),
+      tf: getConfigString("MOMENTUM_TF", "1Day"),
+      lookbackDays: getConfigInt("MOMENTUM_LOOKBACK_DAYS", 365),
     });
     this.fundamentalService = new FundamentalsService({ logger: this.logger, dbmanagerUrl: this.dbmanagerUrl });
 
@@ -442,15 +442,15 @@ class TickerScanner extends BaseService {
 
     this.logger.info(`[scanAndScoreUniverse] Trovati ${existingRecords.length} in DB, mancanti: ${missingSymbols.length} (forceRefresh=${forceRefresh})`);
 
-    const batchSizeRaw = Number(process.env.SCAN_MISSING_BATCH);
+    const batchSizeRaw = getConfigInt("SCAN_MISSING_BATCH", 50);
     const batchSize = Number.isFinite(batchSizeRaw) && batchSizeRaw > 0 ? Math.floor(batchSizeRaw) : 50;
-    const bulkSizeRaw = Number(process.env.SCAN_BULK_SIZE);
+    const bulkSizeRaw = getConfigInt("SCAN_BULK_SIZE", 200);
     const bulkSize = Number.isFinite(bulkSizeRaw) && bulkSizeRaw > 0 ? Math.floor(bulkSizeRaw) : 200;
-    const fmpConcurrencyRaw = Number(process.env.SCAN_FMP_CONCURRENCY);
+    const fmpConcurrencyRaw = getConfigInt("SCAN_FMP_CONCURRENCY", 3);
     const fmpConcurrency = Number.isFinite(fmpConcurrencyRaw) && fmpConcurrencyRaw > 0 ? Math.floor(fmpConcurrencyRaw) : 3;
-    const momentumConcurrencyRaw = Number(process.env.SCAN_MOMENTUM_CONCURRENCY);
+    const momentumConcurrencyRaw = getConfigInt("SCAN_MOMENTUM_CONCURRENCY", 5);
     const momentumConcurrency = Number.isFinite(momentumConcurrencyRaw) && momentumConcurrencyRaw > 0 ? Math.floor(momentumConcurrencyRaw) : 5;
-    const upsertConcurrencyRaw = Number(process.env.SCAN_UPSERT_CONCURRENCY);
+    const upsertConcurrencyRaw = getConfigInt("SCAN_UPSERT_CONCURRENCY", 5);
     const upsertConcurrency = Number.isFinite(upsertConcurrencyRaw) && upsertConcurrencyRaw > 0 ? Math.floor(upsertConcurrencyRaw) : 5;
 
     const newScoredRecords = [];

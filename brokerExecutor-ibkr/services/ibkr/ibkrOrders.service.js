@@ -4,15 +4,16 @@ const { IbkrAdapter, createError } = require("./ibkrAdapter");
 const { normalizeOrder, normalizePosition, extractReferencePrice } = require("./ibkrMapper");
 const { InMemoryIdempotencyRepository } = require("../../repositories/idempotencyRepository");
 const { validateUpdateOrderPayload } = require("../../validation/brokerExecutorIbkr.validation");
+const { getConfigString, getConfigNumber } = require("../../../shared/loadSettings");
 
 class IbkrOrdersService {
   constructor({ logger }) {
     this.logger = logger;
     this.adapter = new IbkrAdapter({ logger });
     this.idempotencyRepo = new InMemoryIdempotencyRepository();
-    this.accountId = process.env.IBKR_ACCOUNT_ID || "";
+    this.accountId = getConfigString("IBKR_ACCOUNT_ID", "");
     this.resolvedAccountId = "";
-    this.idempotencyTtlHours = Number(process.env.IBKR_IDEMPOTENCY_HOURS) || 6;
+    this.idempotencyTtlHours = getConfigNumber("IBKR_IDEMPOTENCY_HOURS", 6);
   }
 
   async _requireAccountId() {

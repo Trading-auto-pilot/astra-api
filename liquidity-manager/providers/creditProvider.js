@@ -4,12 +4,13 @@ const { requestRawDetailed } = require("./httpClient");
 const { createProviderError } = require("./providerErrors");
 const { markSuccess, markFailure } = require("./providerHealthRegistry");
 const { getConfigNumber, getConfigString } = require("../../shared/loadSettings");
+const simClock = require("../../shared/simClock");
 
 const FRED_BASE = "https://api.stlouisfed.org/fred/series/observations";
 const PROVIDER_NAME = "credit";
 
 function createMockSeries(days = 90) {
-  const now = Date.now();
+  const now = simClock.now();
   const out = [];
   let spread = 3.8;
   for (let i = days; i >= 0; i -= 1) {

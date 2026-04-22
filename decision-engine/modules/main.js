@@ -5,16 +5,21 @@ const path = require("path");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 const fs = require("fs/promises");
 const createLogger = require("../../shared/logger");
+const simClock = require("../../shared/simClock");
 const {
   initializeSettings,
   getSetting,
   getAllSettings,
   reloadSettings,
   setSetting,
+  getConfigString,
+  getConfigInt,
 } = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
 const { publishEventsManifest } = require("../../shared/eventsManifestRegistry");
 const { asBool, asInt } = require("../../shared/helpers");
+const { buildSymbolLogRef } = require("./helpers");
+const { refreshLiveManagerConfig } = require("./live-manager");
 
 // =========================================================
 // PLACEHOLDER da sostituire via script di scaffolding
@@ -25,45 +30,13 @@ const MODULE_VERSION  = "0.1.0";    // e.g. "0.1.0"
 
 class DecisionEngine {
   constructor() {
-    // =====================================================
-    // URL DI TUTTI I MICROSERVIZI STANDARD DEL SISTEMA
-    // =====================================================
-
-    //     // Auto-generated service URLs from doc/ports.json
-    // Support both DATAHUB_URL (preferred) and DBMANAGER_URL (backward compat)
-    this.dbmanagerUrl = process.env.DATAHUB_URL || process.env.DBMANAGER_URL || "http://datahub:3000";
-    this.marketsimulatorUrl = process.env.MARKETSIMULATOR_URL || "http://marketsimulator:3003";
-    this.ordersimulatorUrl = process.env.ORDERSIMULATOR_URL || "http://ordersimulator:3004";
-    this.orderlistnerUrl = process.env.ORDERLISTNER_URL || "http://orderlistner:3005";
-    this.cachemanagerUrl = process.env.CACHEMANAGER_URL || "http://cachemanager:3006";
-    this.strategyUtilsUrl = process.env.STRATEGYUTILS_URL || "http://strategyUtils:3007";
-    this.alertingserviceUrl = process.env.ALERTINGSERVICE_URL || "http://alertingservice:3008";
-    this.capitalmanagerUrl = process.env.CAPITALMANAGER_URL || "http://capitalmanager:3009";
-    this.smaUrl = process.env.SMA_URL || "http://sma:3010";
-    this.sltpUrl = process.env.SLTP_URL || "http://sltp:3011";
-    this.livemarketlistnerUrl = process.env.LIVEMARKETLISTNER_URL || "http://livemarketlistner:3012";
-    this.tickerscannerUrl = process.env.TICKERSCANNER_URL || "http://tickerscanner:3013";
-    this.schedulerUrl = process.env.SCHEDULER_URL || "http://scheduler:3014";
-    this.authServiceUrl = process.env.AUTHSERVICE_URL || "http://authService:3015";
-    this.servicecontrolplaneUrl = process.env.SERVICECONTROLPLANE_URL || "http://servicecontrolplane:3016";
-    this.ibkrbridgeUrl = process.env.IBKRBRIDGE_URL || "http://ibkr-bridge:3017";
-    this.decisionengineUrl = process.env.DECISIONENGINE_URL || "http://decision-engine:3018";
-
-
-    // =====================================================
-    // Ambiente
-    // =====================================================
-    this.env = process.env.ENV || "DEV";
+    this.serviceName = getConfigString("MICROSERVICE_NAME", MICROSERVICE);
+    this.logLevel = getConfigString("LOG_LEVEL", "info");
+    this.applyRuntimeConfig();
 
     // =====================================================
     // Canali Redis standard
     // =====================================================
-    this.redisTelemetyChannel = `${this.env}.${MICROSERVICE}.telemetry`;
-    this.redisStatusChannel   = `${this.env}.${MICROSERVICE}.status`;
-    this.redisDataChannel     = `${this.env}.${MICROSERVICE}.data`;
-    this.redisLogsChannel     = `${this.env}.${MICROSERVICE}.logs`;
-    this.redisEventsChannel   = `${this.env}.${MICROSERVICE}.events`;
-    this.redisMarketDataChannel = `${this.env}.market-data-service.data`;
     this._marketDataSubscribed = false;
     this._marketDataHandlers = new Set();
 
@@ -93,12 +66,12 @@ class DecisionEngine {
     // =====================================================
     // LOGGER
     // =====================================================
-    process.env.MICROSERVICE_NAME = process.env.MICROSERVICE_NAME || MICROSERVICE;
+    process.env.MICROSERVICE_NAME = this.serviceName;
     this.logger = createLogger(
       MICROSERVICE,
       MODULE_NAME,
       MODULE_VERSION,
-      process.env.LOG_LEVEL || "info",
+      this.logLevel,
       {
         bus: null,
         busTopicPrefix: this.env,
@@ -111,6 +84,45 @@ class DecisionEngine {
 
     // Mini storage per metriche locali
     this.metrics = [];
+  }
+
+  applyRuntimeConfig() {
+    this.dbmanagerUrl = getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], "http://datahub:3000");
+    this.marketsimulatorUrl = getConfigString("MARKETSIMULATOR_URL", "http://marketsimulator:3003");
+    this.ordersimulatorUrl = getConfigString("ORDERSIMULATOR_URL", "http://ordersimulator:3004");
+    this.orderlistnerUrl = getConfigString("ORDERLISTNER_URL", "http://orderlistner:3005");
+    this.cachemanagerUrl = getConfigString("CACHEMANAGER_URL", "http://cachemanager:3006");
+    this.strategyUtilsUrl = getConfigString("STRATEGYUTILS_URL", "http://strategyUtils:3007");
+    this.alertingserviceUrl = getConfigString(["ALERTINGSERVICE_URL", "ALERTINGMANAGER_URL"], "http://alertingservice:3008");
+    this.capitalmanagerUrl = getConfigString(["CAPITALMANAGER_URL", "CAPITAL_MANAGER_URL"], "http://capitalmanager:3009");
+    this.smaUrl = getConfigString("SMA_URL", "http://sma:3010");
+    this.sltpUrl = getConfigString("SLTP_URL", "http://sltp:3011");
+    this.livemarketlistnerUrl = getConfigString("LIVEMARKETLISTNER_URL", "http://livemarketlistner:3012");
+    this.tickerscannerUrl = getConfigString(["TICKERSCANNER_URL", "TICKERSCANNER"], "http://tickerscanner:3013");
+    this.schedulerUrl = getConfigString("SCHEDULER_URL", "http://scheduler:3014");
+    this.authServiceUrl = getConfigString("AUTHSERVICE_URL", "http://authService:3015");
+    this.servicecontrolplaneUrl = getConfigString(["SERVICECONTROLPLANE_URL", "SERVICE_CONTROL_PLANE_URL"], "http://servicecontrolplane:3016");
+    this.ibkrbridgeUrl = getConfigString(["IBKRBRIDGE_URL", "IBKR_BRIDGE_URL"], "http://ibkr-bridge:3017");
+    this.decisionengineUrl = getConfigString(["DECISIONENGINE_URL", "DECISION_ENGINE_URL"], "http://decision-engine:3018");
+    this.marketdataserviceUrl = getConfigString("MARKETDATASERVICE_URL", "http://market-data-service:3020");
+    this.liquidityManagerUrl = getConfigString(["LIQUIDITYMANAGER_URL", "LIQUIDITY_MANAGER_URL"], "http://liquidity-manager:3001");
+    this.brokerExecutorUrl = getConfigString(["BROKER_EXECUTOR_IBKR_URL", "BROKER_EXECUTOR_URL"], "http://broker-executor-ibkr:3003");
+    this.env = getConfigString(["ENV", "APP_ENV"], "DEV");
+    this.serviceName = getConfigString("MICROSERVICE_NAME", this.serviceName || MICROSERVICE);
+    this.logLevel = getConfigString("LOG_LEVEL", this.logLevel || "info");
+    this.cacheManagerTimeoutMs = getConfigInt("CACHEMANAGER_TIMEOUT_MS", 60000);
+    this.tickerscannerTimeoutMs = getConfigInt("TICKERSCANNER_TIMEOUT_MS", 20000);
+
+    this.redisTelemetyChannel = `${this.env}.${MICROSERVICE}.telemetry`;
+    this.redisStatusChannel   = `${this.env}.${MICROSERVICE}.status`;
+    this.redisDataChannel     = `${this.env}.${MICROSERVICE}.data`;
+    this.redisLogsChannel     = `${this.env}.${MICROSERVICE}.logs`;
+    this.redisEventsChannel   = `${this.env}.${MICROSERVICE}.events`;
+    this.redisMarketDataChannel = `${this.env}.market-data-service.data`;
+
+    process.env.MICROSERVICE_NAME = this.serviceName;
+    if (this.logger?.setLevel) this.logger.setLevel(this.logLevel);
+    refreshLiveManagerConfig();
   }
 
   // =========================================================
@@ -128,7 +140,6 @@ class DecisionEngine {
       microserviceName: MICROSERVICE,
       serviceRootDir: path.resolve(__dirname, ".."),
     });
-    await this._maybeSubscribeMarketData();
 
     // STATUS: STARTING
     await this.bus.publish(this.redisStatusChannel, {
@@ -151,6 +162,8 @@ class DecisionEngine {
     }
 
     // 3) APPLY COMMON SETTINGS
+    this.applyRuntimeConfig();
+    await this._maybeSubscribeMarketData();
     this.delayBetweenMessages = asInt(
       getSetting("PROCESS_DELAY_BETWEEN_MESSAGES"),
       500
@@ -264,7 +277,7 @@ class DecisionEngine {
   }
 
   pushMetric(metric) {
-    metric.ts = Date.now();
+    metric.ts = simClock.now();
     this.metrics.push(metric);
     if (this.metrics.length > 2000) this.metrics.shift();
   }
@@ -373,9 +386,16 @@ class DecisionEngine {
         : typeof raw === "string"
           ? raw
           : String(raw);
+    const parsedPayload = parsed && typeof parsed === "object" ? parsed : null;
+    const ticker = String(parsedPayload?.ticker || parsedPayload?.symbol || "").trim().toUpperCase();
+    const logRef = ticker ? buildSymbolLogRef(ticker, parsedPayload?.ts) : null;
     const printable =
       typeof payload === "string" ? payload : JSON.stringify(payload);
-    this.logger.trace(`[marketData][${this.redisMarketDataChannel}] ${printable}`);
+    this.logger.trace(
+      `[marketData][${this.redisMarketDataChannel}]` +
+      `${ticker ? ` ticker=${ticker}` : ""}` +
+      `${logRef ? ` logRef=${logRef}` : ""} ${printable}`
+    );
     this.logger.trace(
       `[marketData] dispatch handlers=${this._marketDataHandlers.size} ` +
       `dataOn=${this.communicationChannels?.data?.on === true}`
@@ -454,9 +474,9 @@ class DecisionEngine {
   getLogLevel() {
     if (typeof this.logger.getLevel === "function") {
       const lvl = this.logger.getLevel();
-      return lvl || process.env.LOG_LEVEL;
+      return lvl || this.logLevel;
     }
-    return process.env.LOG_LEVEL;
+    return this.logLevel;
   }
 
   setLogLevel(level) {
@@ -465,7 +485,7 @@ class DecisionEngine {
       return { level };
     }
     this.logger.warning("[setLogLevel] Not supported by this logger | ", { level });
-    return { level: process.env.LOG_LEVEL || null };
+    return { level: this.logLevel || null };
   }
 
   // Accesso diretto

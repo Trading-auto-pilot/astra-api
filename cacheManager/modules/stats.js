@@ -4,7 +4,7 @@
 const fs = require("fs");
 const fsp = require("fs").promises;
 const path = require("path");
-const { getSetting } = require("../../shared/loadSettings");
+const { getSetting, getConfigString } = require("../../shared/loadSettings");
 
 module.exports = function createStatsModule(cacheManager) {
   const resolveBasePath = () => {
@@ -124,7 +124,7 @@ module.exports = function createStatsModule(cacheManager) {
   return {
     getL1Stats() {
       return {
-        provider: process.env.HISTORICAL_PROVIDER || "ALPACA",
+        provider: getConfigString("HISTORICAL_PROVIDER", "ALPACA"),
         l1_hits: cacheManager.L1Hit || 0,
         last_provider_call: cacheManager.lastProviderCall || null,
       };
@@ -140,7 +140,7 @@ module.exports = function createStatsModule(cacheManager) {
 
     getParamsSetting() {
       return {
-        provider: process.env.HISTORICAL_PROVIDER || "ALPACA",
+        provider: getConfigString("HISTORICAL_PROVIDER", "ALPACA"),
         timeframe: cacheManager.tf || "1Day",
         cache_base_path: cacheManager.cacheBasePath,
       };

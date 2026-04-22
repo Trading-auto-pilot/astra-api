@@ -7,6 +7,7 @@ const { getConfigInt, getConfigNumber, getConfigString } = require("../../shared
 const LiquidityScoreEngine = require("./engine/liquidityScoreEngine");
 const { createLiquidityScoreRepository } = require("../repositories/liquidityScoreRepository");
 const RecomputeTaskManager = require("./tasks/recomputeTaskManager");
+const { runBackfill } = require("./backfill/liquidityBackfill");
 
 /**
  * LiquidityManager - liquidity-manager microservice
@@ -431,6 +432,50 @@ class LiquidityManager extends BaseService {
     const task = this.taskManager.getTask(taskId);
     if (!task) return null;
     return { ok: true, task };
+  }
+
+  /**
+   * Backfill liquidity scores for a historical date range.
+   * Uses WARMUP_DAYS=250 prepended before fromDate so SMA(200) is stable.
+   * Rows with source="backfill" are inserted; existing live/scheduler rows
+   * (409 duplicate key) are skipped.
+   *
+   * @param {string} fromDate - ISO date "YYYY-MM-DD" (inclusive)
+   * @param {string} toDate   - ISO date "YYYY-MM-DD" (inclusive)
+   * @returns {Promise<{processed, inserted, skipped, errors, days}>}
+   */
+  async runBackfill({ fromDate, toDate }) {
+    const datahubUrl = getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], "http://datahub:3000").replace(/\/+$/, "");
+
+    const config = {
+      emaAlpha:               this.emaAlpha,
+      emaMaxDailyChange:      this.emaMaxDailyChange,
+      emaDecayThreshold:      this.emaDecayThreshold,
+      emaDecayRate:           this.emaDecayRate,
+      hysteresisRiskOffEnter: this.hysteresisRiskOffEnter,
+      hysteresisRiskOffExit:  this.hysteresisRiskOffExit,
+      hysteresisRiskOnEnter:  this.hysteresisRiskOnEnter,
+      hysteresisRiskOnExit:   this.hysteresisRiskOnExit,
+      minConfidenceForRegime: this.engine.minConfidenceForRegime,
+    };
+
+    this.logger.info(`[runBackfill] from=${fromDate} to=${toDate} datahubUrl=${datahubUrl}`);
+
+    const result = await runBackfill({
+      fromDate,
+      toDate,
+      config,
+      logger: this.logger,
+      onProgress: (day, stats) => {
+        this.logger.trace(`[runBackfill] day=${day} inserted=${stats.inserted} skipped=${stats.skipped}`);
+      },
+    });
+
+    this.logger.info(
+      `[runBackfill] done from=${fromDate} to=${toDate} processed=${result.processed} ` +
+      `inserted=${result.inserted} skipped=${result.skipped} errors=${result.errors}`
+    );
+    return result;
   }
 }
 

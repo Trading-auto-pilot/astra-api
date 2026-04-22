@@ -3,9 +3,10 @@
 
 const https = require("https");
 const http = require("http");
+const { getConfigString, getConfigInt } = require("../../../shared/loadSettings");
 
-const IBKR_BRIDGE_URL = process.env.IBKR_BRIDGE_URL || "http://ibkr-bridge:3017";
-const REQUEST_TIMEOUT_MS = parseInt(process.env.IBKR_ADAPTER_TIMEOUT_MS || "5000", 10);
+const IBKR_BRIDGE_URL = getConfigString(["IBKR_BRIDGE_URL", "IBKRBRIDGE_URL"], "http://ibkr-bridge:3017");
+const REQUEST_TIMEOUT_MS = getConfigInt("IBKR_ADAPTER_TIMEOUT_MS", 5000);
 
 /**
  * Simple HTTP GET helper.

@@ -1,6 +1,7 @@
 "use strict";
 
 const twilio = require("twilio");
+const { getConfigString } = require("../../shared/loadSettings");
 
 const DEFAULT_FROM = "whatsapp:+14155238886";
 const DEFAULT_TO = "whatsapp:+971524396227";
@@ -8,9 +9,9 @@ const DEFAULT_TO = "whatsapp:+971524396227";
 class TwilioClient {
   constructor({ logger }) {
     this.logger = logger;
-    this.accountSid = process.env.TWILIO_ACCOUNT_SID;
-    this.authToken = process.env.TWILIO_AUTH_TOKEN;
-    this.templateSid = process.env.TWILIO_CONTENT_SID;
+    this.accountSid = getConfigString("TWILIO_ACCOUNT_SID", "");
+    this.authToken = getConfigString("TWILIO_AUTH_TOKEN", "");
+    this.templateSid = getConfigString("TWILIO_CONTENT_SID", "");
     this.client =
       this.accountSid && this.authToken
         ? twilio(this.accountSid, this.authToken)

@@ -86,27 +86,27 @@ E stato inoltre migrato il microservizio `liquidity-manager` nei principali punt
 
 ## Microservizi gia migrati
 
+- `capital-manager`
+- `cachemanager`
+- `broker-executor-ibkr`
+- `alertingservice`
+- `authservice`
 - `liquidity-manager`
+- `datahub`
+- `decision-engine`
+- `tickerscanner`
+- `scheduler`
+- `market-data-service`
+- `mcp-gateway`
+- `redis-ws-bridge`
+- `servicecontrolplane`
+- `ibkr-bridge`
+- `ibkr-keepalive`
 
 ## Microservizi non ancora migrati
 
-- `authservice`
-- `alertingservice`
-- `broker-executor-ibkr`
-- `cachemanager`
-- `capital-manager`
-- `datahub`
-- `decision-engine`
 - `help-trading`
-- `ibkr-bridge`
-- `ibkr-keepalive`
-- `market-data-service`
-- `market-simulator`
-- `mcp-gateway`
-- `redis-ws-bridge`
-- `scheduler`
-- `servicecontrolplane`
-- `tickerscanner`
+- `simulator`
 
 ## Strategia di rollout
 

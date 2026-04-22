@@ -1,15 +1,16 @@
 "use strict";
 
 const nodemailer = require("nodemailer");
+const { getConfigString } = require("../../shared/loadSettings");
 
 class EmailClient {
   constructor({ logger }) {
     this.logger = logger;
-    this.smtpHost = process.env.SMTP_HOST;
-    this.smtpPort = process.env.SMTP_PORT;
-    this.smtpUser = process.env.SMTP_USER;
-    this.smtpPassword = process.env.SMTP_PASSWORD;
-    this.smtpFrom = process.env.SMTP_FROM;
+    this.smtpHost = getConfigString("SMTP_HOST", "");
+    this.smtpPort = getConfigString("SMTP_PORT", "");
+    this.smtpUser = getConfigString("SMTP_USER", "");
+    this.smtpPassword = getConfigString("SMTP_PASSWORD", "");
+    this.smtpFrom = getConfigString("SMTP_FROM", "");
 
     // Log configuration status
     const configStatus = {

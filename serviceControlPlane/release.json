@@ -1,11 +1,11 @@
 {
-  "lastUpdate": "08/03/2026", 
-  "version": "2.0.0",
+  "lastUpdate": "22/04/2026",
+  "version": "2.1.0",
   "microservice": "serviceControlPlane",
-
   "note": [
     "v.1.0.0 serviceControlPlane: Initial scaffolding generated from template.",
     "v.1.0.1 aggiunto info microservice su user agent",
-    "v.2.0.0 Abilitati controlli start/stop/restart servizi"
+    "v.2.0.0 Abilitati controlli start/stop/restart servizi",
+    "v.2.1.0 Minor Fix"
   ]
 }

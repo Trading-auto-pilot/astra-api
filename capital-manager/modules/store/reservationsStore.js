@@ -2,8 +2,10 @@
 "use strict";
 
 const { generateReservationId } = require("../utils/hash");
+const simClock = require("../../../shared/simClock");
+const { getConfigInt } = require("../../../shared/loadSettings");
 
-const DEFAULT_RESERVATION_TTL_SEC = parseInt(process.env.RESERVATION_TTL_SEC || "180", 10);
+const DEFAULT_RESERVATION_TTL_SEC = getConfigInt("RESERVATION_TTL_SEC", 180);
 
 // Redis key helpers
 const keyReservation = (userId, reservationId) =>
@@ -35,7 +37,7 @@ async function createReservation({ userId, symbol, market, currency, amount, cli
   }
 
   const reservationId = generateReservationId();
-  const expiresAt = new Date(Date.now() + RESERVATION_TTL_SEC * 1000).toISOString();
+  const expiresAt = new Date(simClock.now() + RESERVATION_TTL_SEC * 1000).toISOString();
   const reservation = {
     reservationId, userId, symbol, market, currency,
     amount, clientRequestId, expiresAt,

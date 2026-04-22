@@ -8,6 +8,7 @@ const axios = require("axios");
 const WebSocket = require("ws");
 const dns = require("dns");
 const https = require("https");
+const { getConfigString, getConfigBoolean } = require("../../shared/loadSettings");
 
 const REDIS_TICKERS_KEY = "MARKET_DATA:TICKERS";
 const REDIS_FIELDS_KEY = "MARKET_DATA:FIELDS";
@@ -83,7 +84,7 @@ const createRedisAdapter = async (redisClient, logger) => {
     };
   }
 
-  const url = process.env.REDIS_URL || "redis://redis:6379";
+  const url = getConfigString("REDIS_URL", "redis://redis:6379");
   const client = createClient({ url });
   client.on("error", (err) => {
     logger?.error?.(`[ibkrMarketData] redis error: ${err?.message || String(err)}`);
@@ -130,7 +131,7 @@ class IbkrMarketDataModule {
     this.snapshotIntervalMs = null;
     this.lastSnapshotAt = null;
     this.snapshotAlignTimer = null;
-    this.mdFields = (process.env.MARKET_DATA_FIELDS || "31,84,86")
+    this.mdFields = (getConfigString("MARKET_DATA_FIELDS", "31,84,86"))
       .split(",")
       .map((f) => f.trim())
       .filter(Boolean);
@@ -144,7 +145,7 @@ class IbkrMarketDataModule {
   async start() {
     await this._loadFieldsFromRedis();
     await this._loadSnapshotIntervalFromRedis();
-    const baseUrl = process.env.IBKRGW_BASE_URL || process.env.IBKR_BASE_URL || "";
+    const baseUrl = getConfigString(["IBKRGW_BASE_URL", "IBKR_BASE_URL"], "");
     const parsed = parseIbkrBaseUrl(baseUrl);
     if (!parsed) {
       this.logger?.error?.("[ibkrMarketData] IBKRGW_BASE_URL invalid or missing");
@@ -230,7 +231,7 @@ class IbkrMarketDataModule {
       }
     }
 
-    const insecure = String(process.env.IBKR_INSECURE_TLS || "").toLowerCase() === "true";
+    const insecure = getConfigBoolean("IBKR_INSECURE_TLS", false);
     await this._fetchSessionToken();
     const wsHeaders = this.sessionToken ? { Cookie: `api=${this.sessionToken}` } : undefined;
     this.ws = new WebSocket(wsUrl, {
@@ -582,7 +583,7 @@ class IbkrMarketDataModule {
   async _fetchSessionToken() {
     const httpBase = this.gatewayBaseUrl;
     if (!httpBase) return null;
-    const insecure = String(process.env.IBKR_INSECURE_TLS || "").toLowerCase() === "true";
+    const insecure = getConfigBoolean("IBKR_INSECURE_TLS", false);
     const httpsAgent = insecure ? new https.Agent({ rejectUnauthorized: false }) : undefined;
     try {
       const resp = await axios.get(`${httpBase}/v1/api/tickle`, {
@@ -638,7 +639,7 @@ class IbkrMarketDataModule {
   async _ensureHmdsInit() {
     const httpBase = this.gatewayBaseUrl;
     if (!httpBase) return;
-    const insecure = String(process.env.IBKR_INSECURE_TLS || "").toLowerCase() === "true";
+    const insecure = getConfigBoolean("IBKR_INSECURE_TLS", false);
     const httpsAgent = insecure ? new https.Agent({ rejectUnauthorized: false }) : undefined;
     try {
       const resp = await axios.get(`${httpBase}/v1/api/hmds/auth/init`, {
@@ -664,7 +665,7 @@ class IbkrMarketDataModule {
   async _setMarketDataType() {
     const httpBase = this.gatewayBaseUrl;
     if (!httpBase) return;
-    const insecure = String(process.env.IBKR_INSECURE_TLS || "").toLowerCase() === "true";
+    const insecure = getConfigBoolean("IBKR_INSECURE_TLS", false);
     const httpsAgent = insecure ? new https.Agent({ rejectUnauthorized: false }) : undefined;
     try {
       const resp = await axios.post(
@@ -705,9 +706,7 @@ class IbkrMarketDataModule {
     const cached = this.conidByTicker.get(ticker);
     if (cached) return cached;
     const bridgeUrl = (
-      process.env.IBKR_BRIDGE_URL ||
-      process.env.IBKRBRIDGE_URL ||
-      "http://ibkr-bridge:3017"
+      getConfigString(["IBKR_BRIDGE_URL", "IBKRBRIDGE_URL"], "http://ibkr-bridge:3017")
     ).replace(/\/+$/, "");
     const url = `${bridgeUrl}/mirror/iserver/secdef/search?symbol=${encodeURIComponent(
       ticker
@@ -899,9 +898,7 @@ class IbkrMarketDataModule {
     );
 
     const bridgeUrl = (
-      process.env.IBKR_BRIDGE_URL ||
-      process.env.IBKRBRIDGE_URL ||
-      "http://ibkr-bridge:3017"
+      getConfigString(["IBKR_BRIDGE_URL", "IBKRBRIDGE_URL"], "http://ibkr-bridge:3017")
     ).replace(/\/+$/, "");
     try {
       const resp = await axios.get(`${bridgeUrl}/mirror/iserver/marketdata/snapshot`, {

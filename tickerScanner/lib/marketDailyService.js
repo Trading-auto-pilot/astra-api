@@ -1,6 +1,7 @@
 "use strict";
 
 const axios = require("axios");
+const { getConfigString, getConfigInt } = require("../../shared/loadSettings");
 const { reportJobDone } = require("../../shared/jobReporter");
 const { safeNum } = require("./scoreDecorator");
 
@@ -53,7 +54,7 @@ const normalizeMarketDate = (value) => {
   return str.length >= 10 ? str.slice(0, 10) : str;
 };
 
-const getFmpApiKey = () => process.env.FMP_API_KEY || process.env.FMP_KEY || null;
+const getFmpApiKey = () => getConfigString(["FMP_API_KEY", "FMP_KEY"], "") || null;
 
 /**
  * createMarketDailyService - factory for market daily job management
@@ -121,8 +122,8 @@ function createMarketDailyService({ logger, dbmanagerUrl, datahubAxios }) {
    * @param {string} jobKey
    * @param {object} ctx - { bus, redisStatusChannel, redisTelemetryChannel }
    */
-  const runJob = async (jobId, jobKey = "manual", { bus, redisStatusChannel, redisTelemetryChannel }) => {
-    logger.info(`${fn} update-market-daily start job=${jobId} jobKey=${jobKey}`);
+  const runJob = async (jobId, jobKey = "manual", { bus, redisStatusChannel, redisTelemetryChannel, date = null }) => {
+    logger.info(`${fn} update-market-daily start job=${jobId} jobKey=${jobKey}${date ? ` date=${date}` : ""}`);
     const startedAt = new Date().toISOString();
     const job = updateJob(jobId, { status: "running", startedAt });
     if (!job) return;
@@ -155,7 +156,7 @@ function createMarketDailyService({ logger, dbmanagerUrl, datahubAxios }) {
       updateJob(jobId, { totalSymbols: symbols.length });
       logger.info(`${fn} job=${jobId} symbols=${symbols.length}`);
 
-      const concurrencyRaw = Number(process.env.MARKET_DAILY_CONCURRENCY);
+      const concurrencyRaw = getConfigInt("MARKET_DAILY_CONCURRENCY", 5);
       const concurrency = Number.isFinite(concurrencyRaw) && concurrencyRaw > 0 ? Math.floor(concurrencyRaw) : 5;
       const FMP_SPACING_BASE = 200;
       const FMP_SPACING_MAX = 2000;
@@ -209,7 +210,8 @@ function createMarketDailyService({ logger, dbmanagerUrl, datahubAxios }) {
       const processSymbol = async (sym) => {
         const cur = marketDailyJobs.get(jobId);
         if (!cur || cur.cancel) return;
-        const fmpUrl = `https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(sym)}&apikey=${encodeURIComponent(apiKey)}`;
+        const fmpDateParams = date ? `&from=${encodeURIComponent(date)}&to=${encodeURIComponent(date)}` : "";
+        const fmpUrl = `https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(sym)}&apikey=${encodeURIComponent(apiKey)}${fmpDateParams}`;
         let data = [];
         const fmpStart = Date.now();
         const maxRetries = 3;

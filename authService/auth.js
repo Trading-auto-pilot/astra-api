@@ -8,14 +8,18 @@ const createAuthModule = require("./modules/auth");
 const buildAuthorization = require("./modules/authorization");
 const createUserClient = require("./modules/user");
 const createApiKeysClient = require("./modules/apiKeys");
+const { getConfigString, getConfigInt } = require("../shared/loadSettings");
 
 function buildAuthRouter({ logger, moduleName = "auth", getService = null }) {
   const router = express.Router();
 
-  const JWT_SECRET = process.env.JWT_SECRET
-  const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
+  const JWT_SECRET = getConfigString("JWT_SECRET", "");
+  const JWT_EXPIRES_IN = getConfigString("JWT_EXPIRES_IN", "1h");
   // Support both DATAHUB_URL (preferred) and DBMANAGER_URL (backward compat)
-  const DBMANAGER_URL = process.env.DATAHUB_URL || process.env.DBMANAGER_URL || "http://datahub:3000";
+  const DBMANAGER_URL = getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], "http://datahub:3000");
+  const MICROSERVICE_NAME = getConfigString("MICROSERVICE_NAME", "authService");
+  const ENV_NAME = getConfigString(["ENV", "APP_ENV"], "DEV");
+  const BCRYPT_ROUNDS = getConfigInt("BCRYPT_ROUNDS", 12);
 
   if (!JWT_SECRET) {
     throw new Error("JWT_SECRET non impostata! Configura la variabile d'ambiente.");
@@ -80,8 +84,8 @@ function buildAuthRouter({ logger, moduleName = "auth", getService = null }) {
     return false;
   }
 
-  const serviceName = process.env.MICROSERVICE_NAME || "authService";
-  const envName = process.env.ENV || process.env.APP_ENV || "DEV";
+  const serviceName = MICROSERVICE_NAME;
+  const envName = ENV_NAME;
 
   async function publishEvent(eventId, payload = {}, severity = "info", correlationId = null) {
     try {
@@ -151,7 +155,7 @@ function buildAuthRouter({ logger, moduleName = "auth", getService = null }) {
 
         let payload;
         try {
-          payload = jwt.verify(token, process.env.JWT_SECRET);
+          payload = jwt.verify(token, JWT_SECRET);
         } catch (err) {
           logger.warning(
             `[${moduleName}] [/auth/validate] JWT non valido: ${err.message}`
@@ -379,7 +383,7 @@ function buildAuthRouter({ logger, moduleName = "auth", getService = null }) {
 
     let rawPayload;
     try {
-      rawPayload = jwt.verify(token, process.env.JWT_SECRET);
+      rawPayload = jwt.verify(token, JWT_SECRET);
     } catch (err) {
       logger.warning(
         `[${moduleName}] [/admin/me] JWT non valido: ${err.message}`
@@ -512,7 +516,7 @@ router.post("/admin/user", async (req, res) => {
 
     // se arriva la password in chiaro → la trasformiamo in hash
     if (password) {
-      const bcryptRounds = Number(process.env.BCRYPT_ROUNDS || 12);
+      const bcryptRounds = BCRYPT_ROUNDS;
       finalPasswordHash = await require("bcryptjs").hash(
         password,
         bcryptRounds
@@ -567,7 +571,7 @@ router.post("/admin/user", async (req, res) => {
       let finalPasswordHash = password_hash;
 
       if (password) {
-        const bcryptRounds = Number(process.env.BCRYPT_ROUNDS || 12);
+        const bcryptRounds = BCRYPT_ROUNDS;
         finalPasswordHash = await bcryptjs.hash(password, bcryptRounds);
       }
 
@@ -853,7 +857,7 @@ router.post("/admin/user", async (req, res) => {
       const tempPassword = require("crypto")
         .randomBytes(24)
         .toString("hex");
-      const bcryptRounds = Number(process.env.BCRYPT_ROUNDS || 12);
+      const bcryptRounds = BCRYPT_ROUNDS;
       const password_hash = await bcryptjs.hash(tempPassword, bcryptRounds);
 
       const userPayload = {

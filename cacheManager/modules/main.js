@@ -6,12 +6,22 @@ const { randomUUID } = require("crypto");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const createLogger = require("../../shared/logger");
-const { initializeSettings, getSetting, reloadSettings, getAllSettings, setSetting } = require("../../shared/loadSettings");
+const {
+  initializeSettings,
+  getSetting,
+  reloadSettings,
+  getAllSettings,
+  setSetting,
+  getConfigString,
+  getConfigBoolean,
+  getConfigNumber,
+} = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
 const { publishEventsManifest } = require("../../shared/eventsManifestRegistry");
 const { asBool, asInt } = require("../../shared/helpers");
 const { AlpacaProvider } = require("./alpaca");
 const { FmpProvider } = require("./fmp");
+const { YahooProvider } = require("./yahoo");
 const axios = require("axios");
 const fs = require("fs");
 const fsp = require("fs/promises");
@@ -32,29 +42,28 @@ class CacheManager {
 
     //     // Auto-generated service URLs from doc/ports.json
     // Support both DATAHUB_URL (preferred) and DBMANAGER_URL (backward compat)
-    this.dbmanagerUrl = process.env.DATAHUB_URL || process.env.DBMANAGER_URL || "http://datahub:3000";
-    this.marketsimulatorUrl = process.env.MARKETSIMULATOR_URL || "http://marketsimulator:3003";
-    this.ordersimulatorUrl = process.env.ORDERSIMULATOR_URL || "http://ordersimulator:3004";
-    this.orderlistnerUrl = process.env.ORDERLISTNER_URL || "http://orderlistner:3005";
-    this.cachemanagerUrl = process.env.CACHEMANAGER_URL || "http://cachemanager:3006";
-    this.strategyUtilsUrl = process.env.STRATEGYUTILS_URL || "http://strategyUtils:3007";
-    this.alertingserviceUrl = process.env.ALERTINGSERVICE_URL || "http://alertingservice:3008";
-    this.capitalmanagerUrl = process.env.CAPITALMANAGER_URL || "http://capitalmanager:3009";
-    this.smaUrl = process.env.SMA_URL || "http://sma:3010";
-    this.sltpUrl = process.env.SLTP_URL || "http://sltp:3011";
-    this.livemarketlistnerUrl = process.env.LIVEMARKETLISTNER_URL || "http://livemarketlistner:3012";
-    this.tickerscannerUrl = process.env.TICKERSCANNER_URL || "http://tickerscanner:3013";
+    this.dbmanagerUrl = getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], "http://datahub:3000");
+    this.marketsimulatorUrl = getConfigString("MARKETSIMULATOR_URL", "http://marketsimulator:3003");
+    this.ordersimulatorUrl = getConfigString("ORDERSIMULATOR_URL", "http://ordersimulator:3004");
+    this.orderlistnerUrl = getConfigString("ORDERLISTNER_URL", "http://orderlistner:3005");
+    this.cachemanagerUrl = getConfigString("CACHEMANAGER_URL", "http://cachemanager:3006");
+    this.strategyUtilsUrl = getConfigString("STRATEGYUTILS_URL", "http://strategyUtils:3007");
+    this.alertingserviceUrl = getConfigString("ALERTINGSERVICE_URL", "http://alertingservice:3008");
+    this.capitalmanagerUrl = getConfigString("CAPITALMANAGER_URL", "http://capitalmanager:3009");
+    this.smaUrl = getConfigString("SMA_URL", "http://sma:3010");
+    this.sltpUrl = getConfigString("SLTP_URL", "http://sltp:3011");
+    this.livemarketlistnerUrl = getConfigString("LIVEMARKETLISTNER_URL", "http://livemarketlistner:3012");
+    this.tickerscannerUrl = getConfigString("TICKERSCANNER_URL", "http://tickerscanner:3013");
     this.ibkrbridgeUrl =
-      process.env.IBKRBRIDGE_URL ||
-      process.env.IBKR_BRIDGE_URL ||
+      getConfigString(["IBKRBRIDGE_URL", "IBKR_BRIDGE_URL"], "") ||
       "http://ibkr-bridge:3017";
 
-    this.cacheBasePath="./cache";
+    this.cacheBasePath = process.env.CACHE_BASE_PATH || "./cache";
 
     // =====================================================
     // Ambiente
     // =====================================================
-    this.env = process.env.ENV || "DEV";
+    this.env = getConfigString(["ENV", "APP_ENV"], "DEV");
 
     // =====================================================
     // Canali Redis standard
@@ -95,7 +104,7 @@ class CacheManager {
       MICROSERVICE,
       MODULE_NAME,
       MODULE_VERSION,
-      process.env.LOG_LEVEL || "info",
+      getConfigString("LOG_LEVEL", "info"),
       {
         bus: null,
         busTopicPrefix: this.env,
@@ -110,26 +119,32 @@ class CacheManager {
     this.metrics = [];
     this._l3ThresholdAlertActive = false;
 
-    this.providerType = (process.env.HISTORICAL_PROVIDER || "FMP").toUpperCase();
+    this.providerType = getConfigString("HISTORICAL_PROVIDER", "FMP").toUpperCase();
 
-    const hasAlpacaCreds = Boolean(process.env.APCA_API_KEY_ID && process.env.APCA_API_SECRET_KEY);
-    const hasFmpKey = Boolean(process.env.FMP_API_KEY);
+    const alpacaApiKey = getConfigString(["APCA_API_KEY_ID", "APCA-API-KEY-ID"], "");
+    const alpacaApiSecret = getConfigString(["APCA_API_SECRET_KEY", "APCA-API-SECRET-KEY"], "");
+    const fmpApiKey = getConfigString("FMP_API_KEY", "");
+    const hasAlpacaCreds = Boolean(alpacaApiKey && alpacaApiSecret);
+    const hasFmpKey = Boolean(fmpApiKey);
 
     if (hasAlpacaCreds) {
       this.alpaca = new AlpacaProvider({
-        apiKey: process.env.APCA_API_KEY_ID,
-        apiSecret: process.env.APCA_API_SECRET_KEY,
-        feed: process.env.ALPACA_MARKET_FEED || "sip",
+        apiKey: alpacaApiKey,
+        apiSecret: alpacaApiSecret,
+        feed: getConfigString("ALPACA_MARKET_FEED", "sip"),
         logger: this.logger,
       });
     }
 
     if (hasFmpKey) {
       this.fmp = new FmpProvider({
-        apiKey: process.env.FMP_API_KEY,
+        apiKey: fmpApiKey,
         logger: this.logger,
       });
     }
+
+    // Yahoo non richiede API key
+    this.yahoo = new YahooProvider({ logger: this.logger });
 
     if (this.providerType === "IBKR") {
       this.logger.info("[CacheManager] Provider storico: IBKR");
@@ -332,7 +347,7 @@ class CacheManager {
   async _checkL3UsageThreshold() {
     if (!this.bus?.pub || !this.bus.pub.isOpen) return;
 
-    const rawThreshold = Number(process.env.L3_USAGE_ALERT_PERCENT ?? 95);
+    const rawThreshold = getConfigNumber("L3_USAGE_ALERT_PERCENT", 95);
     const thresholdPct =
       Number.isFinite(rawThreshold) && rawThreshold > 0 && rawThreshold <= 100
         ? rawThreshold
@@ -496,9 +511,9 @@ class CacheManager {
   getLogLevel() {
     if (typeof this.logger.getLevel === "function") {
       const lvl = this.logger.getLevel();
-      return lvl || process.env.LOG_LEVEL;
+      return lvl || getConfigString("LOG_LEVEL", "info");
     }
-    return process.env.LOG_LEVEL;
+    return getConfigString("LOG_LEVEL", "info");
   }
 
   setLogLevel(level) {
@@ -507,7 +522,7 @@ class CacheManager {
       return { level };
     }
     this.logger.warning("[setLogLevel] Not supported by this logger | ", { level });
-    return { level: process.env.LOG_LEVEL || null };
+    return { level: getConfigString("LOG_LEVEL", "") || null };
   }
 
   getAllSettings() {
@@ -529,6 +544,14 @@ class CacheManager {
   // =========================================================
 
   async getCandles(symbol, startDate, endDate, tf = "1Day", exchange) {
+    const provider = this.providerType || "ALPACA";
+    const rawExchange = (exchange || getConfigString("DEFAULT_EXCHANGE", "") || "").toUpperCase().trim() || undefined;
+    // cacheExchange: suffisso univoco del file L2 (SIP per tutti i mercati US, exchange reale per non-US)
+    const cacheExchange = this._normalizeCacheExchange(rawExchange, provider);
+    // fetchExchange: passato al provider per IBKR (conid) e FMP (symbol transform).
+    // Alpaca è US-only con feed SIP, non ha bisogno di exchange.
+    const fetchExchange = provider !== "ALPACA" ? rawExchange : undefined;
+
     const tfCache = this._normalizeTfCache(tf);
     const startTs = new Date(startDate).getTime();
     const endTs = new Date(endDate).getTime();
@@ -541,13 +564,13 @@ class CacheManager {
       endDate = tmp;
     }
     this.logger.info(
-      `[getCandles] Richiesta candele ${symbol} ${startDate} → ${endDate} tf=${tfCache}`
+      `[getCandles] Richiesta candele ${symbol} ${startDate} → ${endDate} tf=${tfCache} cacheExchange=${cacheExchange || "-"} provider=${provider}`
     );
     const monthKeys = this._listMonthKeysBetween(startDate, endDate);
     const missingMonths = [];
 
     for (const monthKey of monthKeys) {
-      const ensured = this._ensureCanonicalL2MonthFile(symbol, tfCache, monthKey);
+      const ensured = this._ensureCanonicalL2MonthFile(symbol, tfCache, monthKey, cacheExchange);
       if (!ensured) missingMonths.push(monthKey);
     }
 
@@ -561,42 +584,53 @@ class CacheManager {
       );
     }
 
-    // Missing month(s): fetch full month and mark file as complete.
-    for (const monthKey of missingMonths) {
-      const { fromIso, toIso } = this._monthBoundsUtc(monthKey);
+    // Missing month(s): una sola chiamata al provider per l'intero range mancante,
+    // poi split per mese → riduce le chiamate da N a 1 (evita 401/rate-limit su IBKR).
+    if (missingMonths.length > 0) {
+      const { fromIso: batchFrom } = this._monthBoundsUtc(missingMonths[0]);
+      const { toIso: batchTo }     = this._monthBoundsUtc(missingMonths[missingMonths.length - 1]);
+
       this.logger.warning(
-        `[getCandles] File mese mancante ${monthKey}_${tfCache}.json → fetch completo ${fromIso}→${toIso}`
+        `[getCandles] ${missingMonths.length} mesi mancanti per ${symbol} tf=${tfCache} → fetch batch ${batchFrom}→${batchTo} (${missingMonths.join(", ")})`
       );
+
+      let batchCandles = null;
       try {
-        const providerCandles = await this._retrieveFromProvider(
+        batchCandles = await this._retrieveFromProvider(
           symbol,
-          fromIso,
-          toIso,
+          batchFrom,
+          batchTo,
           tfCache,
-          exchange
+          fetchExchange
         );
-        const monthCandles = this._filterCandlesByRange(providerCandles, fromIso, toIso);
-        await this._writeL2MonthFile(symbol, tfCache, monthKey, monthCandles);
       } catch (err) {
-        // Per mesi correnti o futuri i provider possono fallire legittimamente
-        // (mercato non ancora aperto, dati non ancora disponibili).
-        // In questo caso serviamo i dati storici dalla cache senza propagare l'errore.
+        // Se il batch fallisce, determina se ci sono mesi passati (errore reale)
+        // o solo mese corrente/futuro (tollerato).
         const now = new Date();
-        const [ky, km] = monthKey.split("-").map(Number);
-        const monthStart = new Date(Date.UTC(ky, km - 1, 1));
         const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-        if (monthStart >= currentMonthStart) {
-          this.logger.warning(
-            `[getCandles] Provider fallito per mese corrente/futuro ${monthKey} ${symbol} tf=${tfCache} — nessun dato disponibile, uso cache storica: ${err.message}`
-          );
-        } else {
-          // Mese passato: errore reale, propaghiamo
-          throw err;
+        const hasPastMonth = missingMonths.some((mk) => {
+          const [ky, km] = mk.split("-").map(Number);
+          return new Date(Date.UTC(ky, km - 1, 1)) < currentMonthStart;
+        });
+        if (hasPastMonth) {
+          throw err; // errore reale su mesi storici
+        }
+        this.logger.warning(
+          `[getCandles] Provider fallito per mese corrente/futuro ${symbol} tf=${tfCache} — nessun dato disponibile, uso cache storica: ${err.message}`
+        );
+      }
+
+      // Split per mese e scrittura file individuali
+      if (batchCandles && batchCandles.length > 0) {
+        for (const monthKey of missingMonths) {
+          const { fromIso, toIso } = this._monthBoundsUtc(monthKey);
+          const monthCandles = this._filterCandlesByRange(batchCandles, fromIso, toIso);
+          await this._writeL2MonthFile(symbol, tfCache, monthKey, monthCandles, cacheExchange);
         }
       }
     }
 
-    const collected = this._readL2ByMonthKeys(symbol, tfCache, monthKeys);
+    const collected = this._readL2ByMonthKeys(symbol, tfCache, monthKeys, cacheExchange);
     const filtered = this._filterCandlesByRange(collected, startDate, endDate);
     await this._writeL3(symbol, tfCache, filtered);
 
@@ -655,8 +689,24 @@ class CacheManager {
     return { fromIso: from.toISOString(), toIso: to.toISOString() };
   }
 
-  _l2MonthFilePath(symbol, tfCache, monthKey) {
-    return path.join(this.cacheBasePath || "cache", symbol, `${monthKey}_${tfCache}.json`);
+  /**
+   * Normalizza l'exchange in un suffisso univoco per la cache L2.
+   * - Alpaca è US-only → sempre "SIP"
+   * - Exchange US noto (NYSE, NASDAQ, ARCA…) → "SIP"
+   * - Exchange non-US (LSE, XETRA…) → usato as-is in uppercase
+   * - Nessun exchange + provider non-IBKR → "SIP" (assunzione mercato US)
+   * - Nessun exchange + IBKR → undefined (nessun suffisso, comportamento legacy)
+   */
+  _normalizeCacheExchange(rawExchange, provider) {
+    if (provider === "ALPACA") return "SIP";
+    if (!rawExchange) return provider === "IBKR" ? undefined : "SIP";
+    const ex = String(rawExchange).toUpperCase().trim();
+    return CacheManager.US_EXCHANGES.has(ex) ? "SIP" : ex;
+  }
+
+  _l2MonthFilePath(symbol, tfCache, monthKey, exchange) {
+    const exSuffix = exchange ? `_${String(exchange).toUpperCase()}` : "";
+    return path.join(this.cacheBasePath || "cache", symbol, `${monthKey}_${tfCache}${exSuffix}.json`);
   }
 
   _tfFileAliases(tfCache) {
@@ -672,12 +722,13 @@ class CacheManager {
     return Array.from(aliases);
   }
 
-  _ensureCanonicalL2MonthFile(symbol, tfCache, monthKey) {
-    const canonical = this._l2MonthFilePath(symbol, tfCache, monthKey);
+  _ensureCanonicalL2MonthFile(symbol, tfCache, monthKey, exchange) {
+    const canonical = this._l2MonthFilePath(symbol, tfCache, monthKey, exchange);
     if (fs.existsSync(canonical)) return canonical;
     const dir = path.join(this.cacheBasePath || "cache", symbol);
+    const exSuffix = exchange ? `_${String(exchange).toUpperCase()}` : "";
     for (const alias of this._tfFileAliases(tfCache)) {
-      const p = path.join(dir, `${monthKey}_${alias}.json`);
+      const p = path.join(dir, `${monthKey}_${alias}${exSuffix}.json`);
       if (fs.existsSync(p)) {
         try {
           fs.renameSync(p, canonical);
@@ -692,10 +743,10 @@ class CacheManager {
     return null;
   }
 
-  _readL2ByMonthKeys(symbol, tfCache, monthKeys = []) {
+  _readL2ByMonthKeys(symbol, tfCache, monthKeys = [], exchange) {
     const out = [];
     for (const monthKey of monthKeys) {
-      const file = this._ensureCanonicalL2MonthFile(symbol, tfCache, monthKey);
+      const file = this._ensureCanonicalL2MonthFile(symbol, tfCache, monthKey, exchange);
       if (!file || !fs.existsSync(file)) continue;
       try {
         const json = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -714,16 +765,16 @@ class CacheManager {
       .sort((a, b) => new Date(a.t) - new Date(b.t));
   }
 
-  async _writeL2MonthFile(symbol, tfCache, monthKey, candles = []) {
+  async _writeL2MonthFile(symbol, tfCache, monthKey, candles = [], exchange) {
     try {
       const dir = path.join(this.cacheBasePath || "cache", symbol);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      const file = this._l2MonthFilePath(symbol, tfCache, monthKey);
+      const file = this._l2MonthFilePath(symbol, tfCache, monthKey, exchange);
       const normalized = (Array.isArray(candles) ? candles : [])
         .map((c) => {
           const ts = this._toTimestampMs(c?.t ?? c?.timestamp ?? c?.time ?? c?.date);
           if (!Number.isFinite(ts)) return null;
-          return { ...c, t: new Date(ts).toISOString() };
+          return { ...c, t: new Date(ts).toISOString(), ...(exchange ? { exchange } : {}) };
         })
         .filter(Boolean)
         .sort((a, b) => new Date(a.t) - new Date(b.t));
@@ -899,13 +950,26 @@ class CacheManager {
   // Mappa asset_class → secType IBKR
   static SEC_TYPE_MAP = { STOCK: "STK", ETF: "ETF", METAL: "CMDTY", FUTURE: "FUT" };
 
+  // US exchange codes: tutti i venue del mercato consolidato SIP.
+  // Qualsiasi di questi exchange viene normalizzato a "SIP" nella cache key.
+  static US_EXCHANGES = new Set([
+    "NYSE", "NASDAQ", "ARCA", "BATS", "IEX", "CBOE", "AMEX",
+    "EDGX", "EDGA", "MEMX", "LTSE", "MIAX", "BOX", "PHLX",
+  ]);
+
+  // Provider che servono esclusivamente il mercato US (feed SIP consolidato).
+  // Non devono mai essere usati come fallback per ticker su exchange non-US,
+  // perché restituirebbero il ticker US omonimo invece dello strumento corretto.
+  static US_ONLY_PROVIDERS = new Set(["ALPACA", "POLYGON"]);
+
   async _ibkrResolveConid(symbol, exchange) {
     const url = `${this.ibkrbridgeUrl}/mirror/iserver/secdef/search`;
-    const preferredExchange = exchange || process.env.IBKR_EXCHANGE || "NASDAQ";
+    const preferredExchange = exchange || getConfigString("IBKR_EXCHANGE", "NASDAQ");
     const assetClass = await this._resolveAssetClass(symbol);
     const secType = CacheManager.SEC_TYPE_MAP[assetClass] || "STK";
+    const debugParams = new URLSearchParams({ symbol, name: "true", secType, ...(preferredExchange ? { exchange: preferredExchange } : {}) });
     this.logger.trace?.(
-      `[L1][IBKR] Resolve conid URL=${url} symbol=${symbol} exchange=${preferredExchange || "-"} asset_class=${assetClass} secType=${secType}`
+      `[L1][IBKR] Resolve conid ${url}?${debugParams.toString()} (asset_class=${assetClass})`
     );
     const resp = await axios.get(url, {
       params: {
@@ -929,16 +993,17 @@ class CacheManager {
   async _ibkrFetchHistory({ conid, startDate, endDate, bar, symbol }) {
     const url = `${this.ibkrbridgeUrl}/mirror/iserver/marketdata/history`;
     const period = this._buildIbkrPeriod(startDate, endDate);
+    // IBKR interpreta "period" come finestra a ritroso dalla data corrente (o da startTime).
+    // Senza startTime restituirebbe i 31 giorni più recenti, non quelli richiesti.
+    const startDt = new Date(startDate);
+    const pad = (n) => String(n).padStart(2, "0");
+    const ibkrStartTime = `${startDt.getUTCFullYear()}${pad(startDt.getUTCMonth() + 1)}${pad(startDt.getUTCDate())}-00:00:00`;
+    const ibkrHistParams = { conid, bar, period, startTime: ibkrStartTime, outsideRth: true };
     this.logger.trace?.(
-      `[L1][IBKR] History URL=${url} conid=${conid} bar=${bar} period=${period} symbol=${symbol}`
+      `[IBKR] → GET ${url}?${new URLSearchParams(Object.entries(ibkrHistParams).map(([k, v]) => [k, String(v)])).toString()} (symbol=${symbol})`
     );
     const resp = await axios.get(url, {
-      params: {
-        conid,
-        bar,
-        period,
-        outsideRth: true,
-      },
+      params: ibkrHistParams,
       timeout: 12000,
     });
 
@@ -1541,8 +1606,9 @@ class CacheManager {
     const tfFmp = this._mapTfFmp(tf);
     const tfIbkr = this._mapTfIbkr(tf);
 
+    const chainLabel = provider === "AUTO" ? "IBKR→YAHOO→FMP" : provider;
     this.logger.info(
-      `[L1] Recupero da provider ${provider} per ${symbol} ${startDate}→${endDate} tf=${tf}`
+      `[L1] Recupero candele ${symbol} ${startDate}→${endDate} tf=${tf} (provider=${provider}, chain=${chainLabel})`
     );
 
     try {
@@ -1586,6 +1652,24 @@ class CacheManager {
           return tagged;
         }
 
+        case "YAHOO": {
+          const bars = await this.yahoo.fetchDailyBars({
+            symbol,
+            exchange,
+            start: startDate,
+            end: endDate,
+            timeframe: tfFmp, // stesso formato di FMP: 1day, 1week, ecc.
+          });
+          if (!bars || bars.length === 0) {
+            throw new Error(`[YAHOO_EMPTY] 0 candele restituite per ${symbol} nel range richiesto`);
+          }
+          const tagged = tagBars(bars, "YAHOO", fallbackFrom);
+          this.L1Hit = (this.L1Hit || 0) + 1;
+          this.lastProviderCall = new Date().toISOString();
+          this.logger.info(`[L1][YAHOO] Restituite ${bars.length} candele per ${symbol}`);
+          return tagged;
+        }
+
         case "FMP": {
           if (!this.fmp) {
             throw new Error(
@@ -1595,6 +1679,7 @@ class CacheManager {
 
           const bars = await this.fmp.fetchDailyBars({
             symbol,
+            exchange,
             start: startDate,
             end: endDate,
             timeframe: tfFmp,
@@ -1634,53 +1719,63 @@ class CacheManager {
           return tagged;
         }
 
+        case "POLYGON": {
+          if (!this.polygon) {
+            throw new Error("Polygon provider non inizializzato (this.polygon undefined)");
+          }
+          const bars = await this.polygon.fetchDailyBars({
+            symbol,
+            start: startDate,
+            end: endDate,
+            timeframe: tf,
+          });
+          if (!bars || bars.length === 0) {
+            throw new Error(`[POLYGON_EMPTY] 0 candele restituite per ${symbol} nel range richiesto`);
+          }
+          const tagged = tagBars(bars, "POLYGON", fallbackFrom);
+          this.L1Hit = (this.L1Hit || 0) + 1;
+          this.lastProviderCall = new Date().toISOString();
+          this.logger.info(`[L1][POLYGON] Restituite ${bars.length} candele per ${symbol}`);
+          return tagged;
+        }
+
         default:
           throw new Error(`Provider storico non valido: ${providerKey}`);
         }
       };
 
-      if (provider === "IBKR") {
-        try {
-          return await fetchFrom("IBKR");
-        } catch (err) {
+      // Priorità fissa indipendente da providerType:
+      //   1. IBKR   — pagato, illimitato, supporta tutti gli exchange
+      //   2. US provider configurato (ALPACA / POLYGON) — solo mercati US/SIP
+      //   3. FMP    — sempre ultimo (cap mensile sulle API calls)
+      //
+      // I provider US-only (ALPACA, POLYGON) vengono saltati se l'exchange è non-US.
+      const isNonUsExchange = exchange && !CacheManager.US_EXCHANGES.has(String(exchange).toUpperCase());
+
+      // AUTO → catena completa in ordine di priorità.
+      // Provider specifico → solo quel provider, nessun fallback automatico.
+      const priorityChain = provider === "AUTO"
+        ? ["IBKR", "YAHOO", "FMP"]
+        : [provider];
+
+      let lastError;
+      for (const providerKey of priorityChain) {
+        if (isNonUsExchange && CacheManager.US_ONLY_PROVIDERS.has(providerKey)) {
           this.logger.warning(
-            `[L1] IBKR fallito per ${symbol}, provo FMP`
+            `[L1] ${providerKey} saltato per ${symbol} — provider US-only, exchange non-US "${exchange}"`
           );
-          try {
-            return await fetchFrom("FMP", "IBKR");
-          } catch (err2) {
-            this.logger.warning(
-              `[L1] FMP fallito per ${symbol}, provo ALPACA`
-            );
-            return await fetchFrom("ALPACA", "IBKR");
-          }
+          lastError = new Error(`${providerKey} non supporta exchange non-US "${exchange}"`);
+          continue;
         }
-      }
-
-      if (provider === "ALPACA") {
         try {
-          return await fetchFrom("ALPACA");
+          const prevProvider = priorityChain[priorityChain.indexOf(providerKey) - 1] ?? null;
+          return await fetchFrom(providerKey, prevProvider);
         } catch (err) {
-          this.logger.warning(`[L1] ALPACA fallito per ${symbol}, provo FMP`);
-          return await fetchFrom("FMP", "ALPACA");
+          this.logger.warning(`[L1] ${providerKey} fallito per ${symbol}: ${err.message || String(err)}`);
+          lastError = err;
         }
       }
-
-      if (provider === "FMP") {
-        try {
-          return await fetchFrom("FMP");
-        } catch (err) {
-          this.logger.warning(`[L1] FMP fallito per ${symbol}, provo IBKR`);
-          try {
-            return await fetchFrom("IBKR", "FMP");
-          } catch (err2) {
-            this.logger.warning(`[L1] IBKR fallito per ${symbol}, provo ALPACA`);
-            return await fetchFrom("ALPACA", "FMP");
-          }
-        }
-      }
-
-      return await fetchFrom(provider);
+      throw lastError || new Error(`[L1] Nessun provider disponibile per ${symbol}`);
     } catch (e) {
       this.logger.error(
         `[L1] Errore recupero candele da provider ${provider} per ${symbol}: ${

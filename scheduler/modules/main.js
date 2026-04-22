@@ -5,7 +5,7 @@ const path = require("path");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 const fs = require("fs").promises;
 const createLogger = require("../../shared/logger");
-const { initializeSettings, getSetting, reloadSettings, getAllSettings, setSetting } = require("../../shared/loadSettings");
+const { initializeSettings, getSetting, reloadSettings, getAllSettings, setSetting, getConfigString, getConfigInt } = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
 const { publishEventsManifest } = require("../../shared/eventsManifestRegistry");
 const { asBool, asInt } = require("../../shared/helpers");
@@ -20,40 +20,9 @@ const MODULE_VERSION  = "0.1.0";    // e.g. "0.1.0"
 
 class Scheduler {
   constructor() {
-    // =====================================================
-    // URL DI TUTTI I MICROSERVIZI STANDARD DEL SISTEMA
-    // =====================================================
-
-    //     // Auto-generated service URLs from doc/ports.json
-    // Support both DATAHUB_URL (preferred) and DBMANAGER_URL (backward compat)
-    this.dbmanagerUrl = process.env.DATAHUB_URL || process.env.DBMANAGER_URL || "http://datahub:3000";
-    this.marketsimulatorUrl = process.env.MARKETSIMULATOR_URL || "http://marketsimulator:3003";
-    this.ordersimulatorUrl = process.env.ORDERSIMULATOR_URL || "http://ordersimulator:3004";
-    this.orderlistnerUrl = process.env.ORDERLISTNER_URL || "http://orderlistner:3005";
-    this.cachemanagerUrl = process.env.CACHEMANAGER_URL || "http://cachemanager:3006";
-    this.strategyUtilsUrl = process.env.STRATEGYUTILS_URL || "http://strategyUtils:3007";
-    this.alertingserviceUrl = process.env.ALERTINGSERVICE_URL || "http://alertingservice:3008";
-    this.capitalmanagerUrl = process.env.CAPITALMANAGER_URL || "http://capitalmanager:3009";
-    this.smaUrl = process.env.SMA_URL || "http://sma:3010";
-    this.sltpUrl = process.env.SLTP_URL || "http://sltp:3011";
-    this.livemarketlistnerUrl = process.env.LIVEMARKETLISTNER_URL || "http://livemarketlistner:3012";
-    this.tickerscannerUrl = process.env.TICKERSCANNER_URL || "http://tickerscanner:3013";
-    this.schedulerUrl = process.env.SCHEDULER_URL || "http://scheduler:3014";
-
-
-    // =====================================================
-    // Ambiente
-    // =====================================================
-    this.env = process.env.ENV || "DEV";
-
-    // =====================================================
-    // Canali Redis standard
-    // =====================================================
-    this.redisTelemetyChannel = `${this.env}.${MICROSERVICE}.telemetry`;
-    this.redisStatusChannel   = `${this.env}.${MICROSERVICE}.status`;
-    this.redisDataChannel     = `${this.env}.${MICROSERVICE}.data`;
-    this.redisLogsChannel     = `${this.env}.${MICROSERVICE}.logs`;
-    this.redisEventsChannel   = `${this.env}.${MICROSERVICE}.events`;
+    this.serviceName = getConfigString("MICROSERVICE_NAME", MICROSERVICE);
+    this.logLevel = getConfigString("LOG_LEVEL", "info");
+    this.applyRuntimeConfig();
 
     // Stato del modulo
     this._status       = "STARTING";
@@ -75,18 +44,19 @@ class Scheduler {
     // =====================================================
     this.bus = new RedisBus({
       channels: this.communicationChannels,
-      url : process.env.REDIS_URL,
+      url : getConfigString("REDIS_URL", ""),
       name: MICROSERVICE
     });
 
     // =====================================================
     // LOGGER
     // =====================================================
+    process.env.MICROSERVICE_NAME = this.serviceName;
     this.logger = createLogger(
       MICROSERVICE,
       MODULE_NAME,
       MODULE_VERSION,
-      process.env.LOG_LEVEL || "info",
+      this.logLevel,
       {
         bus: null,
         busTopicPrefix: this.env,
@@ -103,6 +73,32 @@ class Scheduler {
     // Scheduler core
     this.schedulerCore = null;
     this._initRetryTimer = null;
+  }
+
+  applyRuntimeConfig() {
+    this.dbmanagerUrl = getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], "http://datahub:3000");
+    this.marketsimulatorUrl = getConfigString("MARKETSIMULATOR_URL", "http://marketsimulator:3003");
+    this.ordersimulatorUrl = getConfigString("ORDERSIMULATOR_URL", "http://ordersimulator:3004");
+    this.orderlistnerUrl = getConfigString("ORDERLISTNER_URL", "http://orderlistner:3005");
+    this.cachemanagerUrl = getConfigString("CACHEMANAGER_URL", "http://cachemanager:3006");
+    this.strategyUtilsUrl = getConfigString("STRATEGYUTILS_URL", "http://strategyUtils:3007");
+    this.alertingserviceUrl = getConfigString(["ALERTINGSERVICE_URL", "ALERTINGMANAGER_URL"], "http://alertingservice:3008");
+    this.capitalmanagerUrl = getConfigString(["CAPITALMANAGER_URL", "CAPITAL_MANAGER_URL"], "http://capitalmanager:3009");
+    this.smaUrl = getConfigString("SMA_URL", "http://sma:3010");
+    this.sltpUrl = getConfigString("SLTP_URL", "http://sltp:3011");
+    this.livemarketlistnerUrl = getConfigString("LIVEMARKETLISTNER_URL", "http://livemarketlistner:3012");
+    this.tickerscannerUrl = getConfigString(["TICKERSCANNER_URL", "TICKERSCANNER"], "http://tickerscanner:3013");
+    this.schedulerUrl = getConfigString("SCHEDULER_URL", "http://scheduler:3014");
+    this.env = getConfigString(["ENV", "APP_ENV"], "DEV");
+    this.serviceName = getConfigString("MICROSERVICE_NAME", this.serviceName || MICROSERVICE);
+    this.logLevel = getConfigString("LOG_LEVEL", this.logLevel || "info");
+    this.redisTelemetyChannel = `${this.env}.${MICROSERVICE}.telemetry`;
+    this.redisStatusChannel   = `${this.env}.${MICROSERVICE}.status`;
+    this.redisDataChannel     = `${this.env}.${MICROSERVICE}.data`;
+    this.redisLogsChannel     = `${this.env}.${MICROSERVICE}.logs`;
+    this.redisEventsChannel   = `${this.env}.${MICROSERVICE}.events`;
+    process.env.MICROSERVICE_NAME = this.serviceName;
+    if (this.logger?.setLevel) this.logger.setLevel(this.logLevel);
   }
 
   // =========================================================
@@ -155,6 +151,7 @@ class Scheduler {
     }
 
     // 3) APPLY COMMON SETTINGS
+    this.applyRuntimeConfig();
     this.delayBetweenMessages = asInt(
       getSetting("PROCESS_DELAY_BETWEEN_MESSAGES"),
       500
@@ -179,7 +176,7 @@ class Scheduler {
 
   _scheduleInitRetry(reason) {
     if (this._initRetryTimer) return;
-    const delayMs = asInt(process.env.SCHEDULER_INIT_RETRY_MS, 10000);
+    const delayMs = getConfigInt("SCHEDULER_INIT_RETRY_MS", 10000);
     this.logger.warning(
       `[init] Retry scheduled in ${delayMs}ms${reason ? ` (${reason})` : ""}`
     );
@@ -313,9 +310,9 @@ class Scheduler {
   getLogLevel() {
     if (typeof this.logger.getLevel === "function") {
       const lvl = this.logger.getLevel();
-      return lvl || process.env.LOG_LEVEL;
+      return lvl || this.logLevel;
     }
-    return process.env.LOG_LEVEL;
+    return this.logLevel;
   }
 
   setLogLevel(level) {
@@ -324,7 +321,7 @@ class Scheduler {
       return { level };
     }
     this.logger.warning("[setLogLevel] Not supported by this logger", { level });
-    return { level: process.env.LOG_LEVEL || null };
+    return { level: this.logLevel || null };
   }
 
   getAllSettings() {

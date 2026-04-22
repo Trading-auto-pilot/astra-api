@@ -10,6 +10,7 @@ const createStatsModule = require("./modules/stats");
 const createHealModule  = require("./modules/heal");
 const createLogger = require("../shared/logger");
 const createStatusRouter = require("./status"); // router standard /status/*
+const { getConfigString } = require("../shared/loadSettings");
 
 //const statsModule = createStatsModule(cacheManager);
 
@@ -23,11 +24,11 @@ const MODULE_NAME    = "RESTServer";    // es. "RESTServer"
 let MODULE_VERSION = "0.1.0";      // es. "1.0.0"
 const DEFAULT_PORT   = 3006;                  // es. 3012 (numero)
 
-let logLevel = process.env.LOG_LEVEL || "info";
+let logLevel = getConfigString("LOG_LEVEL", "info");
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, logLevel);
 
 const app = express();
-app.use(express.json({ limit: process.env.BODY_LIMIT || "20mb" }));
+app.use(express.json({ limit: getConfigString("BODY_LIMIT", "20mb") }));
 let statsModule = null;
 
 // -------------------------------------------------------
@@ -60,7 +61,7 @@ app.use(
   })
 );
 
-const port = process.env.PORT || DEFAULT_PORT;
+const port = getConfigString("PORT", String(DEFAULT_PORT)) || DEFAULT_PORT;
 let serviceInstance;
 let healModule = null;
 
@@ -190,8 +191,7 @@ app.get("/Log", requireReady, async (req, res) => {
 
     const base =
       (serviceInstance && serviceInstance.dbmanagerUrl) ||
-      process.env.DATAHUB_URL ||
-      process.env.DBMANAGER_URL ||
+      getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], "") ||
       "http://datahub:3000";
 
     const search = new URLSearchParams(req.query || {}).toString();
@@ -350,7 +350,7 @@ app.put("/dbLogger/:status", async (req, res) => {
 // Provider storico (GET/PUT)
 app.get("/provider", (_req, res) => {
   try {
-    const current = serviceInstance?.providerType || process.env.HISTORICAL_PROVIDER || null;
+    const current = serviceInstance?.providerType || getConfigString("HISTORICAL_PROVIDER", "") || null;
     return res.json({ ok: true, provider: current });
   } catch (e) {
     logger.error(`[GET /provider] Error: ${e?.message || String(e)}`);
@@ -360,8 +360,8 @@ app.get("/provider", (_req, res) => {
 
 app.put("/provider/:provider", (req, res) => {
   const next = (req.params.provider || "").toUpperCase();
-  if (!next || !["FMP", "ALPACA", "IBKR"].includes(next)) {
-    return res.status(400).json({ ok: false, error: "Provider non valido. Usare FMP, ALPACA o IBKR." });
+  if (!next || !["AUTO", "FMP", "ALPACA", "POLYGON", "YAHOO", "IBKR"].includes(next)) {
+    return res.status(400).json({ ok: false, error: "Provider non valido. Usare AUTO, FMP, ALPACA, POLYGON, YAHOO o IBKR." });
   }
 
   if (!serviceInstance) {
@@ -374,9 +374,9 @@ app.put("/provider/:provider", (req, res) => {
       try {
         const { AlpacaProvider } = require("./modules/alpaca");
         serviceInstance.alpaca = new AlpacaProvider({
-          apiKey: process.env.APCA_API_KEY_ID,
-          apiSecret: process.env.APCA_API_SECRET_KEY,
-          feed: process.env.ALPACA_MARKET_FEED || "sip",
+          apiKey: getConfigString(["APCA_API_KEY_ID", "APCA-API-KEY-ID"], ""),
+          apiSecret: getConfigString(["APCA_API_SECRET_KEY", "APCA-API-SECRET-KEY"], ""),
+          feed: getConfigString("ALPACA_MARKET_FEED", "sip"),
           logger,
         });
       } catch (err) {
@@ -563,7 +563,7 @@ app.post("/l2/clear", requireReady, async (req, res) => {
 
 // Fetch paginata da datahub (max 1000 righe per request)
 const fetchAllPages = async (table, baseParams) => {
-  const base = (serviceInstance && serviceInstance.dbmanagerUrl) || process.env.DATAHUB_URL || "http://datahub:3000";
+  const base = (serviceInstance && serviceInstance.dbmanagerUrl) || getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], "http://datahub:3000");
   const headers = { "Content-Type": "application/json" };
   const PAGE = 1000;
   const all = [];

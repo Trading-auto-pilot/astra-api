@@ -37,9 +37,11 @@ async function publishSnapshot(bus, channel, ticker, candle) {
   const payload = candleToPayload(candle);
   if (!payload) return false;
 
+  const candleTs = candle?.t ? new Date(candle.t).getTime() : null;
   const message = {
     type: "marketData",
     ts: Date.now(),
+    candleTs: Number.isFinite(candleTs) ? candleTs : undefined,
     dataMode: "snapshot",
     ticker: String(ticker).toUpperCase(),
     payload,

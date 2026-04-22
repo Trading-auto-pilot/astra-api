@@ -1,15 +1,16 @@
 "use strict";
 
 const axios = require("axios");
+const { getConfigString } = require("../../shared/loadSettings");
 
 class TelegramClient {
   constructor({ logger }) {
     this.logger = logger;
-    this.token = process.env.TELEGRAM_TOKEN || "";
-    this.apiBase = process.env.TELEGRAM_API_BASE || "https://api.telegram.org";
+    this.token = getConfigString("TELEGRAM_TOKEN", "");
+    this.apiBase = getConfigString("TELEGRAM_API_BASE", "https://api.telegram.org");
     this.defaultChatId =
-      process.env.ALERTING_DEFAULT_TELEGRAM_CHAT_ID || process.env.TELEGRAM_CHAT_ID || "";
-    this.defaultParseMode = process.env.TELEGRAM_PARSE_MODE || "";
+      getConfigString(["ALERTING_DEFAULT_TELEGRAM_CHAT_ID", "TELEGRAM_CHAT_ID"], "");
+    this.defaultParseMode = getConfigString("TELEGRAM_PARSE_MODE", "");
   }
 
   isReady() {

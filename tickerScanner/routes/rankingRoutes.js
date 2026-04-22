@@ -4,7 +4,7 @@ const axios = require("axios");
 const { Router } = require("express");
 const { createDatahubAdapter } = require("../../shared/datahubAdapter");
 const { createRankingDailyService } = require("../lib/rankingDailyService");
-const { getSetting } = require("../../shared/loadSettings");
+const { getSetting, getConfigString } = require("../../shared/loadSettings");
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -24,7 +24,7 @@ const safeStringify = (val) => {
 module.exports = function buildRankingRouter({ logger }) {
   const router = Router();
 
-  const dbmanagerUrl = (process.env.DATAHUB_URL || process.env.DBMANAGER_URL || "http://datahub:3000").replace(/\/+$/, "");
+  const dbmanagerUrl = (getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], "http://datahub:3000")).replace(/\/+$/, "");
   const datahubAxios = createDatahubAdapter(axios.create({ baseURL: dbmanagerUrl, timeout: 30000 }));
 
   const rankingSvc = createRankingDailyService({ logger, datahubAxios });

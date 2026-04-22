@@ -21,7 +21,7 @@ module.exports = function createSessionRouter({ logger, getService }) {
   });
 
   // POST /session
-  router.post("/", (req, res) => {
+  router.post("/", async (req, res) => {
     const { startDate, endDate, tf, dataSource, dataSourceConfig, mode, intervalMs, tickers } = req.body || {};
     if (!startDate || !endDate) {
       return res.status(400).json({ ok: false, error: "startDate and endDate are required" });
@@ -55,12 +55,23 @@ module.exports = function createSessionRouter({ logger, getService }) {
       `[session] configured startDate=${startDate} endDate=${endDate} tf=${tf || "1Day"} source=${dataSource || "cachemanager"} mode=${mode || "passive"} tickers=${subscribed.length}`
     );
 
-    // Mode 2: start auto-inject loop immediately
+    // Inject mode: preload full candle series before starting the timer loop.
+    // This avoids hitting cachemanager on every tick at 50-100x speed.
+    let preloaded = null;
     if (mode === "inject") {
+      const tickersToLoad = subscribed.length > 0 ? subscribed : [];
+      if (tickersToLoad.length > 0) {
+        try {
+          preloaded = await svc.preloadTickers({ tickers: tickersToLoad, startDate, endDate, tf });
+          logger?.info?.(`[session] preloaded ${Object.keys(preloaded).length} tickers for inject mode`);
+        } catch (preloadErr) {
+          logger?.warning?.(`[session] preload failed: ${preloadErr?.message} — inject loop will use live fetch`);
+        }
+      }
       svc.startInjectLoop();
     }
 
-    res.json({ ok: true, session: svc.getSession() });
+    res.json({ ok: true, session: svc.getSession(), preloaded });
   });
 
   // DELETE /session

@@ -15,6 +15,7 @@ const {
   initializeSettings,
   getAllSettings,
   setSetting,
+  getConfigString,
 } = require('../shared/loadSettings');
 
 const MICROSERVICE = 'redisWsBridge';
@@ -24,7 +25,7 @@ const MODULE_VERSION = '1.0';
 (async () => {
   const cfg = loadConfig();
   // Support both DATAHUB_URL (preferred) and DBMANAGER_URL (backward compat)
-  const dbmanagerUrl = process.env.DATAHUB_URL || process.env.DBMANAGER_URL || 'http://datahub:3000';
+  const dbmanagerUrl = getConfigString(['DATAHUB_URL', 'DBMANAGER_URL'], 'http://datahub:3000');
   let settingsReady = false;
 
   async function getReleaseInfo() {
@@ -61,7 +62,7 @@ const MODULE_VERSION = '1.0';
 // -------------------------------------------------------
 // CORS: singola origin o lista separata da virgole
 // -------------------------------------------------------
-const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
+const allowedOrigins = (getConfigString('CORS_ORIGIN', 'http://localhost:5173'))
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
@@ -76,7 +77,7 @@ app.use(
   })
 );
 
-  let logLevel = process.env.LOG_LEVEL || 'info'
+  let logLevel = getConfigString('LOG_LEVEL', 'info')
   logger = createLogger(
       MICROSERVICE,
       MODULE_NAME,
@@ -84,14 +85,14 @@ app.use(
       logLevel,
       {
           bus: null,                          // <--- FIX: non _bus
-          busTopicPrefix: cfg.env || process.env.ENV || 'DEV',
+          busTopicPrefix: cfg.env || getConfigString(['ENV', 'APP_ENV'], 'DEV'),
           console: true,
           enqueueDb: true,
       }
   );
   cfg['logger']=logger;
   logger.info('[bridge] allowedOrigins', {
-    raw: process.env.CORS_ORIGIN || null,
+    raw: getConfigString('CORS_ORIGIN', '') || null,
     parsed: allowedOrigins
   });
 
@@ -120,7 +121,7 @@ app.use(
     url: cfg.redisUrl,
     name: 'redis-ws-bridge',
     logger: logger,
-    env: cfg.env || process.env.ENV || 'DEV',
+    env: cfg.env || getConfigString(['ENV', 'APP_ENV'], 'DEV'),
     channels: {
       // opzionale: telemetria del bridge (controllata dal key "telemetry")
       telemetry: { on: true, params: { intervalsMs: 2000 } }

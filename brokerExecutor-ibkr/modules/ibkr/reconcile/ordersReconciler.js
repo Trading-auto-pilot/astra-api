@@ -1,13 +1,13 @@
 "use strict";
 
-const { asInt } = require("../../../../shared/helpers");
+const { getConfigInt } = require("../../../../shared/loadSettings");
 
 class OrdersReconciler {
   constructor({ logger, ordersService, onOrdersSnapshot }) {
     this.logger = logger;
     this.ordersService = ordersService;
     this.onOrdersSnapshot = onOrdersSnapshot;
-    this.pollMs = asInt(process.env.IBKR_WS_RECONCILE_POLL_MS, 60000);
+    this.pollMs = getConfigInt("IBKR_WS_RECONCILE_POLL_MS", 60000);
     this.timer = null;
     this.running = false;
   }

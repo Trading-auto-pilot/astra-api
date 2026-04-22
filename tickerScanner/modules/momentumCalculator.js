@@ -1,6 +1,8 @@
 // modules/momentumCalculator.js
 "use strict";
 
+const { getConfigString } = require("../../shared/loadSettings");
+
 /**
  * Assumiamo che cacheManager /candles risponda con un array di candele tipo:
  * [
@@ -15,9 +17,9 @@ class MomentumCalculator {
     this.cachemanagerUrl = cachemanagerUrl;
     this.tf = tf;
     this.lookbackDays = lookbackDays;
-    this.marketIndexSymbol = process.env.MARKET_INDEX_SYMBOL || "SPY";
-    this.riskOnSymbols = (process.env.MARKET_RISK_ON || "HYG,IWM").split(",").map((s) => s.trim()).filter(Boolean);
-    this.riskOffSymbols = (process.env.MARKET_RISK_OFF || "TLT,LQD").split(",").map((s) => s.trim()).filter(Boolean);
+    this.marketIndexSymbol = getConfigString("MARKET_INDEX_SYMBOL", "SPY");
+    this.riskOnSymbols = getConfigString("MARKET_RISK_ON", "HYG,IWM").split(",").map((s) => s.trim()).filter(Boolean);
+    this.riskOffSymbols = getConfigString("MARKET_RISK_OFF", "TLT,LQD").split(",").map((s) => s.trim()).filter(Boolean);
   }
 
   _toISODate(d) {

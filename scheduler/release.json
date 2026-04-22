@@ -1,8 +1,7 @@
 {
-  "lastUpdate": "10/03/2026", 
-  "version": "1.4.7",
+  "lastUpdate": "22/04/2026",
+  "version": "1.5.0",
   "microservice": "scheduler",
-
   "note": [
     "v.0.1.0 scheduler: Initial scaffolding generated from template.",
     "v.1.1.0 scheduler: Endpoint adapt to Traefik.",
@@ -15,6 +14,7 @@
     "v.1.4.4 Fix avvio solo Job abilitati and handling connessione Redis e DBManager",
     "v.1.4.5 Fix Last status, Manual Run, Execution details",
     "v.1.4.6 Fix minori piu aggiunta messaggi su canale HOOK per alerting",
-    "v.1.4.7 Fiz Errore Data ultimo run"
+    "v.1.4.7 Fiz Errore Data ultimo run",
+    "v.1.5.0 Minor Fix"
   ]
 }

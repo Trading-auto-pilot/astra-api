@@ -1,6 +1,6 @@
 "use strict";
 
-const { asInt } = require("../../../../shared/helpers");
+const { getConfigString, getConfigInt } = require("../../../../shared/loadSettings");
 
 class PositionsRefresher {
   constructor({ logger, ordersService, bus, eventsChannel, env }) {
@@ -8,8 +8,8 @@ class PositionsRefresher {
     this.ordersService = ordersService;
     this.bus = bus;
     this.eventsChannel = eventsChannel;
-    this.env = env || process.env.ENV || "DEV";
-    this.debounceMs = asInt(process.env.IBKR_POSITIONS_REFRESH_DEBOUNCE_MS, 3000);
+    this.env = env || getConfigString(["ENV", "APP_ENV"], "DEV");
+    this.debounceMs = getConfigInt("IBKR_POSITIONS_REFRESH_DEBOUNCE_MS", 3000);
     this.lastRunAt = 0;
     this.pending = false;
   }

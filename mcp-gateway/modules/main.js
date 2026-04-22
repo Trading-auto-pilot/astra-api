@@ -3,9 +3,7 @@
 
 const BaseService = require("../../shared/BaseService");
 const McpSubsystem = require("./mcp");
-
-const MCP_ENABLED = process.env.MCP_ENABLED !== "false";
-const MCP_TRANSPORT = process.env.MCP_TRANSPORT || "stdio";
+const { getConfigBoolean, getConfigString } = require("../../shared/loadSettings");
 
 class McpGateway extends BaseService {
   constructor() {
@@ -15,7 +13,11 @@ class McpGateway extends BaseService {
       moduleVersion: "1.0.0",
     });
 
-    this.mcp = MCP_ENABLED
+    this.mcpEnabled = getConfigBoolean("MCP_ENABLED", true);
+    this.mcpTransport = getConfigString("MCP_TRANSPORT", "stdio");
+    this.mcpHttpPath = getConfigString("MCP_HTTP_PATH", "/mcp");
+
+    this.mcp = this.mcpEnabled
       ? new McpSubsystem({ service: this, logger: this.logger })
       : null;
   }
@@ -25,17 +27,17 @@ class McpGateway extends BaseService {
    * Starts the MCP transport if enabled.
    */
   async _onInit() {
-    if (!MCP_ENABLED) {
+    if (!this.mcpEnabled) {
       this.logger.info("[_onInit] MCP disabled (MCP_ENABLED=false)");
       return;
     }
 
-    if (MCP_TRANSPORT === "stdio") {
+    if (this.mcpTransport === "stdio") {
       this.logger.info("[_onInit] Starting MCP stdio transport");
       this.mcp.startStdio();
     } else {
       this.logger.info(
-        `[_onInit] MCP HTTP transport active — path=${process.env.MCP_HTTP_PATH || "/mcp"}`
+        `[_onInit] MCP HTTP transport active — path=${this.mcpHttpPath}`
       );
     }
   }

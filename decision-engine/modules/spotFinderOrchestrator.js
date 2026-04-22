@@ -20,6 +20,7 @@ const {
   asNumber,
   normalizeDateParam,
   resolveSnapshotDate,
+  buildSymbolLogRef,
   pickAuthHeaders,
   isTrendOk,
   isSupportNotAvailable,
@@ -101,11 +102,15 @@ async function handlePipeSpotFinder(req, res, deps, userIdOverride) {
       if (index >= tickers.length) return;
       const entry = tickers[index++];
       const ticker = entry?.ticker || entry;
+      const logRef = buildSymbolLogRef(ticker, snapshotDate);
       const exchange = entry?.exchange || null;
       const extraParams = pipeId === C.RANKING_DAILY_PIPE_ID
         ? buildRankingDailyParams(entry?.meta)
         : {};
       try {
+        logger?.info?.(
+          `[decision-engine] sync pipe execution start ticker=${ticker} snapshotDate=${snapshotDate} logRef=${logRef} pipeId=${pipeId}`
+        );
         let data = await runSpotFinderForTicker(ticker, req.query, req, exchange, false, extraParams, deps);
         if (data?.ok === false && isSupportNotAvailable(data)) {
           data = await runSpotFinderForTicker(ticker, req.query, req, exchange, true, extraParams, deps);
@@ -124,8 +129,20 @@ async function handlePipeSpotFinder(req, res, deps, userIdOverride) {
           fullResult: data ?? null,
           ...(errorMessage ? { error: errorMessage } : {}),
         });
-        if (errorMessage) errors.push({ ticker, error: errorMessage });
+        if (errorMessage) {
+          errors.push({ ticker, error: errorMessage });
+          logger?.warning?.(
+            `[decision-engine] sync pipe execution completed with error ticker=${ticker} snapshotDate=${snapshotDate} logRef=${logRef} pipeId=${pipeId} error=${errorMessage}`
+          );
+        } else {
+          logger?.info?.(
+            `[decision-engine] sync pipe execution completed ticker=${ticker} snapshotDate=${snapshotDate} logRef=${logRef} pipeId=${pipeId}`
+          );
+        }
       } catch (err) {
+        logger?.warning?.(
+          `[decision-engine] sync pipe execution failed ticker=${ticker} snapshotDate=${snapshotDate} logRef=${logRef} pipeId=${pipeId} error=${err?.response?.data?.error || err?.message || String(err)}`
+        );
         errors.push({
           ticker,
           error: err?.response?.data?.error || err?.message || String(err),

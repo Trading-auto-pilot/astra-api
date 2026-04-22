@@ -1,0 +1,119 @@
+# docker-compose.sim.yml — Simulation override
+#
+# Usage (local):
+#   docker compose -f docker-compose.local.yml -f docker-compose.sim.yml \
+#     --profile decision-engine --profile capital-manager \
+#     --profile liquidity-manager --profile simulator up
+#
+# What this file does:
+#   1. Adds the sim-engine service (renamed from market-simulator)
+#   2. Overrides decision-engine: MARKETDATASERVICE_URL and BROKER_EXECUTOR_IBKR_URL
+#      point to sim-engine instead of the real services
+#   3. Overrides capital-manager: same URL overrides
+#   4. Sets liquidity-manager to mock mode (no external API calls during simulation)
+#
+# Services NOT changed by this file (still come from docker-compose.local.yml):
+#   datahub, redis, cachemanager, scheduler, tickerscanner,
+#   authservice, servicecontrolplane, alertingservice
+#
+# Services that should NOT be started in sim mode (use --no-deps or omit profiles):
+#   broker-executor-ibkr, market-data-service, ibkr-bridge, ibkr-clientportal
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # sim-engine — unified simulation microservice
+  # Replaces both market-data-service and broker-executor-ibkr in sim mode.
+  # Exposes the same API paths so no code changes are needed in consuming services.
+  # ---------------------------------------------------------------------------
+  sim-engine:
+    image: local/simulator:${SIMULATOR_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: simulator/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3010:3010"
+    environment:
+      - DATAHUB_URL=http://datahub:3000
+      - REDIS_URL=redis://redis:6379
+      - CACHEMANAGER_URL=http://cachemanager:3006
+      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+      - CAPITALMANAGER_URL=http://capital-manager:3005
+      - DECISIONENGINE_URL=http://decision-engine:3018
+      - LOG_LEVEL=${LOG_LEVEL}
+      - ENV=${ENV}
+      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - TZ=${TIMEZONE}
+      # Simulation-specific settings
+      - SIM_MODE=${SIM_MODE:-sync}
+      - SIM_INITIAL_CAPITAL=${SIM_INITIAL_CAPITAL:-100000}
+      - SIM_SLIPPAGE_PCT=${SIM_SLIPPAGE_PCT:-0.001}
+      - SIM_COMMISSION_PER_SHARE=${SIM_COMMISSION_PER_SHARE:-0.005}
+      # Persistent data dir for candle library (SQLite DB + uploaded files)
+      - SIM_DATA_DIR=/data
+    depends_on:
+      datahub:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - sim_data:/data
+    networks:
+      - trading_net
+    profiles: ["simulator"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3010/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sim-engine.rule=Host(`localhost`) && PathPrefix(`/sim-engine`)"
+      - "traefik.http.routers.sim-engine.entrypoints=web"
+      - "traefik.http.services.sim-engine.loadbalancer.server.port=3010"
+      - "traefik.http.middlewares.sim-engine-stripprefix.stripPrefix.prefixes=/sim-engine"
+      - "traefik.http.routers.sim-engine.middlewares=sim-engine-stripprefix,cors-default@docker,auth-forward@docker"
+      - "traefik.http.routers.sim-engine-preflight.rule=Host(`localhost`) && PathPrefix(`/sim-engine`) && Method(`OPTIONS`)"
+      - "traefik.http.routers.sim-engine-preflight.entrypoints=web"
+      - "traefik.http.routers.sim-engine-preflight.priority=10000"
+      - "traefik.http.routers.sim-engine-preflight.service=sim-engine"
+      - "traefik.http.routers.sim-engine-preflight.middlewares=sim-engine-stripprefix,cors-default@docker"
+
+  # ---------------------------------------------------------------------------
+  # decision-engine — override: redirect to sim-engine
+  # ---------------------------------------------------------------------------
+  decision-engine:
+    environment:
+      # In sim mode: both market data and broker orders go to sim-engine
+      - MARKETDATASERVICE_URL=http://sim-engine:3010
+      - BROKER_EXECUTOR_IBKR_URL=http://sim-engine:3010
+      - BROKER_EXECUTOR_URL=http://sim-engine:3010
+
+  # ---------------------------------------------------------------------------
+  # capital-manager — override: redirect to sim-engine
+  # ---------------------------------------------------------------------------
+  capital-manager:
+    environment:
+      - MARKETDATASERVICE_URL=http://sim-engine:3010
+      - BROKER_EXECUTOR_IBKR_URL=http://sim-engine:3010
+
+  # ---------------------------------------------------------------------------
+  # liquidity-manager — override: mock mode (reads from DB, no external API calls)
+  # TODO Sprint 3: switch to LIQUIDITY_PROVIDER_MODE=db_backfill once
+  #               the liquidity_index_daily backfill endpoint is implemented.
+  #               The backfill endpoint (task 1.3) will populate historical data
+  #               and sim-engine will read scores by date from that table.
+  # ---------------------------------------------------------------------------
+  liquidity-manager:
+    environment:
+      - LIQUIDITY_PROVIDER_MODE=mock
+
+volumes:
+  sim_data:
+    name: sim_data

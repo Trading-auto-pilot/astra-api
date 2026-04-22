@@ -1,8 +1,10 @@
 // modules/store/exposureStore.js
 "use strict";
 
+const { getConfigInt } = require("../../../shared/loadSettings");
+
 const EXPOSURE_KEY = "cm:exposure:snapshot";
-const TTL_SEC      = parseInt(process.env.EXPOSURE_SNAPSHOT_TTL_SEC || "60", 10);
+const TTL_SEC      = getConfigInt("EXPOSURE_SNAPSHOT_TTL_SEC", 60);
 
 /**
  * Get the cached exposure snapshot from Redis.

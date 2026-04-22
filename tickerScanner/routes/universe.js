@@ -12,6 +12,7 @@
  */
 
 const { Router } = require("express");
+const { getConfigString } = require("../../shared/loadSettings");
 const axios      = require("axios");
 const { createDatahubAdapter } = require("../../shared/datahubAdapter");
 const { createFetchUserId }    = require("../lib/filterEngine");
@@ -47,8 +48,8 @@ const safeStringify = (v) => {
 module.exports = function buildUniverseRouter({ logger, getService }) {
   const router = Router();
 
-  const datahubUrl    = (process.env.DATAHUB_URL || process.env.DBMANAGER_URL || "http://datahub:3000").replace(/\/+$/, "");
-  const authServiceUrl = (process.env.AUTHSERVICE_URL || "http://authservice:3015").replace(/\/+$/, "");
+  const datahubUrl    = (getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], "http://datahub:3000")).replace(/\/+$/, "");
+  const authServiceUrl = (getConfigString("AUTHSERVICE_URL", "http://authservice:3015")).replace(/\/+$/, "");
 
   const datahubAxios  = createDatahubAdapter(axios.create({ baseURL: datahubUrl, timeout: 10000 }));
   const fetchApiKeyId = createFetchApiKeyId({ axios, dbmanagerUrl: datahubUrl, logger });

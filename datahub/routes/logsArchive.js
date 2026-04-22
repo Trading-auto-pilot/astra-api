@@ -14,6 +14,7 @@ const fs   = require("fs");
 const path = require("path");
 const zlib = require("zlib");
 const readline = require("readline");
+const { getConfigString } = require("../../shared/loadSettings");
 
 const BATCH_SIZE = 500;
 
@@ -60,8 +61,9 @@ module.exports = function ({ logger, schemaReader }) {
   const express = require("express");
   const router  = express.Router();
 
-  const archiveDir = process.env.LOGS_ARCHIVE_PATH
-    ? path.resolve(process.env.LOGS_ARCHIVE_PATH)
+  const archivePath = getConfigString("LOGS_ARCHIVE_PATH", "");
+  const archiveDir = archivePath
+    ? path.resolve(archivePath)
     : path.resolve(__dirname, "..", "logs-archive");
 
   ensureArchiveDir(archiveDir);

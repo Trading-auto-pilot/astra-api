@@ -865,9 +865,9 @@ services:
       timeout: 10s
       retries: 5
 
-  market-simulator:
-    image: expovin/market-simulator:${MARKET_SIMULATOR_VERSION}
-    container_name: market-simulator
+  simulator:
+    image: expovin/simulator:${SIMULATOR_VERSION}
+    container_name: simulator
     restart: unless-stopped
     ports:
       - "3010:3010"

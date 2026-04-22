@@ -92,6 +92,30 @@ function createLiquidityScoreController({ getService, logger }) {
         return res.status(500).json({ ok: false, error: "Unable to read providers status" });
       }
     },
+
+    backfill: async (req, res) => {
+      const fromDate = req.query?.from || req.body?.from;
+      const toDate   = req.query?.to   || req.body?.to;
+
+      if (!fromDate || !toDate) {
+        return res.status(400).json({ ok: false, error: "Query params 'from' and 'to' are required (YYYY-MM-DD)" });
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDate) || !/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
+        return res.status(400).json({ ok: false, error: "Dates must be in YYYY-MM-DD format" });
+      }
+      if (fromDate > toDate) {
+        return res.status(400).json({ ok: false, error: "'from' must be <= 'to'" });
+      }
+
+      try {
+        const service = getService();
+        const result = await service.runBackfill({ fromDate, toDate });
+        return res.json({ ok: true, fromDate, toDate, ...result });
+      } catch (err) {
+        logger?.error?.(`[POST /admin/backfill] ${err?.message || String(err)}`);
+        return res.status(500).json({ ok: false, error: "Backfill failed", detail: err?.message });
+      }
+    },
   };
 }
 

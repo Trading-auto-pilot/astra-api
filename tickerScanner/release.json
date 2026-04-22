@@ -1,8 +1,7 @@
 {
-  "lastUpdate": "08/03/2026", 
-  "version": "3.0.2",
+  "lastUpdate": "22/04/2026",
+  "version": "3.1.0",
   "microservice": "tickerScanner",
-
   "note": [
     "v.0.1.0 tickerScanner: Initial scaffolding generated from template.",
     "v.1.1.0 tickerScanner: Auto compilation test.",
@@ -17,6 +16,7 @@
     "v.2.2.1 Call API async, fix general setting",
     "v.3.0.0 Refactoring di calcolo (disabilitate pipe utente)",
     "v.3.0.1 Minor Fix for scheduler run",
-     "v.3.0.1 Minor Fix"
+    "v.3.0.1 Minor Fix",
+    "v.3.1.0 Minor Fix"
   ]
 }

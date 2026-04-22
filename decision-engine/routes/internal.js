@@ -16,6 +16,7 @@
  */
 
 const { verifyInternalToken } = require("../../shared/internalAuth");
+const { getConfigString } = require("../../shared/loadSettings");
 const { reportJobDone } = require("../../shared/jobReporter");
 const C = require("../modules/constants");
 const { newJobId } = require("../modules/job-manager");
@@ -40,7 +41,7 @@ function buildRequireInternalToken(logger) {
         issuer: "astraai-internal",
         audience: "decision-engine",
         scope: "decision-engine:spot-finder",
-        publicKey: process.env.INTERNAL_JWT_PUBLIC_KEY,
+        publicKey: getConfigString("INTERNAL_JWT_PUBLIC_KEY", ""),
       });
       req.internalAuth = payload;
       return next();

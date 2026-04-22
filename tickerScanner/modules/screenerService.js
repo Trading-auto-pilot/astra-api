@@ -1,6 +1,8 @@
 // modules/screenerService.js
 "use strict";
 
+const { getConfigString } = require("../../shared/loadSettings");
+
 /**
  * ScreenerService
  *
@@ -18,8 +20,7 @@ class ScreenerService {
     this.logger = logger;
     this.getSetting = getSetting;
     this.baseUrl =
-      process.env.FMP_BASE_URL ||
-      "https://financialmodelingprep.com"; // base FMP
+      getConfigString("FMP_BASE_URL", "https://financialmodelingprep.com"); // base FMP
   }
 
   /**

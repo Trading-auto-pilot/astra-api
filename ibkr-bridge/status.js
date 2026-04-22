@@ -2,8 +2,9 @@
 "use strict";
 
 const { Router } = require("express");
+const { getConfigInt } = require("../shared/loadSettings");
 
-const maxInterval = parseInt(process.env.MAX_RETRY_DELAY, 10) || 60000;
+const maxInterval = getConfigInt("MAX_RETRY_DELAY", 60000);
 
 /**
  * buildStatusRouter

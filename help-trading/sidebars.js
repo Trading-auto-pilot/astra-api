@@ -38,7 +38,14 @@ const sidebars = {
             'utente/fase-3-filtro',
             'utente/fase-4-ranking',
             'utente/fase-5-decision-engine',
-            'utente/fase-6-live-update',
+            {
+              type: 'category',
+              label: 'Fase 6 — Live Daily Update',
+              link: {type: 'doc', id: 'utente/fase-6-live-update'},
+              items: [
+                'utente/fase-6-state-machine',
+              ],
+            },
             'utente/fase-7-live-order',
           ],
         },
@@ -759,6 +766,7 @@ const sidebars = {
           items: [
             'roadmap/simulator/market-simulator',
             'roadmap/simulator/market-simulator-implementation',
+            'roadmap/simulator/stato-dei-lavori',
           ],
         },
         {

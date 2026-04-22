@@ -3,9 +3,10 @@
 
 const https = require("https");
 const http  = require("http");
+const { getConfigString, getConfigInt } = require("../../../shared/loadSettings");
 
-const DATAHUB_URL      = (process.env.DATAHUB_URL || "http://datahub:3000").replace(/\/+$/, "");
-const REQUEST_TIMEOUT  = parseInt(process.env.DATAHUB_ADAPTER_TIMEOUT_MS || "5000", 10);
+const DATAHUB_URL      = getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], "http://datahub:3000").replace(/\/+$/, "");
+const REQUEST_TIMEOUT  = getConfigInt("DATAHUB_ADAPTER_TIMEOUT_MS", 5000);
 
 const { countryToArea } = require("../utils/geoUtils");
 

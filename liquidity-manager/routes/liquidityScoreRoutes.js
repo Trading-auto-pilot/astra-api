@@ -13,6 +13,7 @@ function createLiquidityScoreRouter({ getService, logger }) {
   router.get("/liquidity-score/providers/status", controller.getProvidersStatus);
   router.get("/liquidity-score/tasks", controller.getTasks);
   router.get("/liquidity-score/tasks/:taskId", controller.getTaskById);
+  router.post("/admin/backfill", controller.backfill);
 
   return router;
 }

@@ -3,6 +3,7 @@
 const axios = require("axios");
 const { createDatahubAdapter } = require("../../shared/datahubAdapter");
 const { SchedulerEngine } = require("./schedulerEngine");
+const { getConfigString } = require("../../shared/loadSettings");
 
 class SchedulerCore {
   /**
@@ -13,7 +14,7 @@ class SchedulerCore {
     this.main = mainInstance;
     this.logger = mainInstance.getLogger();
     this.dbmanagerUrl = mainInstance.dbmanagerUrl;
-    this.defaultTimezone = process.env.SCHEDULER_TZ || "Asia/Dubai";
+    this.defaultTimezone = getConfigString(["SCHEDULER_TZ", "SCHEDULER_TIMEZONE", "DEFAULT_JOB_TIMEZONE"], "Asia/Dubai");
 
     this.engine = new SchedulerEngine({
       logger: this.logger,
@@ -21,7 +22,7 @@ class SchedulerCore {
       dbmanagerUrl: this.dbmanagerUrl,
       getSetting: this.main.getSetting || null,
       bus: this.main.bus || null,
-      env: this.main.env || process.env.ENV || "DEV",
+      env: this.main.env || getConfigString(["ENV", "APP_ENV"], "DEV"),
       onJobLastRun: ({ job, status, lastRunAt }) => this._updateJobLastRunInCache(job, status, lastRunAt),
     });
 

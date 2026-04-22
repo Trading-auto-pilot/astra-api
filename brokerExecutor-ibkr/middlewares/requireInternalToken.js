@@ -1,6 +1,7 @@
 "use strict";
 
 const { verifyInternalToken } = require("../../shared/internalAuth");
+const { getConfigString } = require("../../shared/loadSettings");
 
 function requireInternalToken({ logger }) {
   return async function internalTokenMiddleware(req, res, next) {
@@ -10,14 +11,14 @@ function requireInternalToken({ logger }) {
     }
 
     const verifyOptions = {
-      issuer: process.env.INTERNAL_JWT_ISSUER || "astraai-internal",
-      publicKey: process.env.INTERNAL_JWT_PUBLIC_KEY,
+      issuer: getConfigString(["INTERNAL_JWT_ISSUER", "INTERNAL_JWT_ISS"], "astraai-internal"),
+      publicKey: getConfigString("INTERNAL_JWT_PUBLIC_KEY", ""),
     };
 
-    const audience = process.env.INTERNAL_JWT_AUDIENCE || "";
+    const audience = getConfigString("INTERNAL_JWT_AUDIENCE", "");
     if (audience.trim()) verifyOptions.audience = audience.trim();
 
-    const scope = process.env.INTERNAL_JWT_SCOPE || "";
+    const scope = getConfigString("INTERNAL_JWT_SCOPE", "");
     if (scope.trim()) verifyOptions.scope = scope.trim();
 
     try {

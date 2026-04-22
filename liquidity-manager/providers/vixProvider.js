@@ -4,6 +4,7 @@ const { requestRawDetailed, parseCsv } = require("./httpClient");
 const { createProviderError } = require("./providerErrors");
 const { markSuccess, markFailure } = require("./providerHealthRegistry");
 const { getConfigNumber, getConfigString } = require("../../shared/loadSettings");
+const simClock = require("../../shared/simClock");
 
 const PROVIDER_NAME = "vix";
 const STOOQ_SYMBOL = "^vix";
@@ -24,7 +25,7 @@ function toIsoDate(value) {
 }
 
 function createMockSeries(days = 120) {
-  const now = Date.now();
+  const now = simClock.now();
   const out = [];
   for (let i = days; i >= 0; i -= 1) {
     const ts = now - i * 24 * 60 * 60 * 1000;

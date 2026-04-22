@@ -12,7 +12,7 @@ const buildWhatsappRouter = require("./whatsapp");
 const buildEmailRouter = require("./email");
 const buildTelegramRouter = require("./telegram");
 const buildAlertingRulesProxy = require("./alertingRulesProxy");
-
+const { getConfigString } = require("../shared/loadSettings");
 
 dotenv.config();
 
@@ -24,9 +24,9 @@ const MODULE_NAME    = "RESTServer";    // es. "RESTServer"
 const MODULE_VERSION = "0.1.0";      // es. "1.0.0"
 const DEFAULT_PORT   = 3008;                  // es. 3012 (numero)
 
-let logLevel = process.env.LOG_LEVEL || "info";
+let logLevel = getConfigString("LOG_LEVEL", "info");
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, logLevel);
-process.env.MICROSERVICE_NAME = process.env.MICROSERVICE_NAME || MICROSERVICE;
+process.env.MICROSERVICE_NAME = getConfigString("MICROSERVICE_NAME", MICROSERVICE);
 
 const app = express();
 app.use(express.json());
@@ -34,7 +34,7 @@ app.use(express.json());
 // -------------------------------------------------------
 // CORS: singola origin o lista separata da virgole
 // -------------------------------------------------------
-const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
+const allowedOrigins = (getConfigString("CORS_ORIGIN", "http://localhost:5173"))
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
@@ -49,7 +49,7 @@ app.use(
   })
 );
 
-const port = process.env.PORT || DEFAULT_PORT;
+const port = getConfigString("PORT", String(DEFAULT_PORT)) || DEFAULT_PORT;
 let serviceInstance;
 
 // -------------------------------------------------------

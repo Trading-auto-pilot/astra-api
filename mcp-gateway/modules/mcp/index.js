@@ -3,6 +3,7 @@
 
 const McpRegistry = require("./registry");
 const StdioTransport = require("./transports/stdio");
+const { getConfigString } = require("../../../shared/loadSettings");
 
 class McpSubsystem {
   constructor({ service, logger }) {
@@ -10,7 +11,7 @@ class McpSubsystem {
     this._logger = logger;
     this._stdio = null;
 
-    const allowlistRaw = process.env.MCP_TOOL_ALLOWLIST || "";
+    const allowlistRaw = getConfigString("MCP_TOOL_ALLOWLIST", "");
     const allowlist = allowlistRaw
       ? allowlistRaw.split(",").map((s) => s.trim()).filter(Boolean)
       : [];

@@ -6,6 +6,7 @@
 
 const axios = require("axios");
 const { reportJobDone } = require("../../shared/jobReporter");
+const simClock = require("../../shared/simClock");
 const {
   SNAPSHOT_TTL_SECONDS,
   SUBSCRIPTION_TIMEOUT_MS,
@@ -27,6 +28,7 @@ const {
   asBool,
   normalizeDateParam,
   resolveSnapshotDate,
+  buildSymbolLogRef,
   pickAuthHeaders,
   isSupportNotAvailable,
   isTrendOk,
@@ -36,7 +38,7 @@ const {
 const asyncJobs = new Map();
 
 const newJobId = () =>
-  `spot_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  `spot_${simClock.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
 const getJob = (jobId) => asyncJobs.get(jobId);
 
@@ -564,11 +566,15 @@ const startAsyncJob = async (opts) => {
     if (index >= pendingTickers.length) return;
     const entry = pendingTickers[index++];
     const ticker = entry?.ticker || entry;
+    const logRef = buildSymbolLogRef(ticker, snapshotDate);
     const exchange = entry?.exchange || null;
     const extraParams = pipeId === RANKING_DAILY_PIPE_ID
       ? buildRankingDailyParams(entry?.meta)
       : {};
     try {
+      logger?.info?.(
+        `[decision-engine] pipe execution start ticker=${ticker} snapshotDate=${snapshotDate} logRef=${logRef} pipeId=${pipeId} jobId=${jobId}`
+      );
       let data = await runSpotFinderForTicker(ticker, query, req, exchange, false, extraParams);
       if (data?.ok === false && isSupportNotAvailable(data)) {
         data = await runSpotFinderForTicker(ticker, query, req, exchange, true, extraParams);
@@ -589,8 +595,14 @@ const startAsyncJob = async (opts) => {
       });
       if (errorMessage) {
         job.errorCount += 1;
+        logger?.warning?.(
+          `[decision-engine] pipe execution completed with error ticker=${ticker} snapshotDate=${snapshotDate} logRef=${logRef} pipeId=${pipeId} jobId=${jobId} error=${errorMessage}`
+        );
       } else {
         job.ok += 1;
+        logger?.info?.(
+          `[decision-engine] pipe execution completed ticker=${ticker} snapshotDate=${snapshotDate} logRef=${logRef} pipeId=${pipeId} jobId=${jobId}`
+        );
         if (isTrendOk({ ticker, fullResult: data })) {
           try {
             await subscribeTrendTicker(ticker);
@@ -602,6 +614,9 @@ const startAsyncJob = async (opts) => {
         }
       }
     } catch (err) {
+      logger?.warning?.(
+        `[decision-engine] pipe execution failed ticker=${ticker} snapshotDate=${snapshotDate} logRef=${logRef} pipeId=${pipeId} jobId=${jobId} error=${err?.response?.data?.error || err?.message || String(err)}`
+      );
       job.errors.push({
         ticker,
         error: err?.response?.data?.error || err?.message || String(err),

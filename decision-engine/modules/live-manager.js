@@ -6,6 +6,7 @@
 
 const { randomUUID } = require("crypto");
 const axios = require("axios");
+const simClock = require("../../shared/simClock");
 const {
   SNAPSHOT_TTL_SECONDS,
   ALERT_COOLDOWN_MS,
@@ -18,41 +19,55 @@ const {
   DEFAULT_FLAG_ATR_K,
   DEFAULT_FLAG_PCT_K,
   DEFAULT_VOL_MULT,
+  MIN_CANDLES_FOR_PATTERN,
 } = require("./constants");
-const { asNumber, normalizeAndSortCandles, subDays } = require("./helpers");
+const { asNumber, buildSymbolLogRef, normalizeAndSortCandles, subDays } = require("./helpers");
 const { buildSpotFinderRedisKey } = require("./job-manager");
 const { detectTrendFlagBreakout } = require("./zones");
+const { getConfigString, getConfigInt, getConfigBoolean } = require("../../shared/loadSettings");
 
-const RISK_ON_TTL_MS = Number(process.env.RISK_ON_TTL_MS) || 60_000;
-const INTRADAY_TF = process.env.LIVE_INTRADAY_TF || "1min";
-const LIVE_SIGNAL_CANDLE_CACHE_TTL_MS =
-  Number(process.env.LIVE_SIGNAL_CANDLE_CACHE_TTL_MS) || 120_000;
+function buildRuntimeConfig() {
+  return {
+    riskOnTtlMs: getConfigInt("RISK_ON_TTL_MS", 60_000),
+    intradayTf: getConfigString("LIVE_INTRADAY_TF", "1min"),
+    liveSignalCandleCacheTtlMs: getConfigInt("LIVE_SIGNAL_CANDLE_CACHE_TTL_MS", 120_000),
+    breakoutOpenBlockMinutes: getConfigInt("BREAKOUT_OPEN_BLOCK_MINUTES", 25),
+    marketOpenUtc: getConfigString("MARKET_OPEN_UTC", "14:30"),
+    liveRecalcIntervalMs: getConfigInt("LIVE_RECALC_INTERVAL_MS", 60_000),
+    fmpApiKey: getConfigString("FMP_API_KEY", ""),
+    defaultDollarsPerTrade: getConfigInt("DE_DOLLARS_PER_TRADE", 5000),
+    defaultOrderTif: getConfigString("DE_ORDER_TIF", "DAY"),
+    serviceName: getConfigString("MICROSERVICE_NAME", "decision-engine"),
+    envName: getConfigString(["ENV", "APP_ENV"], "DEV"),
+  };
+}
 
-// Opening volatility block: skip BREAKOUT signals during first N min of market open.
-// MARKET_OPEN_UTC: NYSE open = "14:30" (ET standard) or "13:30" (ET daylight).
-const BREAKOUT_OPEN_BLOCK_MINUTES = Number(process.env.BREAKOUT_OPEN_BLOCK_MINUTES) || 25;
-const MARKET_OPEN_UTC = process.env.MARKET_OPEN_UTC || "14:30";
+function buildDefaultGuardConfig() {
+  return {
+    earnings: {
+      enabled: getConfigBoolean("DE_EARNINGS_GUARD_ENABLED", true),
+      blockDays: Math.round(getConfigInt("EARNINGS_BLOCK_WEEKS", 2) * 7),
+    },
+    fomc: {
+      enabled: getConfigBoolean("DE_FOMC_GUARD_ENABLED", true),
+      blockDays: getConfigInt("DE_FOMC_BLOCK_DAYS", 2),
+    },
+    macro: {
+      enabled: getConfigBoolean("DE_MACRO_GUARD_ENABLED", true),
+      blockDays: getConfigInt("DE_MACRO_BLOCK_DAYS", 1),
+    },
+    dividend: {
+      enabled: getConfigBoolean("DE_DIVIDEND_GUARD_ENABLED", true),
+      blockDays: getConfigInt("DE_DIVIDEND_BLOCK_DAYS", 3),
+    },
+  };
+}
+
+let runtimeConfig = buildRuntimeConfig();
 const OPEN_BLOCK_NOTIF_COOLDOWN_MS = 5 * 60 * 1000; // notify at most every 5 min per key
 
-// --- Volatility event guard config (initialized from env vars, overridable at runtime) ---
-const guardConfig = {
-  earnings: {
-    enabled: process.env.DE_EARNINGS_GUARD_ENABLED !== "false",
-    blockDays: Math.round((Number(process.env.EARNINGS_BLOCK_WEEKS) || 2) * 7),
-  },
-  fomc: {
-    enabled: process.env.DE_FOMC_GUARD_ENABLED !== "false",
-    blockDays: Number(process.env.DE_FOMC_BLOCK_DAYS) || 2,
-  },
-  macro: {
-    enabled: process.env.DE_MACRO_GUARD_ENABLED !== "false",
-    blockDays: Number(process.env.DE_MACRO_BLOCK_DAYS) || 1,
-  },
-  dividend: {
-    enabled: process.env.DE_DIVIDEND_GUARD_ENABLED !== "false",
-    blockDays: Number(process.env.DE_DIVIDEND_BLOCK_DAYS) || 3,
-  },
-};
+// --- Volatility event guard config (initialized from settings/env, overridable at runtime) ---
+const guardConfig = buildDefaultGuardConfig();
 
 // Cache TTLs for guard data
 const EARNINGS_CACHE_TTL_MS      = 24 * 60 * 60 * 1000; // 24h
@@ -72,13 +87,13 @@ const dividendCache = new Map();
 
 async function fetchNearestEarningsDate(ticker, fmpApiKey, logger) {
   const cached = earningsCache.get(ticker);
-  if (cached && Date.now() < cached.expiresAt) return cached.nearestEarningsDate;
+  if (cached && simClock.now() < cached.expiresAt) return cached.nearestEarningsDate;
 
   const url = `https://financialmodelingprep.com/stable/earnings?symbol=${encodeURIComponent(ticker)}&apikey=${encodeURIComponent(fmpApiKey)}`;
   try {
     const resp = await httpGetJson(url, 8000);
     if (resp.status === 200 && Array.isArray(resp.data) && resp.data.length > 0) {
-      const now = Date.now();
+      const now = simClock.now();
       const dates = resp.data
         .map((e) => (e?.date ? new Date(e.date).getTime() : null))
         .filter((ts) => ts !== null && Number.isFinite(ts));
@@ -94,49 +109,49 @@ async function fetchNearestEarningsDate(ticker, fmpApiKey, logger) {
       return nearestEarningsDate;
     }
     // Empty/unexpected response → cache as null for 1h
-    earningsCache.set(ticker, { nearestEarningsDate: null, expiresAt: Date.now() + EARNINGS_CACHE_ERROR_TTL_MS });
+    earningsCache.set(ticker, { nearestEarningsDate: null, expiresAt: simClock.now() + EARNINGS_CACHE_ERROR_TTL_MS });
     return null;
   } catch (err) {
     logger?.warning?.(
       `[live] earnings fetch failed ticker=${ticker}: ${err?.message || String(err)} — earnings check skipped`
     );
-    earningsCache.set(ticker, { nearestEarningsDate: null, expiresAt: Date.now() + EARNINGS_CACHE_ERROR_TTL_MS });
+    earningsCache.set(ticker, { nearestEarningsDate: null, expiresAt: simClock.now() + EARNINGS_CACHE_ERROR_TTL_MS });
     return null;
   }
 }
 
 async function fetchEconomicCalendar(fmpApiKey, logger) {
-  if (econCalendarCache.events && Date.now() < econCalendarCache.expiresAt) {
+  if (econCalendarCache.events && simClock.now() < econCalendarCache.expiresAt) {
     return econCalendarCache.events;
   }
-  const from = new Date(Date.now() -  7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-  const to   = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const from = new Date(simClock.now() -  7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const to   = new Date(simClock.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
   const url  = `https://financialmodelingprep.com/stable/economic-calendar?from=${from}&to=${to}&apikey=${encodeURIComponent(fmpApiKey)}`;
   try {
     const resp = await httpGetJson(url, 8000);
     if (resp.status === 200 && Array.isArray(resp.data)) {
-      econCalendarCache = { events: resp.data, expiresAt: Date.now() + ECON_CAL_CACHE_TTL_MS };
+      econCalendarCache = { events: resp.data, expiresAt: simClock.now() + ECON_CAL_CACHE_TTL_MS };
       logger?.debug?.(`[live] economic calendar fetched events=${resp.data.length} from=${from} to=${to}`);
       return resp.data;
     }
-    econCalendarCache = { events: [], expiresAt: Date.now() + ECON_CAL_ERROR_TTL_MS };
+    econCalendarCache = { events: [], expiresAt: simClock.now() + ECON_CAL_ERROR_TTL_MS };
     return [];
   } catch (err) {
     logger?.warning?.(`[live] economic calendar fetch failed: ${err?.message || String(err)} — FOMC/macro guard skipped`);
-    econCalendarCache = { events: [], expiresAt: Date.now() + ECON_CAL_ERROR_TTL_MS };
+    econCalendarCache = { events: [], expiresAt: simClock.now() + ECON_CAL_ERROR_TTL_MS };
     return [];
   }
 }
 
 async function fetchNearestDividendExDate(ticker, fmpApiKey, logger) {
   const cached = dividendCache.get(ticker);
-  if (cached && Date.now() < cached.expiresAt) return cached.nearestExDate;
+  if (cached && simClock.now() < cached.expiresAt) return cached.nearestExDate;
 
   const url = `https://financialmodelingprep.com/stable/stock-dividends?symbol=${encodeURIComponent(ticker)}&apikey=${encodeURIComponent(fmpApiKey)}`;
   try {
     const resp = await httpGetJson(url, 8000);
     if (resp.status === 200 && Array.isArray(resp.data) && resp.data.length > 0) {
-      const now = Date.now();
+      const now = simClock.now();
       // Next upcoming ex-dividend date only (date >= today)
       const futureDates = resp.data
         .map((e) => (e?.date ? new Date(e.date).getTime() : null))
@@ -151,17 +166,17 @@ async function fetchNearestDividendExDate(ticker, fmpApiKey, logger) {
       }
       return nearestExDate;
     }
-    dividendCache.set(ticker, { nearestExDate: null, expiresAt: Date.now() + DIVIDEND_ERROR_TTL_MS });
+    dividendCache.set(ticker, { nearestExDate: null, expiresAt: simClock.now() + DIVIDEND_ERROR_TTL_MS });
     return null;
   } catch (err) {
     logger?.warning?.(`[live] dividend fetch failed ticker=${ticker}: ${err?.message || String(err)} — dividend guard skipped`);
-    dividendCache.set(ticker, { nearestExDate: null, expiresAt: Date.now() + DIVIDEND_ERROR_TTL_MS });
+    dividendCache.set(ticker, { nearestExDate: null, expiresAt: simClock.now() + DIVIDEND_ERROR_TTL_MS });
     return null;
   }
 }
 
 function minutesSinceMarketOpen(nowMs) {
-  const [h, m] = MARKET_OPEN_UTC.split(":").map(Number);
+  const [h, m] = runtimeConfig.marketOpenUtc.split(":").map(Number);
   const todayOpen = new Date(nowMs);
   todayOpen.setUTCHours(h, m, 0, 0);
   return (nowMs - todayOpen.getTime()) / 60000;
@@ -186,7 +201,7 @@ const liveState = {
   query: {},
   lastRunByTicker: new Map(),
   runningByTicker: new Set(),
-  minIntervalMs: Number(process.env.LIVE_RECALC_INTERVAL_MS) || 60000,
+  minIntervalMs: runtimeConfig.liveRecalcIntervalMs,
   authHeaders: {},
   lastLiveByTicker: new Map(),
   lastAlertByKey: new Map(),
@@ -288,6 +303,7 @@ const recalcFlagOkFromLiveSnapshot = async ({
   cachemanagerUrl,
   logger,
   bus,
+  candleTs,
 }) => {
   if (!cachemanagerUrl) return null;
   try {
@@ -311,7 +327,7 @@ const recalcFlagOkFromLiveSnapshot = async ({
     // Redis key for signal candles cache: live:signal-candles:{pipeId}:{userId}:{ticker}
     const signalCacheKey = bus?.key?.("live", "signal-candles", String(liveState.pipeId ?? "0"), String(liveState.userId ?? "0"), ticker)
       ?? `live:signal-candles:${liveState.pipeId ?? "0"}:${liveState.userId ?? "0"}:${ticker}`;
-    const signalCacheTtlSec = Math.ceil(LIVE_SIGNAL_CANDLE_CACHE_TTL_MS / 1000);
+    const signalCacheTtlSec = Math.ceil(runtimeConfig.liveSignalCandleCacheTtlMs / 1000);
 
     let baseCandles = null;
     const cached = bus && typeof bus.get === "function" ? await bus.get(signalCacheKey) : null;
@@ -326,8 +342,22 @@ const recalcFlagOkFromLiveSnapshot = async ({
       logger?.trace?.(
         `[live][trace] flag recalc using Redis candles ticker=${ticker} tf=${signalTf} count=${baseCandles.length}`
       );
-    } else {
-      const endDate = new Date();
+    } else if (simClock.isSimMode()) {
+      // In sim mode check the simulator-provided candle cache before hitting cachemanager.
+      // The sim-engine writes library candles here at sim/start so flag detection
+      // uses fabricated historical data instead of real cachemanager data.
+      const simSignalKey = bus?.key?.("sim", "signal-candles", ticker) ?? `sim:signal-candles:${ticker}`;
+      const simCached = bus && typeof bus.get === "function" ? await bus.get(simSignalKey) : null;
+      if (simCached && Array.isArray(simCached.candles) && simCached.candles.length > 0) {
+        baseCandles = simCached.candles;
+        logger?.info?.(`[live][diag] flag recalc using sim library candles ticker=${ticker} key=${simSignalKey} count=${baseCandles.length}`);
+      }
+    }
+
+    if (!baseCandles) {
+      // In sim mode candleTs carries the simulated candle timestamp — use it
+      // so the cachemanager fetch covers the correct historical period.
+      const endDate = (Number.isFinite(candleTs) && candleTs > 0) ? new Date(candleTs) : new Date(simClock.now());
       const startDate = subDays(endDate, signalLookbackDays);
       const query = new URLSearchParams({
         symbol: ticker,
@@ -338,14 +368,18 @@ const recalcFlagOkFromLiveSnapshot = async ({
       if (exchange) query.set("exchange", String(exchange));
 
       const resp = await httpGetJson(`${cachemanagerUrl}/candles?${query.toString()}`, 15000);
+      logger?.info?.(
+        `[live][diag] flag recalc fetch ticker=${ticker} tf=${signalTf} startDate=${startDate.toISOString().slice(0,10)} endDate=${endDate.toISOString().slice(0,10)} ` +
+        `status=${resp.status} candles=${Array.isArray(resp.data) ? resp.data.length : 0}`
+      );
       if (resp.status !== 200 || !Array.isArray(resp.data) || resp.data.length === 0) {
-        logger?.trace?.(
-          `[live][trace] flag recalc skipped ticker=${ticker} status=${resp.status} candles=${Array.isArray(resp.data) ? resp.data.length : 0}`
+        logger?.info?.(
+          `[live][diag] flag recalc skipped ticker=${ticker} status=${resp.status} candles=${Array.isArray(resp.data) ? resp.data.length : 0}`
         );
         if (cached && Array.isArray(cached.candles) && cached.candles.length > 0) {
           baseCandles = cached.candles;
           logger?.warning?.(
-            `[live] flag recalc fallback to stale candles ticker=${ticker} ageMs=${Date.now() - (cached.fetchedAt || 0)}`
+            `[live] flag recalc fallback to stale candles ticker=${ticker} ageMs=${simClock.now() - (cached.fetchedAt || 0)}`
           );
         } else {
           return null;
@@ -358,9 +392,16 @@ const recalcFlagOkFromLiveSnapshot = async ({
             ? normalized.slice(-signalLookbackBars)
             : normalized.slice();
         if (bus && typeof bus.set === "function") {
-          await bus.set(signalCacheKey, { tf: signalTf, fetchedAt: Date.now(), candles: baseCandles }, { EX: signalCacheTtlSec });
+          await bus.set(signalCacheKey, { tf: signalTf, fetchedAt: simClock.now(), candles: baseCandles }, { EX: signalCacheTtlSec });
         }
       }
+    }
+
+    if (baseCandles.length < MIN_CANDLES_FOR_PATTERN) {
+      logger?.info?.(
+        `[live][diag] flag recalc insufficient candles ticker=${ticker} count=${baseCandles.length} required=${MIN_CANDLES_FOR_PATTERN} — will fall back to basePattern`
+      );
+      return null;
     }
 
     const candles = baseCandles.map((c) => ({ ...c }));
@@ -405,20 +446,12 @@ const recalcFlagOkFromLiveSnapshot = async ({
       Number.isFinite(avgVolFlag) && Number.isFinite(avgVolImpulse)
         ? avgVolFlag < 0.9 * avgVolImpulse
         : null;
-    logger?.trace?.(
-      `[live][trace] flag recalc ticker=${ticker} tf=${signalTf} candles=${candles.length} trendOk=${pattern?.trendOk} flagOk=${pattern?.flagOk} ` +
+    logger?.info?.(
+      `[live][diag] flag recalc ticker=${ticker} tf=${signalTf} candles=${candles.length} trendOk=${pattern?.trendOk} flagOk=${pattern?.flagOk} ` +
       `flagRange=${Number.isFinite(flagRange) ? flagRange : "-"} flagThreshold=${Number.isFinite(flagThresholdUsed) ? flagThresholdUsed : "-"} condRange=${condRange} ` +
-      `slope=${Number.isFinite(slope) ? slope : "-"} slopeThreshold=${Number.isFinite(slopeThreshold) ? slopeThreshold : "-"} condSlope=${condSlope} ` +
+      `slope=${Number.isFinite(slope) ? slope : "-"} condSlope=${condSlope} ` +
       `avgVolFlag=${Number.isFinite(avgVolFlag) ? avgVolFlag : "-"} avgVolImpulse=${Number.isFinite(avgVolImpulse) ? avgVolImpulse : "-"} condVolume=${condVolume}`
     );
-    if (pattern?.flagOk === false) {
-      logger?.trace?.(
-        `[live] FLAG KO ticker=${ticker} condRange=${condRange} condSlope=${condSlope} condVolume=${condVolume} ` +
-        `flagRange=${Number.isFinite(flagRange) ? flagRange : "-"} threshold=${Number.isFinite(flagThresholdUsed) ? flagThresholdUsed : "-"} ` +
-        `slope=${Number.isFinite(slope) ? slope : "-"} slopeThreshold=${Number.isFinite(slopeThreshold) ? slopeThreshold : "-"} ` +
-        `avgVolFlag=${Number.isFinite(avgVolFlag) ? avgVolFlag : "-"} avgVolImpulse=${Number.isFinite(avgVolImpulse) ? avgVolImpulse : "-"}`
-      );
-    }
     return pattern;
   } catch (err) {
     logger?.warning?.(
@@ -443,9 +476,10 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
     brokerExecutorUrl,
     capitalManagerUrl,
     ibkrBridgeUrl,
+    candleTs,
   } = deps;
   if (!bus || typeof bus.get !== "function" || typeof bus.set !== "function") {
-    logger?.trace?.(`[live][trace] updateSnapshot skipped ticker=${ticker}: bus not available`);
+    logger?.warning?.(`[live][diag] updateSnapshot skipped ticker=${ticker}: bus not available`);
     return false;
   }
   const hasPipeId = liveState.pipeId !== null && liveState.pipeId !== undefined;
@@ -453,21 +487,21 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
   const hasAsOfDate = Boolean(liveState.asOfDate);
   if (!hasPipeId || !hasUserId || !hasAsOfDate) {
     logger?.warning?.(
-      `[live] updateSnapshot skipped ticker=${ticker}: liveState non pronto ` +
+      `[live][diag] updateSnapshot skipped ticker=${ticker}: liveState non pronto ` +
       `(pipeId=${liveState.pipeId} userId=${liveState.userId} asOfDate=${liveState.asOfDate})`
     );
     return false;
   }
 
   const key = buildSpotFinderRedisKey(bus, liveState.pipeId, liveState.userId, liveState.asOfDate);
-  logger?.trace?.(
-    `[live][trace] updateSnapshot start ticker=${ticker} key=${key} ` +
+  logger?.info?.(
+    `[live][diag] updateSnapshot start ticker=${ticker} key=${key} ` +
     `price=${Number.isFinite(price) ? price : "-"} volume=${Number.isFinite(volume) ? volume : "-"} ` +
     `dataMode=${dataMode || "-"} ts=${ts ?? "-"}`
   );
   const payload = await bus.get(key);
   if (!payload || !Array.isArray(payload?.results)) {
-    logger?.warning?.(`[live] updateSnapshot skipped ticker=${ticker}: payload Redis mancante o invalido (key=${key})`);
+    logger?.warning?.(`[live][diag] updateSnapshot skipped ticker=${ticker}: payload Redis mancante o invalido (key=${key})`);
     return false;
   }
 
@@ -476,7 +510,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
     (row) => String(row?.ticker || row?.symbol || "").toUpperCase() === ticker
   );
   if (idx === -1) {
-    logger?.warning?.(`[live] updateSnapshot skipped ticker=${ticker}: non trovato nei results Redis (${results.length} entries, keys=${results.slice(0,3).map(r=>r?.ticker||r?.symbol).join(",")}...)`);
+    logger?.warning?.(`[live][diag] updateSnapshot skipped ticker=${ticker}: non trovato nei results Redis (${results.length} entries, keys=${results.slice(0,3).map(r=>r?.ticker||r?.symbol).join(",")}...)`);
     return false;
   }
 
@@ -504,40 +538,26 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
     logger?.warning?.(`[live] updateSnapshot skipped ticker=${ticker}: basePattern mancante (patternRoot=${patternRoot})`);
     return false;
   }
-  const recalculatedPattern = await recalcFlagOkFromLiveSnapshot({
-    ticker,
-    price,
-    volume,
-    cachemanagerUrl,
-    logger,
-    bus,
-  });
-
-  // Fail-safe: se il recalc non è disponibile non emettere segnali su dati stantii
-  if (recalculatedPattern === null) {
-    logger?.warning?.(
-      `[live] flagOk recalc non disponibile ticker=${ticker} — segnale bloccato (fail-safe)`
-    );
-    const updatedNoSignal = {
-      ...(payload && typeof payload === "object" ? payload : {}),
-      results: payload.results,
-      stats: { ...(payload?.stats || {}), updatedAt: new Date().toISOString() },
-    };
-    await bus.set(key, updatedNoSignal, { EX: SNAPSHOT_TTL_SECONDS });
-    return true;
-  }
-
-  // effectivePrice: usa il prezzo live se disponibile, altrimenti quello dello snapshot
-  // Elimina la discordanza tra il prezzo usato per calcolare i flag e quello usato nel check finale
+  // effectivePrice: snapshot price (live quotes ignored for now)
   const liveQuotePrice = liveData?.last ?? liveData?.ask ?? liveData?.bid;
   const effectivePrice = Number.isFinite(liveQuotePrice) ? liveQuotePrice : price;
   logger?.trace?.(
-    `[live][trace] effectivePrice ticker=${ticker} ` +
-    `source=${Number.isFinite(liveQuotePrice) ? "liveQuote" : "snapshotPrice"} ` +
-    `liveQuotePrice=${Number.isFinite(liveQuotePrice) ? liveQuotePrice : "-"} ` +
-    `snapshotPrice=${Number.isFinite(price) ? price : "-"} effectivePrice=${effectivePrice}`
+    `[live][trace] effectivePrice ticker=${ticker} source=${Number.isFinite(liveQuotePrice) ? "liveQuote" : "snapshotPrice"} effectivePrice=${effectivePrice}`
   );
 
+  // Recalc skipped: tickers are pre-screened by spot-finder (daily job) with flagOk/trendOk
+  // already validated on weeks of data. Re-running detectTrendFlagBreakout intraday would
+  // require 60+ candles (60+ minutes) and could miss momentum. The only live guard needed
+  // is: price has not collapsed below flagLow (flag structure still intact).
+  const flagLow = asNumber(basePattern?.flagLow ?? basePattern?.breakoutEntry?.flagLow, null);
+  const flagIntact = Number.isFinite(flagLow) && Number.isFinite(effectivePrice)
+    ? effectivePrice >= flagLow
+    : true; // no flagLow available → trust basePattern
+  if (!flagIntact) {
+    logger?.info?.(
+      `[live] flag invalidated ticker=${ticker} price=${effectivePrice} < flagLow=${flagLow} — basePattern.flagOk overridden to false`
+    );
+  }
   const breakLevel = asNumber(
     basePattern?.breakLevel ?? basePattern?.breakoutEntry?.breakLevel,
     null
@@ -569,24 +589,22 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
       : false;
 
   const trendOk = basePattern?.trendOk ?? null;
-  // recalculatedPattern è garantito non-null qui (fail-safe sopra blocca se null)
-  const flagOk = recalculatedPattern.flagOk ?? null;
-  logger?.trace?.(
-    `[live][trace] flag source ticker=${ticker} baseFlagOk=${basePattern?.flagOk} recalculatedFlagOk=${recalculatedPattern.flagOk} selectedFlagOk=${flagOk}`
-  );
-  const actionableBreakout   = Boolean(trendOk && flagOk && breakoutOk);
-  const actionablePullback   = Boolean(trendOk && flagOk && pullbackOk);
-  const actionableRetracement = Boolean(trendOk && flagOk && retracementOk);
+  // flagOk = spot-finder result AND price still above flagLow (flag not broken down intraday)
+  // Kept for logging/payload but no longer required to enter — trendOk alone is sufficient.
+  const flagOk = (basePattern?.flagOk ?? null) === true ? flagIntact : (basePattern?.flagOk ?? null);
+  const actionableBreakout   = Boolean(trendOk && breakoutOk);
+  const actionablePullback   = Boolean(trendOk && pullbackOk);
+  const actionableRetracement = Boolean(trendOk && retracementOk);
   logger?.trace?.(
     `[live][trace] levels ticker=${ticker} breakLevel=${Number.isFinite(breakLevel) ? breakLevel : "-"} ` +
     `buffer=${Number.isFinite(buffer) ? buffer : "-"} retracementEntryLimit=${Number.isFinite(retracementEntryLimit) ? retracementEntryLimit : "-"} ` +
     `snapshotPrice=${Number.isFinite(price) ? price : "-"} effectivePrice=${Number.isFinite(effectivePrice) ? effectivePrice : "-"} ` +
     `volume=${Number.isFinite(volume) ? volume : "-"} volumeThreshold=${Number.isFinite(volumeThreshold) ? volumeThreshold : "-"}`
   );
-  logger?.trace?.(
-    `[live][trace] flags ticker=${ticker} trendOk=${trendOk} flagOk=${flagOk} ` +
-    `breakoutOk=${breakoutOk} pullbackOk=${pullbackOk} retracementOk=${retracementOk} ` +
-    `actionableBreakout=${actionableBreakout} actionablePullback=${actionablePullback} actionableRetracement=${actionableRetracement}`
+  logger?.info?.(
+    `[live][diag] flags ticker=${ticker} price=${Number.isFinite(effectivePrice) ? effectivePrice : "-"} breakLevel=${Number.isFinite(breakLevel) ? breakLevel : "-"} ` +
+    `buffer=${Number.isFinite(buffer) ? buffer : "-"} retracementLimit=${Number.isFinite(retracementEntryLimit) ? retracementEntryLimit : "-"} ` +
+    `trendOk=${trendOk} flagOk=${flagOk} breakoutOk=${breakoutOk} pullbackOk=${pullbackOk} retracementOk=${retracementOk}`
   );
 
   if (breakoutOk) {
@@ -648,7 +666,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
         }
       : basePattern?.breakoutEntry,
     lastSnapshot: {
-      ts: ts ?? Date.now(),
+      ts: ts ?? simClock.now(),
       price: Number.isFinite(effectivePrice) ? effectivePrice : null,
       snapshotPrice: Number.isFinite(price) ? price : null,
       volume: Number.isFinite(volume) ? volume : null,
@@ -716,9 +734,12 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
     },
   };
   await bus.set(key, updated, { EX: SNAPSHOT_TTL_SECONDS });
+  // Use same ts input as main.js TRACE line so both symrefs are identical
+  const logRef = buildSymbolLogRef(ticker, ts ?? lastTouchAt);
   logger?.trace?.(
-    `[live] lastTouchAt updated ticker=${ticker} key=${key} ts=${lastTouchAt} mode=${dataMode || "snapshot"}`
+    `[live] lastTouchAt updated ticker=${ticker} key=${key} ts=${lastTouchAt} logRef=${logRef} mode=${dataMode || "snapshot"}`
   );
+  if (logRef) logger?.info?.(`>> ${logRef}`);
 
   if (changes.length > 0) {
     const correlationId = randomUUID();
@@ -816,7 +837,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
       if (priceOkFinal && volumeOkLive) {
         const alertKey = `${ticker}:${entryMode}:${entryLimit}`;
         const lastAlert = liveState.lastAlertByKey.get(alertKey) || 0;
-        const cooldownRemaining = ALERT_COOLDOWN_MS - (Date.now() - lastAlert);
+        const cooldownRemaining = ALERT_COOLDOWN_MS - (simClock.now() - lastAlert);
         logger?.trace?.(
           `[live][trace] cooldown ticker=${ticker} alertKey=${alertKey} ` +
           `lastAlert=${lastAlert || 0} cooldownRemainingMs=${Math.max(0, cooldownRemaining)}`
@@ -824,26 +845,26 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
         if (cooldownRemaining > 0) {
           logger?.info?.(`[live] ENTRY IN COOLDOWN ticker=${ticker} mode=${entryMode} — riprova tra ${Math.ceil(cooldownRemaining / 1000)}s`);
         }
-        if (Date.now() - lastAlert > ALERT_COOLDOWN_MS) {
+        if (simClock.now() - lastAlert > ALERT_COOLDOWN_MS) {
 
           // --- riskOn check (cached with TTL) ---
           let riskRegime = liveState.lastRiskOnCheck.riskRegime;
           let riskScore = liveState.lastRiskOnCheck.score;
-          const riskCacheAge = Date.now() - liveState.lastRiskOnCheck.ts;
-          if (riskCacheAge <= RISK_ON_TTL_MS) {
+          const riskCacheAge = simClock.now() - liveState.lastRiskOnCheck.ts;
+          if (riskCacheAge <= runtimeConfig.riskOnTtlMs) {
             logger?.trace?.(
               `[live][trace] riskOn from cache ticker=${ticker} regime=${riskRegime ?? "unknown"} ` +
               `score=${riskScore ?? "-"} cacheAgeMs=${riskCacheAge}`
             );
           }
-          if (riskCacheAge > RISK_ON_TTL_MS) {
+          if (riskCacheAge > runtimeConfig.riskOnTtlMs) {
             const liqUrl = (liquidityManagerUrl || "http://liquidity-manager:3001").replace(/\/+$/, "");
             try {
               const resp = await httpGetJson(`${liqUrl}/liquidity-score`, 4000);
               if (resp.status === 200 && resp.data?.ok !== false) {
                 riskRegime = resp.data?.riskRegime ?? null;
                 riskScore = asNumber(resp.data?.score, null);
-                liveState.lastRiskOnCheck = { ts: Date.now(), riskRegime, score: riskScore };
+                liveState.lastRiskOnCheck = { ts: simClock.now(), riskRegime, score: riskScore };
                 logger?.info?.(
                   `[live] riskOn fetched: regime=${riskRegime} score=${riskScore}`
                 );
@@ -875,7 +896,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
           // On block: logs WARNING, publishes hook + event, does NOT set
           // lastAlertByKey so the signal is re-evaluated each tick.
           // ----------------------------------------------------------------
-          const fmpApiKey = process.env.FMP_API_KEY || "";
+          const fmpApiKey = runtimeConfig.fmpApiKey;
           if (!fmpApiKey) {
             logger?.trace?.(
               `[live][trace] volatility guards skipped ticker=${ticker} — FMP_API_KEY not configured (earnings/fomc/macro/dividend disabled)`
@@ -887,8 +908,8 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
           const publishGuardBlock = async ({ guardName, eventId, hookEvent, blockMsg, extraPayload }) => {
             const notifKey = `${alertKey}:${guardName}`;
             const lastNotif = liveState.lastEventBlockNotifByKey.get(notifKey) || 0;
-            if (Date.now() - lastNotif > EVENT_BLOCK_NOTIF_COOLDOWN_MS) {
-              liveState.lastEventBlockNotifByKey.set(notifKey, Date.now());
+            if (simClock.now() - lastNotif > EVENT_BLOCK_NOTIF_COOLDOWN_MS) {
+              liveState.lastEventBlockNotifByKey.set(notifKey, simClock.now());
               const cid = randomUUID();
               const fullPayload = { ticker, entryMode, message: blockMsg, levels: { entryLimit, stopLoss, takeProfit1, takeProfit2 }, ...extraPayload };
               try {
@@ -909,7 +930,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
             let nearestEarningsDate = null;
             try { nearestEarningsDate = await fetchNearestEarningsDate(ticker, fmpApiKey, logger); } catch (_) {}
             if (nearestEarningsDate !== null) {
-              const daysToEarnings = Math.abs(Date.now() - nearestEarningsDate) / (24 * 60 * 60 * 1000);
+              const daysToEarnings = Math.abs(simClock.now() - nearestEarningsDate) / (24 * 60 * 60 * 1000);
               if (daysToEarnings <= guardConfig.earnings.blockDays) {
                 const earningsDateStr = new Date(nearestEarningsDate).toISOString().split("T")[0];
                 const blockMsg = `BUY SIGNAL BLOCCATO: earnings entro ${guardConfig.earnings.blockDays} giorni (data: ${earningsDateStr}, distanza: ${daysToEarnings.toFixed(1)} giorni)`;
@@ -919,7 +940,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
                 return true;
               }
               logger?.trace?.(
-                `[live][trace] guard:earnings PASS ticker=${ticker} nearestDate=${new Date(nearestEarningsDate).toISOString().split("T")[0]} daysAway=${Math.abs(Date.now() - nearestEarningsDate) / (24 * 60 * 60 * 1000) | 0} blockDays=${guardConfig.earnings.blockDays}`
+                `[live][trace] guard:earnings PASS ticker=${ticker} nearestDate=${new Date(nearestEarningsDate).toISOString().split("T")[0]} daysAway=${Math.abs(simClock.now() - nearestEarningsDate) / (24 * 60 * 60 * 1000) | 0} blockDays=${guardConfig.earnings.blockDays}`
               );
             } else {
               logger?.trace?.(`[live][trace] guard:earnings PASS ticker=${ticker} — no earnings date found`);
@@ -934,7 +955,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
           if (guardConfig.fomc.enabled && fmpApiKey) {
             const fomcKeywords = ["fomc", "federal open market", "fed rate", "federal reserve rate"];
             const calEvents = await fetchEconomicCalendar(fmpApiKey, logger);
-            const now = Date.now();
+            const now = simClock.now();
             const nearestFomc = calEvents
               .filter((e) => fomcKeywords.some((kw) => String(e?.event || e?.name || "").toLowerCase().includes(kw)))
               .map((e) => (e?.date ? new Date(e.date).getTime() : null))
@@ -966,7 +987,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
           if (guardConfig.macro.enabled && fmpApiKey) {
             const macroKeywords = ["cpi", "consumer price", "non-farm", "nonfarm", "nfp", "payroll"];
             const calEvents = await fetchEconomicCalendar(fmpApiKey, logger); // already cached
-            const now = Date.now();
+            const now = simClock.now();
             const nearestMacro = calEvents
               .filter((e) => {
                 const name = String(e?.event || e?.name || "").toLowerCase();
@@ -1003,7 +1024,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
             let nearestExDate = null;
             try { nearestExDate = await fetchNearestDividendExDate(ticker, fmpApiKey, logger); } catch (_) {}
             if (nearestExDate !== null) {
-              const daysToEx = (nearestExDate - Date.now()) / (24 * 60 * 60 * 1000); // always >= 0 (future dates only)
+              const daysToEx = (nearestExDate - simClock.now()) / (24 * 60 * 60 * 1000); // always >= 0 (future dates only)
               if (daysToEx >= 0 && daysToEx <= guardConfig.dividend.blockDays) {
                 const exDateStr = new Date(nearestExDate).toISOString().split("T")[0];
                 const blockMsg = `BUY SIGNAL BLOCCATO: ex-dividend date tra ${daysToEx.toFixed(1)} giorni (data: ${exDateStr})`;
@@ -1033,7 +1054,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
               const cmUrl = cachemanagerUrl.replace(/\/+$/, "");
               try {
                 const resp = await httpGetJson(
-                  `${cmUrl}/candles/latest?symbol=${encodeURIComponent(ticker)}&tf=${encodeURIComponent(INTRADAY_TF)}`,
+                  `${cmUrl}/candles/latest?symbol=${encodeURIComponent(ticker)}&tf=${encodeURIComponent(runtimeConfig.intradayTf)}`,
                   4000
                 );
                 if (resp.status === 200 && resp.data?.candle) {
@@ -1044,17 +1065,17 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
                     logger?.warning?.(
                       `[live] BUY SIGNAL BLOCKED ticker=${ticker} mode=BREAKOUT ` +
                       `— candle range=${candleRange.toFixed(4)} > flagAtrK*ATR=${maxRange.toFixed(4)} ` +
-                      `(flagAtrK=${flagAtrK} atrLast=${atrLast.toFixed(4)} tf=${INTRADAY_TF})`
+                      `(flagAtrK=${flagAtrK} atrLast=${atrLast.toFixed(4)} tf=${runtimeConfig.intradayTf})`
                     );
                     return true;
                   }
                   lastCandleRange = candleRange;
                   logger?.info?.(
-                    `[live] candle range check OK ticker=${ticker} range=${Number.isFinite(candleRange) ? candleRange.toFixed(4) : "-"} maxRange=${maxRange.toFixed(4)} tf=${INTRADAY_TF}`
+                    `[live] candle range check OK ticker=${ticker} range=${Number.isFinite(candleRange) ? candleRange.toFixed(4) : "-"} maxRange=${maxRange.toFixed(4)} tf=${runtimeConfig.intradayTf}`
                   );
                 } else if (resp.status === 404) {
                   logger?.info?.(
-                    `[live] candle range check skipped ticker=${ticker} — no ${INTRADAY_TF} candle in cache`
+                    `[live] candle range check skipped ticker=${ticker} — no ${runtimeConfig.intradayTf} candle in cache`
                   );
                 } else {
                   logger?.warning?.(
@@ -1071,11 +1092,11 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
 
           // --- Opening volatility block (BREAKOUT only) ---
           if (entryMode === "breakout") {
-            const minSinceOpen = minutesSinceMarketOpen(Date.now());
-            if (minSinceOpen >= 0 && minSinceOpen < BREAKOUT_OPEN_BLOCK_MINUTES) {
-              const minutesRemaining = Math.ceil(BREAKOUT_OPEN_BLOCK_MINUTES - minSinceOpen);
+            const minSinceOpen = minutesSinceMarketOpen(simClock.now());
+            if (minSinceOpen >= 0 && minSinceOpen < runtimeConfig.breakoutOpenBlockMinutes) {
+              const minutesRemaining = Math.ceil(runtimeConfig.breakoutOpenBlockMinutes - minSinceOpen);
               const blockMsg =
-                `Segnale ON al breakout ma volatilità alta in apertura aspetto ${BREAKOUT_OPEN_BLOCK_MINUTES} min` +
+                `Segnale ON al breakout ma volatilità alta in apertura aspetto ${runtimeConfig.breakoutOpenBlockMinutes} min` +
                 ` (apertura da ${Math.floor(minSinceOpen)} min, ancora ${minutesRemaining} min)`;
               logger?.info?.(
                 `[live] BREAKOUT OPEN BLOCK ticker=${ticker} — ${blockMsg}`
@@ -1083,8 +1104,8 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
 
               // Publish notification on hooks channel (rate-limited per alertKey)
               const lastNotif = liveState.lastOpenBlockNotifByKey.get(alertKey) || 0;
-              if (Date.now() - lastNotif > OPEN_BLOCK_NOTIF_COOLDOWN_MS) {
-                liveState.lastOpenBlockNotifByKey.set(alertKey, Date.now());
+              if (simClock.now() - lastNotif > OPEN_BLOCK_NOTIF_COOLDOWN_MS) {
+                liveState.lastOpenBlockNotifByKey.set(alertKey, simClock.now());
                 const blockCorrelationId = randomUUID();
                 const blockHookPayload = {
                   event: "ENTRY_SIGNAL_DEFERRED",
@@ -1094,7 +1115,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
                   message: blockMsg,
                   minutesSinceOpen: Math.floor(minSinceOpen),
                   minutesRemaining,
-                  blockMinutes: BREAKOUT_OPEN_BLOCK_MINUTES,
+                  blockMinutes: runtimeConfig.breakoutOpenBlockMinutes,
                   levels: { entryLimit, stopLoss, takeProfit1, takeProfit2 },
                   ts: new Date().toISOString(),
                   correlationId: blockCorrelationId,
@@ -1122,7 +1143,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
                       message: blockMsg,
                       minutesSinceOpen: Math.floor(minSinceOpen),
                       minutesRemaining,
-                      blockMinutes: BREAKOUT_OPEN_BLOCK_MINUTES,
+                      blockMinutes: runtimeConfig.breakoutOpenBlockMinutes,
                       levels: { entryLimit, stopLoss, takeProfit1, takeProfit2 },
                     },
                   });
@@ -1136,12 +1157,12 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
               return true;
             } else {
               logger?.trace?.(
-                `[live][trace] guard:openBlock PASS ticker=${ticker} minSinceOpen=${minSinceOpen.toFixed(1)} blockWindow=${BREAKOUT_OPEN_BLOCK_MINUTES}min`
+                `[live][trace] guard:openBlock PASS ticker=${ticker} minSinceOpen=${minSinceOpen.toFixed(1)} blockWindow=${runtimeConfig.breakoutOpenBlockMinutes}min`
               );
             }
           }
 
-          liveState.lastAlertByKey.set(alertKey, Date.now());
+          liveState.lastAlertByKey.set(alertKey, simClock.now());
           const parts = [
             `ENTRY ${ticker}`,
             `MODE=${entryMode.toUpperCase()}`,
@@ -1253,7 +1274,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
             );
             (async () => {
               // --- GUARDRAIL: verify IBKR account is PAPER (DU prefix) before placing orders ---
-              const now = Date.now();
+              const now = simClock.now();
               if (now - liveState.ibkrAccountCheck.ts > liveState.ibkrAccountCheck.ttlMs) {
                 const bridgeUrl = (ibkrBridgeUrl || "http://ibkr-bridge:3017").replace(/\/+$/, "");
                 try {
@@ -1301,7 +1322,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
               }
 
               // --- Step 1: Quote — ask capital-manager for maxInvestable ---
-              const defaultDollars = Number(process.env.DE_DOLLARS_PER_TRADE) || 5000;
+              const defaultDollars = runtimeConfig.defaultDollarsPerTrade;
               let dollars = defaultDollars;
               let reservationId = null;
               const cmUserId = liveState.userId;
@@ -1377,7 +1398,7 @@ const updateSnapshotFlagsFromLive = async (ticker, price, volume, dataMode, ts, 
                 stopLossPrice: stopLoss,
                 stopLossLimitPrice: slLimitPrice,
                 ...(Number.isFinite(takeProfit1) ? { takeProfitPrice: takeProfit1 } : {}),
-                timeInForce: process.env.DE_ORDER_TIF || "DAY",
+                timeInForce: runtimeConfig.defaultOrderTif,
                 externalCorrelationId: correlationId,
                 decisionEngineRunId: correlationId,
               };
@@ -1437,10 +1458,10 @@ function createMarketDataHandler(deps) {
   const {
     bus,
     logger,
-    eventsChannel = `${process.env.ENV || process.env.APP_ENV || "DEV"}.${process.env.MICROSERVICE_NAME || "decision-engine"}.events`,
+    eventsChannel = `${runtimeConfig.envName}.${runtimeConfig.serviceName}.events`,
     hooksChannel,
-    serviceName = process.env.MICROSERVICE_NAME || "decision-engine",
-    envName = process.env.ENV || process.env.APP_ENV || "DEV",
+    serviceName = runtimeConfig.serviceName,
+    envName = runtimeConfig.envName,
     liquidityManagerUrl,
     cachemanagerUrl,
     brokerExecutorUrl,
@@ -1449,11 +1470,11 @@ function createMarketDataHandler(deps) {
   } = deps;
 
   return async (parsed, raw) => {
-    logger?.trace?.(
-      `[live][trace] handler invoked active=${liveState.active} pipeId=${liveState.pipeId ?? "-"} tickers=${liveState.tickers.size}`
+    logger?.info?.(
+      `[live][diag] handler invoked active=${liveState.active} pipeId=${liveState.pipeId ?? "-"} tickers=${liveState.tickers.size}`
     );
     if (!liveState.active) {
-      logger?.trace?.("[live][trace] market data ignored: liveState inactive");
+      logger?.warning?.("[live][diag] market data ignored: liveState inactive");
       return;
     }
     let parsedPayload =
@@ -1466,15 +1487,15 @@ function createMarketDataHandler(deps) {
       }
     }
     if (!parsedPayload) {
-      logger?.trace?.("[live][trace] market data ignored: payload not parseable");
+      logger?.warning?.("[live][diag] market data ignored: payload not parseable");
       return;
     }
     const dataMode = String(parsedPayload?.dataMode || parsedPayload?.mode || "").toLowerCase();
 
     const ticker = String(parsedPayload?.ticker || parsedPayload?.symbol || "").toUpperCase();
     if (!ticker || !liveState.tickers.has(ticker)) {
-      logger?.trace?.(
-        `[live][trace] market data ignored: ticker=${ticker || "-"} tracked=${liveState.tickers.has(ticker)}`
+      logger?.warning?.(
+        `[live][diag] market data ignored: ticker=${ticker || "-"} tracked=${liveState.tickers.has(ticker)} liveState.tickers=[${Array.from(liveState.tickers).join(",")}]`
       );
       return;
     }
@@ -1494,16 +1515,7 @@ function createMarketDataHandler(deps) {
     );
 
     if (dataMode === "live") {
-      liveState.lastLiveByTicker.set(ticker, {
-        ts: parsedPayload?.ts ?? Date.now(),
-        last,
-        bid,
-        ask,
-        volume,
-      });
-      logger?.trace?.(
-        `[live][trace] live quote cached ticker=${ticker} ts=${parsedPayload?.ts ?? Date.now()}`
-      );
+      // Live quotes ignored for now — snapshot candles are the authoritative price source.
       return;
     }
 
@@ -1514,14 +1526,24 @@ function createMarketDataHandler(deps) {
       return;
     }
 
-    const now = Date.now();
+    const now = simClock.now();
     if (liveState.runningByTicker.has(ticker)) {
       logger?.trace?.(`[live][trace] snapshot skipped ticker=${ticker}: run already in progress`);
       return;
     }
 
     const lastRun = liveState.lastRunByTicker.get(ticker) || 0;
-    if (now - lastRun < liveState.minIntervalMs) {
+    const isSimulator = parsedPayload?.__source === "simulator";
+    const candleTs = Number.isFinite(parsedPayload?.candleTs) && parsedPayload.candleTs > 0
+      ? parsedPayload.candleTs
+      : null;
+    // In sim mode inject the candle timestamp into simClock so that ALL
+    // simClock.now() calls inside this process (guards, cooldowns, caches)
+    // reflect simulation time instead of wall-clock time.
+    if (isSimulator && candleTs !== null) {
+      try { simClock.inject(candleTs); } catch (_) { /* non-fatal */ }
+    }
+    if (!isSimulator && now - lastRun < liveState.minIntervalMs) {
       logger?.trace?.(
         `[live][trace] snapshot rate-limited ticker=${ticker} ` +
         `nextRunIn=${Math.ceil((liveState.minIntervalMs - (now - lastRun)) / 1000)}s`
@@ -1539,12 +1561,7 @@ function createMarketDataHandler(deps) {
     liveState.runningByTicker.add(ticker);
 
     try {
-      const liveData = liveState.lastLiveByTicker.get(ticker) || {
-        last,
-        bid,
-        ask,
-        volume,
-      };
+      const liveData = { last, bid, ask, volume };
       const updated = await updateSnapshotFlagsFromLive(
         ticker,
         price,
@@ -1552,7 +1569,7 @@ function createMarketDataHandler(deps) {
         dataMode,
         parsedPayload?.ts,
         liveData,
-        { bus, logger, eventsChannel, hooksChannel, serviceName, envName, liquidityManagerUrl, cachemanagerUrl, brokerExecutorUrl, capitalManagerUrl, ibkrBridgeUrl }
+        { bus, logger, eventsChannel, hooksChannel, serviceName, envName, liquidityManagerUrl, cachemanagerUrl, brokerExecutorUrl, capitalManagerUrl, ibkrBridgeUrl, candleTs }
       );
       if (updated) {
         logger?.trace?.(
@@ -1570,6 +1587,17 @@ function createMarketDataHandler(deps) {
 }
 
 // --- Guard config runtime API ----------------------------------------------
+
+function refreshLiveManagerConfig() {
+  runtimeConfig = buildRuntimeConfig();
+  liveState.minIntervalMs = runtimeConfig.liveRecalcIntervalMs;
+  const nextGuardConfig = buildDefaultGuardConfig();
+  for (const name of ["earnings", "fomc", "macro", "dividend"]) {
+    guardConfig[name].enabled = nextGuardConfig[name].enabled;
+    guardConfig[name].blockDays = nextGuardConfig[name].blockDays;
+  }
+  return getGuardConfig();
+}
 
 function getGuardConfig() {
   return {
@@ -1606,4 +1634,5 @@ module.exports = {
   createMarketDataHandler,
   getGuardConfig,
   updateGuardConfig,
+  refreshLiveManagerConfig,
 };

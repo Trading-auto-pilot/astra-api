@@ -5,6 +5,7 @@ const { createProviderError } = require("./providerErrors");
 const { markSuccess, markFailure } = require("./providerHealthRegistry");
 const yahooDxyProvider = require("./dxyProviderYahoo");
 const { getConfigNumber, getConfigString } = require("../../shared/loadSettings");
+const simClock = require("../../shared/simClock");
 
 const PROVIDER_NAME = "dxy";
 const STOOQ_SYMBOL = "dx.f";
@@ -24,7 +25,7 @@ function toIsoDate(value) {
 }
 
 function createMockSeries(days = 120) {
-  const now = Date.now();
+  const now = simClock.now();
   const out = [];
   let level = 103;
   for (let i = days; i >= 0; i -= 1) {

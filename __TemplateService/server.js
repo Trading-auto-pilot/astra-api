@@ -8,6 +8,7 @@ const cors = require("cors");
 const MainModule = require("./modules/main");
 const createLogger = require("../shared/logger");
 const buildStatusRouter = require("./status"); // router standard /status/*
+const { getConfigString } = require("../shared/loadSettings");
 
 dotenv.config();
 
@@ -19,7 +20,7 @@ const MODULE_NAME    = "__REST_MODULE_NAME__";    // es. "RESTServer"
 const MODULE_VERSION = "__MODULE_VERSION__";      // es. "1.0.0"
 const DEFAULT_PORT   = __PORT__;                  // es. 3012 (numero)
 
-let logLevel = process.env.LOG_LEVEL || "info";
+let logLevel = getConfigString("LOG_LEVEL", "info");
 const logger = createLogger(MICROSERVICE, MODULE_NAME, MODULE_VERSION, logLevel);
 process.env.MICROSERVICE_NAME = process.env.MICROSERVICE_NAME || MICROSERVICE;
 
@@ -221,6 +222,44 @@ app.put("/dbLogger/:status", async (req, res) => {
     return res
       .status(500)
       .json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+// GET /settings → ritorna i settings caricati
+app.get("/settings", requireReady, (_req, res) => {
+  try {
+    const data = serviceInstance.getAllSettings?.() || null;
+    if (!data) return res.status(404).json({ error: "Settings non disponibili" });
+    return res.json({ ok: true, data });
+  } catch (err) {
+    logger.error("[GET /settings] Errore:", err.message);
+    return res.status(500).json({ error: "Impossibile leggere i settings" });
+  }
+});
+
+// PUT /settings → aggiorna un setting in cache (non persistente)
+app.put("/settings", requireReady, (req, res) => {
+  const body = req.body || {};
+  let setting = body.setting;
+  let value = body.value;
+  if (!setting) {
+    const keys = Object.keys(body);
+    if (keys.length === 1) {
+      setting = keys[0];
+      value = body[setting];
+    }
+  }
+
+  if (typeof setting !== "string" || setting.trim() === "") {
+    return res.status(400).json({ ok: false, error: "Parametro 'setting' obbligatorio" });
+  }
+
+  try {
+    const next = serviceInstance.setSetting(setting, value);
+    return res.json({ ok: true, data: next });
+  } catch (err) {
+    logger.error("[PUT /settings] Errore:", err.message);
+    return res.status(500).json({ ok: false, error: "Impossibile aggiornare il setting" });
   }
 });
 

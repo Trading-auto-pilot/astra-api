@@ -8,6 +8,7 @@ const { ManualRoutesLoader } = require("./manualRoutesLoader");
 const { CacheManager } = require("./cacheManager");
 const { CachingTableManager } = require("./cachingTableManager");
 const { asInt } = require("../../shared/helpers");
+const { getConfigString, getConfigInt, getConfigBoolean } = require("../../shared/loadSettings");
 
 /**
  * Datahub - Dynamic Database API microservice
@@ -40,22 +41,23 @@ class Datahub extends BaseService {
 
     // MySQL connection config
     this.mysqlConfig = {
-      host: process.env.MYSQL_HOST || "localhost",
-      port: asInt(process.env.MYSQL_PORT, 3306),
-      user: process.env.MYSQL_USER || "root",
-      password: process.env.MYSQL_PASSWORD || process.env.MYSQL_ROOT_PASSWORD || "",
-      database: process.env.MYSQL_DATABASE || "trading",
+      host: getConfigString("MYSQL_HOST", "localhost"),
+      port: getConfigInt("MYSQL_PORT", 3306),
+      user: getConfigString("MYSQL_USER", "root"),
+      password: getConfigString(["MYSQL_PASSWORD", "MYSQL_ROOT_PASSWORD"], ""),
+      database: getConfigString("MYSQL_DATABASE", "trading"),
+      simulDatabase: getConfigString("MYSQL_SIMUL", ""),
     };
 
     // Redis caching config
     this.redisConfig = {
       redis: {
-        enabled: process.env.REDIS_CACHE_ENABLED === "true",
-        host: process.env.REDIS_HOST || "localhost",
-        port: asInt(process.env.REDIS_PORT, 6379),
-        password: process.env.REDIS_PASSWORD || undefined,
-        db: asInt(process.env.REDIS_DB, 0),
-        keyPrefix: process.env.REDIS_KEY_PREFIX || "datahub",
+        enabled: getConfigBoolean("REDIS_CACHE_ENABLED", false),
+        host: getConfigString("REDIS_HOST", "localhost"),
+        port: getConfigInt("REDIS_PORT", 6379),
+        password: getConfigString("REDIS_PASSWORD", "") || undefined,
+        db: getConfigInt("REDIS_DB", 0),
+        keyPrefix: getConfigString("REDIS_KEY_PREFIX", "datahub"),
       },
     };
 
@@ -197,8 +199,25 @@ class Datahub extends BaseService {
    * Get schema information
    */
   getSchemaInfo() {
+    const tableInfos = Array.from(this.dynamicRouters.values()).map((entry) => entry.info || {});
+    const tablesDetailed = tableInfos.map((info) => ({
+      name: info.name,
+      schema: info.schema || this.mysqlConfig.database,
+      type: info.type || "table",
+    }));
+    const tablesBySchema = tablesDetailed.reduce((acc, table) => {
+      const schemaName = String(table.schema || this.mysqlConfig.database || "default");
+      if (!acc[schemaName]) acc[schemaName] = [];
+      acc[schemaName].push(table.name);
+      return acc;
+    }, {});
+
+    Object.values(tablesBySchema).forEach((tables) => tables.sort((a, b) => a.localeCompare(b)));
+
     return {
       tables: Array.from(this.dynamicRouters.keys()),
+      tablesDetailed,
+      tablesBySchema,
       manualRoutes: this.manualRouters.map((r) => ({
         name: r.name,
         path: r.path,

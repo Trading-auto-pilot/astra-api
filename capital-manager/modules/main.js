@@ -4,6 +4,7 @@
 const path = require("path");
 const BaseService = require("../../shared/BaseService");
 const { publishEventsManifest } = require("../../shared/eventsManifestRegistry");
+const { getConfigInt } = require("../../shared/loadSettings");
 const { countryToArea } = require("./utils/geoUtils");
 const { fetchAccountSummary, fetchOpenOrders, fetchPositions } = require("./adapters/ibkrBridge");
 const { fetchLiquidityScore } = require("./adapters/liquidityManager");
@@ -95,7 +96,7 @@ class CapitalManager extends BaseService {
   async _loadAllocationConfig() {
     const defaults = {
       ...getDefaultConfig(),
-      RESERVATION_TTL_SEC: parseInt(process.env.RESERVATION_TTL_SEC || "180", 10),
+      RESERVATION_TTL_SEC: getConfigInt("RESERVATION_TTL_SEC", 180),
     };
 
     const config = { ...defaults };

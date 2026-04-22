@@ -247,15 +247,14 @@ async function runSpotFinderAnalysis(query, deps) {
         })
       : null;
 
-  const actionableBreakout = !!signalPattern && signalPattern.trendOk && signalPattern.flagOk && signalPattern.breakoutOk;
-  const actionablePullback = !!signalPattern && signalPattern.trendOk && signalPattern.flagOk && signalPattern.pullbackOk;
+  // flagOk no longer required to enter — trendOk alone is sufficient.
+  const actionableBreakout = !!signalPattern && signalPattern.trendOk && signalPattern.breakoutOk;
+  const actionablePullback = !!signalPattern && signalPattern.trendOk && signalPattern.pullbackOk;
   const breakoutReason = !signalPattern ? "pattern not available"
     : !signalPattern.trendOk ? "trend not confirmed"
-    : !signalPattern.flagOk ? "flag not confirmed"
     : "breakout not confirmed by close+volume";
   const pullbackReason = !signalPattern ? "pattern not available"
     : !signalPattern.trendOk ? "trend not confirmed"
-    : !signalPattern.flagOk ? "flag not confirmed"
     : "pullback not confirmed";
 
   // --- Entry levels ---

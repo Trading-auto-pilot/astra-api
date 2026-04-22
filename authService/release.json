@@ -1,8 +1,7 @@
 {
-  "lastUpdate": "07/03/2026", 
-  "version": "1.6.1",
+  "lastUpdate": "22/04/2026",
+  "version": "1.7.0",
   "microservice": "auth",
-
   "note": [
     "v.1.0.0 auth: Initial scaffolding generated from template.",
     "v.1.1.0 auth: Aggiunta log per debug login.",
@@ -11,6 +10,7 @@
     "v.1.4.0 auth: Fix per utilizzo API_KEY",
     "v.1.5.0 Inclusione delle informazioni di Peso per utente, aggiunto info microservice su user agent",
     "v.1.6.0 Tocken auto extend su interazione. Session expire solo se non usata",
-    "v.1.6.1 Aggiunta messaggi su canale HOOK per alerting piu fix minori"
+    "v.1.6.1 Aggiunta messaggi su canale HOOK per alerting piu fix minori",
+    "v.1.7.0 Minor Fix"
   ]
 }

@@ -5,7 +5,7 @@ const path = require("path");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 const fs = require("fs/promises");
 const createLogger = require("../../shared/logger");
-const { initializeSettings, getSetting, reloadSettings } = require("../../shared/loadSettings");
+const { initializeSettings, getSetting, reloadSettings, getAllSettings, setSetting, getConfigString } = require("../../shared/loadSettings");
 const { RedisBus } = require("../../shared/redisBus");
 const { publishEventsManifest } = require("../../shared/eventsManifestRegistry");
 const { asBool, asInt } = require("../../shared/helpers");
@@ -66,12 +66,13 @@ class __CLASS_NAME__ {
     // =====================================================
     // LOGGER
     // =====================================================
+    this.logLevel = getConfigString("LOG_LEVEL", "info");
     process.env.MICROSERVICE_NAME = process.env.MICROSERVICE_NAME || MICROSERVICE;
     this.logger = createLogger(
       MICROSERVICE,
       MODULE_NAME,
       MODULE_VERSION,
-      process.env.LOG_LEVEL || "info",
+      this.logLevel,
       {
         bus: null,
         busTopicPrefix: this.env,
@@ -123,6 +124,9 @@ class __CLASS_NAME__ {
     }
 
     // 3) APPLY COMMON SETTINGS
+    this.logLevel = getConfigString("LOG_LEVEL", this.logLevel || "info");
+    if (this.logger?.setLevel) this.logger.setLevel(this.logLevel);
+
     this.delayBetweenMessages = asInt(
       getSetting("PROCESS_DELAY_BETWEEN_MESSAGES"),
       500
@@ -218,6 +222,35 @@ class __CLASS_NAME__ {
       ok: true,
       delayBetweenMessages: this.delayBetweenMessages,
     };
+  }
+
+  getAllSettings() {
+    return getAllSettings();
+  }
+
+  setSetting(key, value) {
+    return setSetting(key, value);
+  }
+
+  // =========================================================
+  // LOG LEVEL API (usata da /status/logLevel)
+  // =========================================================
+  getLogLevel() {
+    if (this.logger && typeof this.logger.getLevel === "function") {
+      const lvl = this.logger.getLevel();
+      return lvl || this.logLevel;
+    }
+    return this.logLevel;
+  }
+
+  setLogLevel(level) {
+    this.logLevel = level;
+    if (this.logger && typeof this.logger.setLevel === "function") {
+      this.logger.setLevel(level);
+      return { level };
+    }
+    this.logger.warning("[setLogLevel] Not supported by this logger | ", { level });
+    return { level: this.logLevel || null };
   }
 
   // =========================================================

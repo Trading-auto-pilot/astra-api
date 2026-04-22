@@ -3,8 +3,9 @@
 
 const { Router } = require("express");
 const createStatsModule = require("./modules/stats");
+const { getConfigInt } = require("../shared/loadSettings");
 
-const maxInterval = parseInt(process.env.MAX_RETRY_DELAY, 10) || 60000;
+const maxInterval = getConfigInt("MAX_RETRY_DELAY", 60000);
 
 /**
  * Router di status per CacheManager.

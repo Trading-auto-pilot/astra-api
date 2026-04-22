@@ -318,6 +318,7 @@ services:
       - IBKR_EXCHANGE=${IBKR_EXCHANGE}
       - LIVEMARKETLISTNER_URL=${LIVEMARKETLISTNER_URL}
       - L3_USAGE_ALERT_PERCENT=${L3_USAGE_ALERT_PERCENT:-95}
+      - CACHE_BASE_PATH=/app/cache
       - MARKETSIMULATOR_URL=${MARKETSIMULATOR_URL}
       - MAX_RETRY_DELAY=${MAX_RETRY_DELAY}
       - ORDERLISTNER_URL=${ORDERLISTNER_URL}
@@ -1153,6 +1154,7 @@ services:
       - MYSQL_USER=${MYSQL_USER}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
       - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_SIMUL=${MYSQL_SIMUL}
       - BODY_LIMIT=${BODY_LIMIT}
       - TZ=${TIMEZONE}
       - LOGS_ARCHIVE_PATH=${LOGS_ARCHIVE_PATH:-/app/logs-archive}
@@ -1400,68 +1402,68 @@ services:
       - "traefik.http.routers.ibkr-login-ws.entrypoints=web"
       - "traefik.http.routers.ibkr-login-ws.service=ibkr-login-desktop-vnc"
 
-  market-simulator:
-    image: local/market-simulator:${MARKET_SIMULATOR_VERSION:-latest}
-    build:
-      context: .
-      dockerfile: market-simulator/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "3010:3010"
-    environment:
-      - DATAHUB_URL=http://datahub:3000
-      - REDIS_URL=redis://redis:6379
-      - LOG_LEVEL=${LOG_LEVEL}
-      - ENV=${ENV}
-      - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
-      - ENABLE_DB_LOG=${ENABLE_DB_LOG}
-      - CORS_ORIGIN=${CORS_ORIGIN}
-      - CACHEMANAGER_URL=http://cachemanager:3006
-      - STRATEGYUTILS_URL=http://strategyUtils:3007
-      - ALERTINGSERVICE_URL=http://alertingservice:3008
-      - TICKERSCANNER_URL=http://tickerscanner:3013
-      - SCHEDULER_URL=http://scheduler:3014
-      - AUTHSERVICE_URL=http://authService:3015
-      - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
-      - IBKRBRIDGE_URL=http://ibkr-bridge:3017
-      - DECISIONENGINE_URL=http://decision-engine:3018
-      - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
-      - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
-      - MARKETDATASERVICE_URL=http://market-data-service:3020
-      - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
-      - MCPGATEWAY_URL=http://mcp-gateway:3004
-      - CAPITALMANAGER_URL=http://capital-manager:3005
-      - IBKRLOGINDESKTOP_URL=http://ibkr-login-desktop:3009
-      - TZ=${TIMEZONE}
-    depends_on:
-      datahub:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-    networks:
-      - trading_net
-    profiles: ["market-simulator"]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3010/status/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.market-simulator.rule=Host(`localhost`) && PathPrefix(`/market-simulator`)"
-      - "traefik.http.routers.market-simulator.entrypoints=web"
-      - "traefik.http.services.market-simulator.loadbalancer.server.port=3010"
-      - "traefik.http.middlewares.market-simulator-stripprefix.stripPrefix.prefixes=/market-simulator"
-      - "traefik.http.routers.market-simulator.middlewares=market-simulator-stripprefix,cors-default@docker,auth-forward@docker"
-      - "traefik.http.routers.market-simulator-preflight.rule=Host(`localhost`) && PathPrefix(`/market-simulator`) && Method(`OPTIONS`)"
-      - "traefik.http.routers.market-simulator-preflight.entrypoints=web"
-      - "traefik.http.routers.market-simulator-preflight.priority=10000"
-      - "traefik.http.routers.market-simulator-preflight.service=market-simulator"
-      - "traefik.http.routers.market-simulator-preflight.middlewares=market-simulator-stripprefix,cors-default@docker"
+  # simulator:
+  #   image: local/simulator:${SIMULATOR_VERSION:-latest}
+  #   build:
+  #     context: .
+  #     dockerfile: simulator/Dockerfile
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3010:3010"
+  #   environment:
+  #     - DATAHUB_URL=http://datahub:3000
+  #     - REDIS_URL=redis://redis:6379
+  #     - LOG_LEVEL=${LOG_LEVEL}
+  #     - ENV=${ENV}
+  #     - LOG_BATCH_MAX_BYTES=${LOG_BATCH_MAX_BYTES}
+  #     - ENABLE_DB_LOG=${ENABLE_DB_LOG}
+  #     - CORS_ORIGIN=${CORS_ORIGIN}
+  #     - CACHEMANAGER_URL=http://cachemanager:3006
+  #     - STRATEGYUTILS_URL=http://strategyUtils:3007
+  #     - ALERTINGSERVICE_URL=http://alertingservice:3008
+  #     - TICKERSCANNER_URL=http://tickerscanner:3013
+  #     - SCHEDULER_URL=http://scheduler:3014
+  #     - AUTHSERVICE_URL=http://authService:3015
+  #     - SERVICECONTROLPLANE_URL=http://servicecontrolplane:3016
+  #     - IBKRBRIDGE_URL=http://ibkr-bridge:3017
+  #     - DECISIONENGINE_URL=http://decision-engine:3018
+  #     - IBKRKEEPALIVE_URL=http://ibkr-keepalive:3019
+  #     - LIQUIDITYMANAGER_URL=http://liquidity-manager:3001
+  #     - MARKETDATASERVICE_URL=http://market-data-service:3020
+  #     - BROKEREXECUTORIBKR_URL=http://broker-executor-ibkr:3003
+  #     - MCPGATEWAY_URL=http://mcp-gateway:3004
+  #     - CAPITALMANAGER_URL=http://capital-manager:3005
+  #     - IBKRLOGINDESKTOP_URL=http://ibkr-login-desktop:3009
+  #     - TZ=${TIMEZONE}
+  #   depends_on:
+  #     datahub:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   volumes:
+  #     - /etc/localtime:/etc/localtime:ro
+  #     - /etc/timezone:/etc/timezone:ro
+  #   networks:
+  #     - trading_net
+  #   profiles: ["simulator"]
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:3010/status/health"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #     start_period: 15s
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.simulator.rule=Host(`localhost`) && PathPrefix(`/simulator`)"
+  #     - "traefik.http.routers.simulator.entrypoints=web"
+  #     - "traefik.http.services.simulator.loadbalancer.server.port=3010"
+  #     - "traefik.http.middlewares.simulator-stripprefix.stripPrefix.prefixes=/simulator"
+  #     - "traefik.http.routers.simulator.middlewares=simulator-stripprefix,cors-default@docker,auth-forward@docker"
+  #     - "traefik.http.routers.simulator-preflight.rule=Host(`localhost`) && PathPrefix(`/simulator`) && Method(`OPTIONS`)"
+  #     - "traefik.http.routers.simulator-preflight.entrypoints=web"
+  #     - "traefik.http.routers.simulator-preflight.priority=10000"
+  #     - "traefik.http.routers.simulator-preflight.service=simulator"
+  #     - "traefik.http.routers.simulator-preflight.middlewares=simulator-stripprefix,cors-default@docker"
 
 
 volumes:

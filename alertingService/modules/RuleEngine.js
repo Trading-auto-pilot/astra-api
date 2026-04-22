@@ -7,6 +7,7 @@ const { createDatahubAdapter, convertPathToDatahub } = require("../../shared/dat
 const TwilioClient = require("./twilio");
 const EmailClient = require("./email");
 const TelegramClient = require("./telegram");
+const { getConfigString, getConfigInt } = require("../../shared/loadSettings");
 
 const DEFAULT_WINDOW_SECONDS = 300;
 const DEFAULT_MAX_PER_WINDOW = 3;
@@ -23,15 +24,15 @@ class RuleEngine {
     this.stateByRuleId = new Map();
 
     this.logsPattern =
-      process.env.ALERTING_LOGS_PATTERN || `${this.env}.*.*.logs.*`;
+      getConfigString("ALERTING_LOGS_PATTERN", `${this.env}.*.*.logs.*`);
     this.eventsPattern =
-      process.env.ALERTING_EVENTS_PATTERN || `${this.env}.*.events*`;
+      getConfigString("ALERTING_EVENTS_PATTERN", `${this.env}.*.events*`);
     this.logsSubscribed = false;
     this.eventsSubscribed = false;
 
-    this.windowSeconds = Number(process.env.ALERTING_WINDOW_SECONDS) || DEFAULT_WINDOW_SECONDS;
-    this.maxPerWindow = Number(process.env.ALERTING_MAX_PER_WINDOW) || DEFAULT_MAX_PER_WINDOW;
-    this.dedupSeconds = Number(process.env.ALERTING_DEDUP_SECONDS) || DEFAULT_DEDUP_SECONDS;
+    this.windowSeconds = getConfigInt("ALERTING_WINDOW_SECONDS", DEFAULT_WINDOW_SECONDS);
+    this.maxPerWindow = getConfigInt("ALERTING_MAX_PER_WINDOW", DEFAULT_MAX_PER_WINDOW);
+    this.dedupSeconds = getConfigInt("ALERTING_DEDUP_SECONDS", DEFAULT_DEDUP_SECONDS);
 
     // Use datahub adapter for automatic response format conversion (DBManager-compatible)
     this.http = createDatahubAdapter(axios.create({
@@ -417,7 +418,7 @@ class RuleEngine {
           const msg = await this.twilio.sendWhatsAppMessage({ body });
           deliveries.push({ provider: "whatsapp", status: "sent", response_json: msg });
         } else if (ch === "email") {
-          const to = actions.to || process.env.ALERTING_DEFAULT_EMAIL_TO;
+          const to = actions.to || getConfigString("ALERTING_DEFAULT_EMAIL_TO", "");
           if (!to) {
             this.logger?.warning?.(
               `[ruleEngine] email skipped rule=${ruleId} missing recipient (actions.to or ALERTING_DEFAULT_EMAIL_TO)`
@@ -439,8 +440,7 @@ class RuleEngine {
           const chatId =
             actions.telegram_chat_id ||
             actions.chat_id ||
-            process.env.ALERTING_DEFAULT_TELEGRAM_CHAT_ID ||
-            process.env.TELEGRAM_CHAT_ID;
+            getConfigString(["ALERTING_DEFAULT_TELEGRAM_CHAT_ID", "TELEGRAM_CHAT_ID"], "");
           if (!chatId) {
             this.logger?.warning?.(
               `[ruleEngine] telegram skipped rule=${ruleId} missing chat_id (actions.telegram_chat_id or ALERTING_DEFAULT_TELEGRAM_CHAT_ID)`

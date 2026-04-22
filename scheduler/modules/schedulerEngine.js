@@ -6,6 +6,7 @@ const { randomUUID } = require("crypto");
 const { resolveText } = require("../../shared/textResolver");
 const { signInternalToken } = require("../../shared/internalAuth");
 const { createSchedulerJobsClient } = require("./schedulerJobsClient");
+const { getConfigString, getConfigInt } = require("../../shared/loadSettings");
 
 // Mapping giorno-settimana → formati cron
 const DOW_MAP = {
@@ -34,8 +35,8 @@ class SchedulerEngine {
     this.dbmanagerUrl = dbmanagerUrl;
     this.getSetting = getSetting;
     this.bus = bus || null;
-    this.env = env || process.env.ENV || "DEV";
-    this.serviceName = process.env.MICROSERVICE_NAME || "scheduler";
+    this.env = env || getConfigString(["ENV", "APP_ENV"], "DEV");
+    this.serviceName = getConfigString("MICROSERVICE_NAME", "scheduler");
     this.eventsChannel = `${this.env}.${this.serviceName}.events`;
     this.tasks = [];
 
@@ -290,12 +291,12 @@ class SchedulerEngine {
       if (exchanges.length) {
         const apiKey =
           (this.getSetting && this.getSetting("FMP_API_KEY")) ||
-          process.env.FMP_API_KEY ||
+          getConfigString(["FMP_API_KEY", "FMP_KEY"], "") ||
           null;
         if (!apiKey) {
           this._logInfo("_runJob", `job=${job.jobKey} openMarket attivo ma manca FMP_API_KEY, procedo senza check`);
         } else {
-          const base = process.env.FMP_BASE_URL || "https://financialmodelingprep.com";
+          const base = getConfigString("FMP_BASE_URL", "https://financialmodelingprep.com");
           let anyOpen = false;
           for (const exc of exchanges) {
             const excId = String(exc || "").trim();
@@ -397,7 +398,7 @@ class SchedulerEngine {
               issuer: "astraai-internal",
               audience: internalAud,
               ttlSeconds: 60,
-              privateKey: process.env.INTERNAL_JWT_PRIVATE_KEY,
+              privateKey: getConfigString("INTERNAL_JWT_PRIVATE_KEY", ""),
             }
           );
           resolvedHeaders["x-internal-token"] = token;

@@ -2,6 +2,7 @@
 
 const axios = require("axios");
 const { Router } = require("express");
+const { getConfigString } = require("../../shared/loadSettings");
 const { createDatahubAdapter } = require("../../shared/datahubAdapter");
 const { createFetchUserId, normalizeRecordForFilters, normalizeUserFilters, applyUserFilters, normalizeUserOrder, applyUserOrder } = require("../lib/filterEngine");
 const { createFetchApiKeyId, createFetchUserWeights } = require("../lib/weightsConfig");
@@ -15,8 +16,8 @@ const safeStringify = (val) => {
 
 module.exports = function buildUserDataRouter({ logger, getService }) {
   const router = Router();
-  const dbmanagerUrl = (process.env.DATAHUB_URL || process.env.DBMANAGER_URL || "http://datahub:3000").replace(/\/+$/, "");
-  const authServiceUrl = (process.env.AUTHSERVICE_URL || "http://authservice:3015").replace(/\/+$/, "");
+  const dbmanagerUrl = (getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], "http://datahub:3000")).replace(/\/+$/, "");
+  const authServiceUrl = (getConfigString("AUTHSERVICE_URL", "http://authservice:3015")).replace(/\/+$/, "");
 
   const datahubAxios = createDatahubAdapter(axios.create({ baseURL: dbmanagerUrl, timeout: 8000 }));
   const fetchApiKeyId = createFetchApiKeyId({ axios, dbmanagerUrl, logger });

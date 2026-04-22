@@ -1,6 +1,7 @@
 // modules/fmpFundamentalsService.js
 "use strict";
 
+const { getConfigString, getConfigInt } = require("../../shared/loadSettings");
 const RateLimiter = require("./rateLimiter");
 
 class FmpFundamentalsService {
@@ -12,7 +13,7 @@ class FmpFundamentalsService {
   constructor({ logger, getSetting }) {
     this.logger = logger;
     this._getSetting = getSetting;
-    this.baseUrl = process.env.FMP_BASE_URL || "https://financialmodelingprep.com";
+    this.baseUrl = getConfigString("FMP_BASE_URL", "https://financialmodelingprep.com");
 
     // ✅ cache API KEY in memoria
     this.apiKey = null;
@@ -166,7 +167,7 @@ class FmpFundamentalsService {
     const out = [];
     if (!Array.isArray(symbols) || symbols.length === 0) return out;
     const rawConcurrency =
-      options.concurrency ?? process.env.FMP_SYMBOL_CONCURRENCY ?? process.env.SCAN_FMP_CONCURRENCY;
+      options.concurrency ?? getConfigInt("FMP_SYMBOL_CONCURRENCY", getConfigInt("SCAN_FMP_CONCURRENCY", 3));
     const limit = Number.isFinite(Number(rawConcurrency)) && Number(rawConcurrency) > 0
       ? Math.floor(Number(rawConcurrency))
       : 3;

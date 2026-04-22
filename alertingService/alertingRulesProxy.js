@@ -4,6 +4,7 @@
 const { Router } = require("express");
 const axios = require("axios");
 const { convertPathToDatahub, adaptDatahubResponse } = require("../shared/datahubAdapter");
+const { getConfigString } = require("../shared/loadSettings");
 
 const DEFAULT_DATAHUB_URL = "http://datahub:3000"; // Updated from dbmanager to datahub
 
@@ -12,9 +13,7 @@ function buildProxy({ logger, getDbManagerUrl }) {
 
   const resolveBaseUrl = () =>
     (typeof getDbManagerUrl === "function" ? getDbManagerUrl() : null) ||
-    process.env.DATAHUB_URL ||
-    process.env.DBMANAGER_URL ||
-    DEFAULT_DATAHUB_URL;
+    getConfigString(["DATAHUB_URL", "DBMANAGER_URL"], DEFAULT_DATAHUB_URL);
 
   const forward = async (req, res, targetPath) => {
     const baseUrl = resolveBaseUrl();

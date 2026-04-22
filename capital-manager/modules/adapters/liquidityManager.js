@@ -3,11 +3,12 @@
 
 const https = require("https");
 const http = require("http");
+const { getConfigString, getConfigInt } = require("../../../shared/loadSettings");
 
-const LIQUIDITY_MANAGER_URL = process.env.LIQUIDITY_MANAGER_URL || "http://liquidity-manager:3001";
-const LIQUIDITY_SCORE_PATH = process.env.LIQUIDITY_SCORE_PATH || "/liquidity-score";
+const LIQUIDITY_MANAGER_URL = getConfigString(["LIQUIDITY_MANAGER_URL", "LIQUIDITYMANAGER_URL"], "http://liquidity-manager:3001");
+const LIQUIDITY_SCORE_PATH = getConfigString("LIQUIDITY_SCORE_PATH", "/liquidity-score");
 
-const REQUEST_TIMEOUT_MS = parseInt(process.env.LIQUIDITY_ADAPTER_TIMEOUT_MS || "5000", 10);
+const REQUEST_TIMEOUT_MS = getConfigInt("LIQUIDITY_ADAPTER_TIMEOUT_MS", 5000);
 
 /**
  * Simple HTTP GET helper.

@@ -5,6 +5,7 @@
 // ---------------------------------------------------------------------------
 
 const axios = require("axios");
+const { createHash } = require("crypto");
 
 // --- Type helpers ----------------------------------------------------------
 
@@ -38,6 +39,17 @@ const normalizeDateParam = (value) => {
 const resolveSnapshotDate = (value) => {
   const normalized = normalizeDateParam(value);
   return normalized || new Date().toISOString().slice(0, 10);
+};
+
+const buildSymbolLogRef = (ticker, dateValue) => {
+  const normalizedTicker = String(ticker || "").trim().toUpperCase();
+  const normalizedDate = resolveSnapshotDate(dateValue);
+  if (!normalizedTicker) return null;
+  const hash = createHash("sha1")
+    .update(`${normalizedTicker}:${normalizedDate}`)
+    .digest("hex")
+    .slice(0, 12);
+  return `symref:${normalizedTicker}:${normalizedDate}:${hash}`;
 };
 
 // --- Candle helpers --------------------------------------------------------
@@ -141,6 +153,7 @@ module.exports = {
   subDays,
   normalizeDateParam,
   resolveSnapshotDate,
+  buildSymbolLogRef,
   pickPrice,
   normalizeTimestamp,
   normalizeCandle,

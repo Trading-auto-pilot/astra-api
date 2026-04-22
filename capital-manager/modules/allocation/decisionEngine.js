@@ -2,22 +2,23 @@
 "use strict";
 
 const { clamp } = require("../utils/clamp");
+const { getConfigNumber } = require("../../../shared/loadSettings");
 
 // Default values read from env at startup — used when no runtime override is set in Redis.
 const DEFAULT_CONFIG = {
-  FALLBACK_RESERVED_CASH_PCT: parseFloat(process.env.FALLBACK_RESERVED_CASH_PCT || "0.60"),
-  SCORE_RESERVED_MIN:         parseFloat(process.env.SCORE_RESERVED_MIN || "0.20"),
-  SCORE_RESERVED_MAX:         parseFloat(process.env.SCORE_RESERVED_MAX || "0.70"),
-  RISK_OFF_ADD_PCT:           parseFloat(process.env.RISK_OFF_ADD_PCT || "0.10"),
-  VOL_ADD_MAX_PCT:            parseFloat(process.env.VOL_ADD_MAX_PCT || "0.10"),
-  VOL_SCALE:                  parseFloat(process.env.VOL_SCALE || "100"),
-  MIN_ORDER_NOTIONAL:         parseFloat(process.env.MIN_ORDER_NOTIONAL || "50"),
-  CONFIDENCE_THRESHOLD:       parseFloat(process.env.CONFIDENCE_THRESHOLD || "69"),
+  FALLBACK_RESERVED_CASH_PCT: getConfigNumber("FALLBACK_RESERVED_CASH_PCT", 0.60),
+  SCORE_RESERVED_MIN:         getConfigNumber("SCORE_RESERVED_MIN", 0.20),
+  SCORE_RESERVED_MAX:         getConfigNumber("SCORE_RESERVED_MAX", 0.70),
+  RISK_OFF_ADD_PCT:           getConfigNumber("RISK_OFF_ADD_PCT", 0.10),
+  VOL_ADD_MAX_PCT:            getConfigNumber("VOL_ADD_MAX_PCT", 0.10),
+  VOL_SCALE:                  getConfigNumber("VOL_SCALE", 100),
+  MIN_ORDER_NOTIONAL:         getConfigNumber("MIN_ORDER_NOTIONAL", 50),
+  CONFIDENCE_THRESHOLD:       getConfigNumber("CONFIDENCE_THRESHOLD", 69),
   // Allocation concentration limits — env var → Redis override
-  MAX_PERC_TICKER:            parseFloat(process.env.MAX_PERC_TICKER   || "0.10"),
-  MAX_PERC_SECTOR:            parseFloat(process.env.MAX_PERC_SECTOR   || "0.40"),
-  MAX_PERC_INDUSTRY:          parseFloat(process.env.MAX_PERC_INDUSTRY || "0.30"),
-  MAX_PERC_AREA:              parseFloat(process.env.MAX_PERC_AREA     || "0.50"),
+  MAX_PERC_TICKER:            getConfigNumber("MAX_PERC_TICKER", 0.10),
+  MAX_PERC_SECTOR:            getConfigNumber("MAX_PERC_SECTOR", 0.40),
+  MAX_PERC_INDUSTRY:          getConfigNumber("MAX_PERC_INDUSTRY", 0.30),
+  MAX_PERC_AREA:              getConfigNumber("MAX_PERC_AREA", 0.50),
 };
 
 /**
