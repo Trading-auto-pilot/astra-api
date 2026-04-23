@@ -30,61 +30,13 @@ else
   exit 1
 fi
 
-# Debug: mostra versione DBManager che vede lo script
+# Debug: mostra versioni caricate
 log "🧬 Variabili versione (da $ENV_FILE):"
 env | grep -E 'VERSION=' || log "   (nessuna variabile *VERSION trovata)"
 
-# 2) Controllo variabili MYSQL_* minime
-: "${MYSQL_HOST:?MYSQL_HOST non impostata in $ENV_FILE}"
-: "${MYSQL_USER:?MYSQL_USER non impostata in $ENV_FILE}"
-: "${MYSQL_PASSWORD:?MYSQL_PASSWORD non impostata in $ENV_FILE}"
-: "${MYSQL_DATABASE:?MYSQL_DATABASE non impostata in $ENV_FILE}"
-MYSQL_PORT="${MYSQL_PORT:-3306}"
-
-# 👉 Dall'host, 'mysql' non è risolvibile: uso sempre 127.0.0.1
-DB_HOST="$MYSQL_HOST"
-if [ "$DB_HOST" = "mysql" ]; then
-  DB_HOST="127.0.0.1"
-fi
-
-log "🗄  Leggo i service_flags da ${MYSQL_DATABASE} (env='${ENV_NAME}') su ${DB_HOST}:${MYSQL_PORT}..."
-
-RAW_MS=$(mysql -N -h "$DB_HOST" -P "$MYSQL_PORT" \
-  -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" \
-  -e "SELECT microservice FROM service_flags WHERE env='${ENV_NAME}' AND enabled = 1 ORDER BY microservice;") || {
-    log "❌ Errore nella query a service_flags"
-    exit 1
-  }
-
-PROFILES_LIST=""
-
-if [[ -z "${RAW_MS// }" ]]; then
-  log "⚠️ Nessun microservizio abilitato in service_flags per env='${ENV_NAME}'"
-else
-  log "📋 Microservizi abilitati (raw) per ${ENV_NAME}:"
-  log "$RAW_MS"
-  while IFS= read -r ms; do
-    ms_lc=$(echo "$ms" | tr '[:upper:]' '[:lower:]')
-
-    case "$ms_lc" in
-      marketsimulator|ordersimulator)
-        PROFILES_LIST+=$'\n'"simul"
-        ;;
-      *)
-        PROFILES_LIST+=$'\n'"$ms_lc"
-        ;;
-    esac
-  done <<< "$RAW_MS"
-fi
-
-# Rimuovo vuoti, dedup e trasformo in lista separata da virgole
-if [[ -n "${PROFILES_LIST// }" ]]; then
-  PROFILES=$(printf '%s\n' "$PROFILES_LIST" | sed '/^$/d' | sort -u | paste -sd, -)
-else
-  PROFILES=""
-fi
-
-log "🧩 Profili attivi dal DB per $ENV_NAME: '${PROFILES}'"
+# 2) Leggo i profili da COMPOSE_PROFILES (già caricato dall'env file)
+PROFILES="${COMPOSE_PROFILES:-}"
+log "🧩 Profili attivi (da COMPOSE_PROFILES): '${PROFILES}'"
 
 LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
 log "🏷  Docker Compose project name: ${LOWER_PROJECT_NAME}"
