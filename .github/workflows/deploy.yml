@@ -377,8 +377,15 @@ jobs:
 
     - name: Copy .env to server
       run: |
+        echo "🔍 DEBUG: github.ref_name = ${{ github.ref_name }}"
+        echo "🔍 DEBUG: .env content (ENV* and COMPOSE* vars):"
+        grep -E '^(ENV|ENV_NAME|COMPOSE_PROFILES)=' .env || true
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "mkdir -p /home/$GCP_USER/deploy/trading-system"
         scp -o StrictHostKeyChecking=no .env $GCP_USER@$GCP_HOST:/home/$GCP_USER/deploy/trading-system/.env
+        echo "✅ .env copiato in ~/deploy/trading-system/.env"
+        echo "🔍 DEBUG: verifica .env vecchio in ~/deploy/:"
+        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST \
+          "ls -la ~/deploy/.env 2>/dev/null && echo '⚠️  TROVATO .env in ~/deploy/ — potrebbe interferire!' || echo '✅ Nessun .env in ~/deploy/'"
 
     - name: Copy docker-compose files to server
       run: |
@@ -499,12 +506,22 @@ jobs:
           cd ~/deploy/trading-system
 
           LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
-
-          # seleziona il compose corretto in base al branch
           COMPOSE_FILE="docker-compose.${ENV_NAME,,}.yml"
+
+          echo "🔍 DEBUG ENV_NAME        = $ENV_NAME"
+          echo "🔍 DEBUG LOWER_PROJECT   = $LOWER_PROJECT_NAME"
+          echo "🔍 DEBUG COMPOSE_FILE    = $COMPOSE_FILE"
+          echo "🔍 DEBUG pwd             = $(pwd)"
+          echo "🔍 DEBUG ls deploy dir:"
+          ls -la ~/deploy/trading-system/
+          echo "🔍 DEBUG .env (ENV* e COMPOSE* vars):"
+          grep -E '^(ENV|ENV_NAME|COMPOSE_PROFILES)=' .env || true
+          echo "🔍 DEBUG verifica .env in ~/deploy/ (non dovrebbe esistere):"
+          ls -la ~/deploy/.env 2>/dev/null && echo "⚠️  TROVATO .env in ~/deploy/ — interferisce!" || echo "✅ Nessun .env spurio in ~/deploy/"
 
           if [ ! -f "$COMPOSE_FILE" ]; then
             echo "❌ File $COMPOSE_FILE non trovato!"
+            ls -la
             exit 1
           fi
 
@@ -513,11 +530,7 @@ jobs:
             exit 1
           fi
 
-          echo "▶️ Avvio microservizi dinamici per ambiente $ENV_NAME usando profili dal DB"
-
-          #  1. legge i microservizi ON dal DB
-          #  2. calcola COMPOSE_PROFILES
-          #  3. esegue docker compose up con i profili corretti
+          echo "▶️ Avvio microservizi per $ENV_NAME (project=$LOWER_PROJECT_NAME)..."
           ./deploy-with-profiles.sh "$ENV_NAME" "$COMPOSE_FILE" ".env"
 
           echo "🧹 Pulizia immagini Docker"
@@ -543,21 +556,15 @@ jobs:
           fi
         EOF
 
-    - name: Start all other container
-      run: |
-        ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -e -s" <<'EOF'
-          set -e
-          cd ~/deploy/trading-system
-          LOWER_PROJECT_NAME=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
-          docker compose -f "docker-compose.${ENV_NAME,,}.yml" --env-file .env -p "$LOWER_PROJECT_NAME" up -d --remove-orphans --no-recreate
-          docker image prune -a -f
-        EOF
 
     - name: Verify deploy health
       run: |
         ssh -o StrictHostKeyChecking=no $GCP_USER@$GCP_HOST "ENV_NAME=${{ github.ref_name }} bash -e -s" <<'EOF'
           set -e
           LOWER=$(echo "$ENV_NAME" | tr '[:upper:]' '[:lower:]')
+          echo "🔍 DEBUG health-check: ENV_NAME=$ENV_NAME  LOWER=$LOWER"
+          echo "🔍 DEBUG tutti i container docker attivi sul server:"
+          docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
           echo "⏳ Waiting 20s for containers to stabilize..."
           sleep 20
           echo "🔍 Checking for exited containers in project '${LOWER}'..."
@@ -577,8 +584,8 @@ jobs:
           docker ps --filter "name=${LOWER}-" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
         EOF
 
-    - name: Cleanup .env on server
-      if: always()
-      run: |
-        ssh -o StrictHostKeyChecking=no "$GCP_USER@$GCP_HOST" \
-          "rm -f /home/$GCP_USER/deploy/trading-system/.env" || true
+    # - name: Cleanup .env on server
+    #   if: always()
+    #   run: |
+    #     ssh -o StrictHostKeyChecking=no "$GCP_USER@$GCP_HOST" \
+    #       "rm -f /home/$GCP_USER/deploy/trading-system/.env" || true

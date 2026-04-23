@@ -115,7 +115,7 @@ docker compose -f "$COMPOSE_FILE" \
 # 4) Avvio/aggiorno stack con i profili calcolati
 log "🛑 Fermiamo solo i microservizi NON core per l'ambiente $ENV_NAME"
 
-CORE_SERVICES=("mysql" "redis" "traefik")
+CORE_SERVICES=("mysql" "redis")
 
 for svc in $ALL_SERVICES; do
   if [[ ! " ${CORE_SERVICES[@]} " =~ " ${svc} " ]]; then
@@ -149,11 +149,11 @@ done
 log "🧹 Pulizia immagini dangling prima del pull..."
 docker images --filter "dangling=true" -q | xargs -r docker rmi || true
 
-log "⬇️ Pull immagini CORE (mysql, redis, traefik, datahub)"
+log "⬇️ Pull immagini CORE (mysql, redis, datahub)"
 docker compose -f "$COMPOSE_FILE" \
   --env-file "$ENV_FILE" \
   -p "$LOWER_PROJECT_NAME" \
-  pull mysql redis traefik datahub
+  pull mysql redis datahub
 
 if [[ -n "$PROFILES" ]]; then
   log "⬇️ Scarico immagini per profili: ${PROFILES}"
