@@ -92,21 +92,8 @@ services:
       - "traefik.http.middlewares.ibkrgw-expopaper-headers.headers.customRequestHeaders.X-Forwarded-For=127.0.0.1"
       - "traefik.http.middlewares.ibkrgw-expopaper-headers.headers.customRequestHeaders.X-Real-IP=127.0.0.1"
 
-  ibkr-keepalive:
-    image: expovin/ibkr-keepalive:${IBKRKEEPALIVE_VERSION}
-    container_name: ibkr-keepalive
-    network_mode: "service:ibkrgw-paper"
-    depends_on:
-      - ibkrgw-paper
-    environment:
-      - IBKR_BASE_URL=${IBKRGW_BASE_URL}
-      - CORS_ORIGIN=${CORS_ORIGIN}
-      - KEEPALIVE_INTERVAL_MS=45000
-      - REQUEST_TIMEOUT_MS=8000
-      - ENV=${ENV}
-    restart: unless-stopped
-    labels:
-      - "traefik.enable=true"
+      # ibkr-keepalive condivide la rete con questo container (network_mode: service:ibkrgw-paper)
+      # quindi le sue label Traefik devono stare qui, puntando alla porta 3019 sullo stesso host
       - "traefik.http.routers.ibkr-keepalive.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/ibkr-keepalive`)"
       - "traefik.http.routers.ibkr-keepalive.entrypoints=websecure"
       - "traefik.http.routers.ibkr-keepalive.tls.certresolver=le"
@@ -119,6 +106,19 @@ services:
       - "traefik.http.routers.ibkr-keepalive-preflight.priority=10000"
       - "traefik.http.routers.ibkr-keepalive-preflight.service=ibkr-keepalive"
       - "traefik.http.routers.ibkr-keepalive-preflight.middlewares=ibkr-keepalive-stripprefix,trading-cors@docker"
+
+  ibkr-keepalive:
+    image: expovin/ibkr-keepalive:${IBKRKEEPALIVE_VERSION}
+    network_mode: "service:ibkrgw-paper"
+    depends_on:
+      - ibkrgw-paper
+    environment:
+      - IBKR_BASE_URL=${IBKRGW_BASE_URL}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - KEEPALIVE_INTERVAL_MS=45000
+      - REQUEST_TIMEOUT_MS=8000
+      - ENV=${ENV}
+    restart: unless-stopped
 
   datahub:
     image: expovin/datahub:${DATAHUB_VERSION}
@@ -515,6 +515,11 @@ services:
       - trading_net
       - traefik_web
     profiles: ["alertingservice"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3008/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     environment:
       - DATAHUB_URL=${DATAHUB_URL}
       - LOG_LEVEL=${LOG_LEVEL}
@@ -743,6 +748,11 @@ services:
     depends_on:
       datahub:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3015/status/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -1096,18 +1106,14 @@ services:
 
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=${NETWORK}"
+      - "traefik.docker.network=traefik_web"
 
       # Router frontend → trading.expovin.it
       - "traefik.http.routers.astraai-frontend.rule=Host(`trading.expovin.it`)"
       - "traefik.http.routers.astraai-frontend.entrypoints=websecure"
-      - "traefik.http.routers.astraai-frontend.tls=true"
       - "traefik.http.routers.astraai-frontend.tls.certresolver=le"
-
-      # (opzionale) redirect http→https se non già fatto a livello globale
-      #- "traefik.http.routers.astraai-frontend-web.rule=Host(`trading.expovin.it`)"
-      #- "traefik.http.routers.astraai-frontend-web.entrypoints=web"
-      - "traefik.http.routers.astraai-frontend-web.middlewares=trading-cors@docker"
+      - "traefik.http.routers.astraai-frontend.middlewares=trading-cors@docker"
+      - "traefik.http.services.astraai-frontend.loadbalancer.server.port=3000"
 
   help-trading:
     image: expovin/help-trading:${HELPTRADING_VERSION:-latest}
@@ -1130,7 +1136,7 @@ services:
       - traefik_web
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=${NETWORK}"
+      - "traefik.docker.network=traefik_web"
       - "traefik.http.routers.help-trading.rule=Host(`help.trading.expovin.it`)"
       - "traefik.http.routers.help-trading.entrypoints=websecure"
       - "traefik.http.routers.help-trading.tls=true"
@@ -1173,7 +1179,7 @@ services:
       start_period: 30s
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=${NETWORK}"
+      - "traefik.docker.network=traefik_web"
       # REST API (Node.js — General Settings)
       - "traefik.http.services.ibkr-login-desktop-api.loadbalancer.server.port=3009"
       - "traefik.http.routers.ibkr-login-desktop.rule=Host(`api.trading.expovin.it`) && PathPrefix(`/ibkr-login-desktop`)"
