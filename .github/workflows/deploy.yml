@@ -184,31 +184,31 @@ jobs:
             done
           }
 
-          sudo mkdir -p /home/$USER/deploy/IBKR_API_Gateway
-          if [ -d /home/$USER/deploy/IBKR_API_Gateway/SW ]; then
+          sudo mkdir -p /home/$USER/deploy/trading-system/IBKR_API_Gateway
+          if [ -d /home/$USER/deploy/trading-system/IBKR_API_Gateway/SW ]; then
             echo "✅ SW già presente su server, la mantengo"
           else
-            echo "❌ SW non presente su server. Carica clientportal.gw.zip in /home/$USER/deploy/IBKR_API_Gateway/SW"
+            echo "❌ SW non presente su server. Carica clientportal.gw.zip in /home/$USER/deploy/trading-system/IBKR_API_Gateway/SW"
             exit 1
           fi
-          sudo mv /tmp/Dockerfile /home/$USER/deploy/IBKR_API_Gateway/Dockerfile
-          sudo mv /tmp/release.json /home/$USER/deploy/IBKR_API_Gateway/release.json
-          sudo mv /tmp/conf.local.expopaper.yaml /home/$USER/deploy/IBKR_API_Gateway/conf.local.expopaper.yaml
-          sudo chown -R $USER:$USER /home/$USER/deploy/IBKR_API_Gateway
-          if [ ! -f /home/$USER/deploy/IBKR_API_Gateway/SW/clientportal.gw.zip ]; then
-            echo "❌ File mancante: /home/$USER/deploy/IBKR_API_Gateway/SW/clientportal.gw.zip"
-            ls -la /home/$USER/deploy/IBKR_API_Gateway || true
-            ls -la /home/$USER/deploy/IBKR_API_Gateway/SW || true
+          sudo mv /tmp/Dockerfile /home/$USER/deploy/trading-system/IBKR_API_Gateway/Dockerfile
+          sudo mv /tmp/release.json /home/$USER/deploy/trading-system/IBKR_API_Gateway/release.json
+          sudo mv /tmp/conf.local.expopaper.yaml /home/$USER/deploy/trading-system/IBKR_API_Gateway/conf.local.expopaper.yaml
+          sudo chown -R $USER:$USER /home/$USER/deploy/trading-system/IBKR_API_Gateway
+          if [ ! -f /home/$USER/deploy/trading-system/IBKR_API_Gateway/SW/clientportal.gw.zip ]; then
+            echo "❌ File mancante: /home/$USER/deploy/trading-system/IBKR_API_Gateway/SW/clientportal.gw.zip"
+            ls -la /home/$USER/deploy/trading-system/IBKR_API_Gateway || true
+            ls -la /home/$USER/deploy/trading-system/IBKR_API_Gateway/SW || true
             exit 1
           fi
           echo "🔎 Debug build context"
           pwd
-          ls -la /home/$USER/deploy/IBKR_API_Gateway
-          ls -la /home/$USER/deploy/IBKR_API_Gateway/SW
-          cd /home/$USER/deploy/IBKR_API_Gateway
+          ls -la /home/$USER/deploy/trading-system/IBKR_API_Gateway
+          ls -la /home/$USER/deploy/trading-system/IBKR_API_Gateway/SW
+          cd /home/$USER/deploy/trading-system/IBKR_API_Gateway
           echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
           retry 5 20 docker pull eclipse-temurin:17-jre-jammy
-          retry 5 20 docker build --pull -t "$DOCKERHUB_USERNAME/ibkr-clientportal:$IBKR_VERSION" -t "$DOCKERHUB_USERNAME/ibkr-clientportal:latest" -f /home/$USER/deploy/IBKR_API_Gateway/Dockerfile /home/$USER/deploy/IBKR_API_Gateway
+          retry 5 20 docker build --pull -t "$DOCKERHUB_USERNAME/ibkr-clientportal:$IBKR_VERSION" -t "$DOCKERHUB_USERNAME/ibkr-clientportal:latest" -f /home/$USER/deploy/trading-system/IBKR_API_Gateway/Dockerfile /home/$USER/deploy/trading-system/IBKR_API_Gateway
           retry 5 15 docker push "$DOCKERHUB_USERNAME/ibkr-clientportal:$IBKR_VERSION"
           retry 5 15 docker push "$DOCKERHUB_USERNAME/ibkr-clientportal:latest"
         EOF
